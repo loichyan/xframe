@@ -76,17 +76,32 @@ pub(crate) struct RawSignal<T> {
     context: SignalContext,
 }
 
+impl Drop for SignalContext {
+    fn drop(&mut self) {
+        // SAFETY: this will be dropped after disposing, it's safe to access it.
+        let this: &'static SignalContext = unsafe { std::mem::transmute(&*self) };
+        for eff in self.future_subscribers.get_mut().iter() {
+            eff.0.remove_dependence(this);
+        }
+    }
+}
+
+type Subscribers = RefCell<IndexSet<ByAddress<'static, RawEffect<'static>>, ahash::RandomState>>;
+
 #[derive(Debug)]
 pub(crate) struct SignalContext {
     shared: ByAddress<'static, ScopeShared>,
-    subscribers: RefCell<IndexSet<ByAddress<'static, RawEffect<'static>>, ahash::RandomState>>,
+    future_subscribers: Subscribers,
+    subscribers: Subscribers,
 }
 
 impl SignalContext {
     pub fn track(&self) {
         if let Some(e) = self.shared.0.subscriber.get() {
-            // SAFETY: An effect will only be subscriberd by the signal it
-            // captures, we can safely transmute those signals to 'static bounds.
+            // SAFETY: An effect might captured a signal created inside the
+            // child scope, we should notify the effect to remove the signal
+            // to avoid access dangling pointer.
+            self.future_subscribers.borrow_mut().insert(ByAddress(e));
             let this: &'static SignalContext = unsafe { std::mem::transmute(self) };
             e.add_dependence(this);
         }
@@ -101,6 +116,7 @@ impl SignalContext {
     }
 
     pub fn trigger_subscribers(&self) {
+        self.future_subscribers.borrow_mut().clear();
         let subscribers = self.subscribers.replace_with(|subs| {
             IndexSet::with_capacity_and_hasher(subs.len(), Default::default())
         });
@@ -140,6 +156,7 @@ impl<'a> Scope<'a> {
             value: RefCell::new(t),
             context: SignalContext {
                 shared: ByAddress(self.shared()),
+                future_subscribers: Default::default(),
                 subscribers: Default::default(),
             },
         });

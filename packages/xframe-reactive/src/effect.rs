@@ -30,6 +30,10 @@ impl<'a> RawEffect<'a> {
         self.dependencies.borrow_mut().insert(ByAddress(signal));
     }
 
+    pub fn remove_dependence(&self, signal: &'a SignalContext) {
+        self.dependencies.borrow_mut().remove(&ByAddress(signal));
+    }
+
     pub fn clear_dependencies(&self) {
         // SAFETY: this will be dropped after disposing, it's safe to access it.
         let this: &'static RawEffect<'static> = unsafe { std::mem::transmute(&*self) };
@@ -100,7 +104,7 @@ where
 }
 
 fn create_effect_impl<'a>(cx: Scope<'a>, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
-    let inner = cx.alloc_effect(RawEffect {
+    let inner = cx.create_variable(RawEffect {
         effect,
         shared: ByAddress(cx.shared()),
         dependencies: Default::default(),
@@ -254,6 +258,21 @@ mod tests {
             state.trigger_subscribers();
             assert_eq!(inner_counter.get(), 3);
             assert_eq!(outer_counter.get(), 3);
+        });
+    }
+
+    #[test]
+    fn remove_a_disposed_dependence() {
+        Scope::create_root(|cx| {
+            let eff = cx.create_effect(move |prev| {
+                if prev.is_none() {
+                    cx.create_child(|cx| {
+                        let state = cx.create_signal(0);
+                        state.track();
+                    });
+                }
+            });
+            assert_eq!(eff.inner.dependencies.borrow().len(), 0);
         });
     }
 }

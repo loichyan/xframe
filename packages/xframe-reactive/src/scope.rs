@@ -26,12 +26,6 @@ impl<'a> Scope<'a> {
         self.inner.inherited.shared
     }
 
-    pub(crate) fn alloc_effect(&self, raw: RawEffect<'a>) -> &'a RawEffect<'a> {
-        let (eff, disposer) = self.inner.arena.alloc(raw);
-        self.inner.effects.borrow_mut().push(disposer);
-        eff
-    }
-
     pub(crate) fn inherited(&self) -> &'a ScopeInherited<'a> {
         &self.inner.inherited
     }
@@ -41,7 +35,6 @@ impl<'a> Scope<'a> {
 struct ScopeInner<'a> {
     arena: Arena,
     inherited: ScopeInherited<'a>,
-    effects: RefCell<Vec<Disposer>>,
     variables: RefCell<SmallVec<[Disposer; INITIALIAL_VARIABLE_SLOTS]>>,
 }
 
@@ -67,12 +60,9 @@ impl Drop for ScopeDisposer<'_> {
     fn drop(&mut self) {
         let mut inner =
             unsafe { Box::from_raw(self.inner as *const ScopeInner as *mut ScopeInner) };
-        for eff in inner.effects.get_mut() {
-            unsafe {
-                eff.dispose();
-            }
-        }
-        for var in inner.variables.get_mut() {
+        // SAFETY: last alloced variables must be disposed first because signals
+        // and effects need to do some cleanup works with its captured references.
+        for var in inner.variables.get_mut().iter_mut().rev() {
             unsafe {
                 var.dispose();
             }
@@ -105,7 +95,6 @@ fn create_scope_inner<'a>(parent: Option<&'a ScopeInherited<'a>>) -> &'a ScopeIn
     let boxed = Box::new(ScopeInner {
         arena: Default::default(),
         inherited,
-        effects: Default::default(),
         variables: Default::default(),
     });
     &*Box::leak(boxed)
