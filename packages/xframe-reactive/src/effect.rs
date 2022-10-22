@@ -117,6 +117,16 @@ impl<'a> Scope<'a> {
         }));
         create_effect_impl(self, eff)
     }
+
+    pub fn create_effect_scoped(
+        self,
+        mut f: impl 'a + for<'child> FnMut(BoundedScope<'child, 'a>),
+    ) -> Effect<'a> {
+        self.create_effect(move |disposer| {
+            drop(disposer);
+            self.create_child(|cx| f(cx))
+        })
+    }
 }
 
 #[cfg(test)]
@@ -212,6 +222,38 @@ mod tests {
 
             state2.set(2);
             assert_eq!(*counter.get(), 4);
+        });
+    }
+
+    #[test]
+    fn inner_effect_triggered_first() {
+        Scope::create_root(|cx| {
+            let state = cx.create_signal(());
+            let inner_counter = cx.create_variable(Cell::new(0));
+            let outer_counter = cx.create_variable(Cell::new(0));
+
+            cx.create_effect(move |_| {
+                state.track();
+                if inner_counter.get() < 2 {
+                    cx.create_effect_scoped(move |cx| {
+                        cx.create_effect(move |_| {
+                            state.track();
+                            inner_counter.set(inner_counter.get() + 1);
+                        });
+                    });
+                }
+                outer_counter.set(outer_counter.get() + 1);
+            });
+            assert_eq!(inner_counter.get(), 1);
+            assert_eq!(outer_counter.get(), 1);
+
+            state.trigger_subscribers();
+            assert_eq!(inner_counter.get(), 2);
+            assert_eq!(outer_counter.get(), 2);
+
+            state.trigger_subscribers();
+            assert_eq!(inner_counter.get(), 3);
+            assert_eq!(outer_counter.get(), 3);
         });
     }
 }
