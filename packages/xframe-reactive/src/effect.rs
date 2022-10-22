@@ -33,12 +33,23 @@ impl<'a> RawEffect<'a> {
         // itself before it's disposed.
         let this: &'static RawEffect<'static> = unsafe { std::mem::transmute(self) };
 
-        let prev_sub = self.shared.0.subscriber.take();
+        // Re-calculate dependencies.
+        self.dependencies.borrow_mut().clear();
+
+        // Save previous subscriber.
+        let saved = self.shared.0.subscriber.take();
         self.shared.0.subscriber.set(Some(this));
 
+        // Call the effect.
         self.effect.run();
 
-        self.shared.0.subscriber.set(prev_sub);
+        // Notify all captured signals subscribe itself.
+        for dep in self.dependencies.borrow().iter() {
+            dep.0.subscribe(this);
+        }
+
+        // Restore previous subscriber.
+        self.shared.0.subscriber.set(saved);
     }
 
     pub fn add_dependence(&self, signal: &'a SignalContext) {

@@ -77,12 +77,15 @@ pub(crate) struct SignalContext {
 impl SignalContext {
     pub fn track(&self) {
         if let Some(e) = self.shared.0.subscriber.get() {
-            self.subscribers.borrow_mut().insert(ByAddress(e));
             // SAFETY: An effect will only be subscriberd by the signal it
             // captures, we can safely transmute those signals to 'static bounds.
             let this: &'static SignalContext = unsafe { std::mem::transmute(self) };
             e.add_dependence(this);
         }
+    }
+
+    pub fn subscribe(&self, effect: &'static RawEffect<'static>) {
+        self.subscribers.borrow_mut().insert(ByAddress(effect));
     }
 
     pub fn unsubscribe(&self, effect: &'static RawEffect<'static>) {
