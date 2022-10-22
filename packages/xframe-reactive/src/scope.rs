@@ -47,7 +47,7 @@ pub(crate) struct ScopeInherited<'a> {
 
 #[derive(Debug, Default)]
 pub(crate) struct ScopeShared {
-    pub subscriber: Cell<Option<&'static RawEffect<'static>>>,
+    pub observer: Cell<Option<&'static RawEffect<'static>>>,
 }
 
 #[derive(Debug)]
@@ -135,9 +135,9 @@ impl<'a> Scope<'a> {
     }
 
     pub fn untrack(self, f: impl FnOnce()) {
-        let sub = &self.inner.inherited.shared.subscriber;
-        let saved = self.inner.inherited.shared.subscriber.take();
+        let obs = &self.inner.inherited.shared.observer;
+        let saved = self.inner.inherited.shared.observer.take();
         f();
-        sub.set(saved);
+        obs.set(saved);
     }
 }

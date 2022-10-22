@@ -80,35 +80,28 @@ impl Drop for SignalContext {
     fn drop(&mut self) {
         // SAFETY: this will be dropped after disposing, it's safe to access it.
         let this: &'static SignalContext = unsafe { std::mem::transmute(&*self) };
-        for eff in self.future_subscribers.get_mut().iter() {
+        for eff in self.subscribers.get_mut().iter() {
             eff.0.remove_dependence(this);
         }
     }
 }
 
-type Subscribers = RefCell<IndexSet<ByAddress<'static, RawEffect<'static>>, ahash::RandomState>>;
-
 #[derive(Debug)]
 pub(crate) struct SignalContext {
     shared: ByAddress<'static, ScopeShared>,
-    future_subscribers: Subscribers,
-    subscribers: Subscribers,
+    subscribers: RefCell<IndexSet<ByAddress<'static, RawEffect<'static>>, ahash::RandomState>>,
 }
 
 impl SignalContext {
     pub fn track(&self) {
-        if let Some(e) = self.shared.0.subscriber.get() {
+        if let Some(e) = self.shared.0.observer.get() {
             // SAFETY: An effect might captured a signal created inside the
             // child scope, we should notify the effect to remove the signal
             // to avoid access dangling pointer.
-            self.future_subscribers.borrow_mut().insert(ByAddress(e));
             let this: &'static SignalContext = unsafe { std::mem::transmute(self) };
             e.add_dependence(this);
+            self.subscribers.borrow_mut().insert(ByAddress(e));
         }
-    }
-
-    pub fn subscribe(&self, effect: &'static RawEffect<'static>) {
-        self.subscribers.borrow_mut().insert(ByAddress(effect));
     }
 
     pub fn unsubscribe(&self, effect: &'static RawEffect<'static>) {
@@ -116,15 +109,12 @@ impl SignalContext {
     }
 
     pub fn trigger_subscribers(&self) {
-        self.future_subscribers.borrow_mut().clear();
-        let subscribers = self.subscribers.replace_with(|subs| {
-            IndexSet::with_capacity_and_hasher(subs.len(), Default::default())
-        });
-        // Effects attach to subscribers at the end of the effect scope,
-        // an effect created inside another scope might send signals to its
-        // outer scope, so we should ensure the inner effects re-execute
-        // before outer ones to avoid potential double executions.
-        for eff in subscribers {
+        let subscribers = self.subscribers.take();
+        // Outer effects attach to subscribers first, an effect created in
+        // inner scope might send signals to its outer scope, so we should
+        // ensure the inner effects re-execute before outer ones to avoid
+        // potential double executions.
+        for eff in subscribers.into_iter().rev() {
             eff.0.run();
         }
     }
@@ -156,7 +146,6 @@ impl<'a> Scope<'a> {
             value: RefCell::new(t),
             context: SignalContext {
                 shared: ByAddress(self.shared()),
-                future_subscribers: Default::default(),
                 subscribers: Default::default(),
             },
         });

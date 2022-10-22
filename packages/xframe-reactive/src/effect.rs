@@ -50,24 +50,25 @@ impl<'a> RawEffect<'a> {
         // necessary for an effect to notify all its dependencies to unsubscribe
         // itself before it's disposed.
         let this: &'static RawEffect<'static> = unsafe { std::mem::transmute(self) };
+        let obs = &self.shared.0.observer;
+
+        // Ignore the recursive effect calls.
+        if obs.get().map(ByAddress) == Some(ByAddress(this)) {
+            return;
+        }
+
+        // Save previous subscriber.
+        let saved = obs.take();
+        obs.set(Some(this));
 
         // Re-calculate dependencies.
         self.clear_dependencies();
 
-        // Save previous subscriber.
-        let saved = self.shared.0.subscriber.take();
-        self.shared.0.subscriber.set(Some(this));
-
         // Call the effect.
         self.effect.run();
 
-        // Notify all captured signals subscribe itself.
-        for dep in self.dependencies.borrow().iter() {
-            dep.0.subscribe(this);
-        }
-
         // Restore previous subscriber.
-        self.shared.0.subscriber.set(saved);
+        obs.set(saved);
     }
 }
 
