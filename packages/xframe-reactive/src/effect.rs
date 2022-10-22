@@ -26,6 +26,20 @@ pub(crate) struct RawEffect<'a> {
 }
 
 impl<'a> RawEffect<'a> {
+    pub fn add_dependence(&self, signal: &'a SignalContext) {
+        self.dependencies.borrow_mut().insert(ByAddress(signal));
+    }
+
+    pub fn clear_dependencies(&self) {
+        // SAFETY: this will be dropped after disposing, it's safe to access it.
+        let this: &'static RawEffect<'static> = unsafe { std::mem::transmute(&*self) };
+        let deps = &mut *self.dependencies.borrow_mut();
+        for dep in deps.iter() {
+            dep.0.unsubscribe(this);
+        }
+        deps.clear();
+    }
+
     pub fn run(&self) {
         // SAFETY: A signal might be subscribed by an effect created inside a
         // child scope, calling the effect causes undefined behavior, it's
@@ -34,7 +48,7 @@ impl<'a> RawEffect<'a> {
         let this: &'static RawEffect<'static> = unsafe { std::mem::transmute(self) };
 
         // Re-calculate dependencies.
-        self.dependencies.borrow_mut().clear();
+        self.clear_dependencies();
 
         // Save previous subscriber.
         let saved = self.shared.0.subscriber.take();
@@ -51,19 +65,11 @@ impl<'a> RawEffect<'a> {
         // Restore previous subscriber.
         self.shared.0.subscriber.set(saved);
     }
-
-    pub fn add_dependence(&self, signal: &'a SignalContext) {
-        self.dependencies.borrow_mut().insert(ByAddress(signal));
-    }
 }
 
 impl Drop for RawEffect<'_> {
     fn drop(&mut self) {
-        // SAFETY: this will be dropped after disposing, it's safe to access it.
-        let this: &'static RawEffect<'static> = unsafe { std::mem::transmute(&*self) };
-        for dep in self.dependencies.get_mut().iter() {
-            dep.0.unsubscribe(this);
-        }
+        self.clear_dependencies();
     }
 }
 
