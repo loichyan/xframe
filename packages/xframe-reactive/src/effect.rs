@@ -1,5 +1,5 @@
 use crate::{
-    scope::{Scope, ScopeShared},
+    scope::{BoundedScope, Scope, ScopeShared},
     signal::SignalContext,
     utils::ByAddress,
 };
@@ -116,5 +116,102 @@ impl<'a> Scope<'a> {
             func: f,
         }));
         create_effect_impl(self, eff)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    #[test]
+    fn reactive_effect() {
+        Scope::create_root(|cx| {
+            let state = cx.create_signal(0);
+            let double = cx.create_variable(Cell::new(-1));
+
+            cx.create_effect(move |_| {
+                double.set(*state.get() * 2);
+            });
+            assert_eq!(double.get(), 0);
+
+            state.set(1);
+            assert_eq!(double.get(), 2);
+
+            state.set(2);
+            assert_eq!(double.get(), 4);
+        });
+    }
+
+    #[test]
+    fn previous_returned_value_in_effect() {
+        Scope::create_root(|cx| {
+            let state = cx.create_signal(0);
+            let prev_state = cx.create_signal(-1);
+
+            cx.create_effect(move |prev| {
+                if let Some(prev) = prev {
+                    prev_state.set(prev)
+                }
+                *state.get()
+            });
+            assert_eq!(*prev_state.get(), -1);
+
+            state.set(1);
+            assert_eq!(*prev_state.get(), 0);
+
+            state.set(2);
+            assert_eq!(*prev_state.get(), 1);
+        });
+    }
+
+    #[test]
+    fn no_infinite_loop_in_effect() {
+        Scope::create_root(|cx| {
+            let state = cx.create_signal(0);
+            cx.create_effect(move |_| {
+                state.track();
+                state.update(|x| *x + 1);
+            });
+            state.update(|x| *x + 1);
+        });
+    }
+
+    #[test]
+    fn dynamically_update_effect_dependencies() {
+        Scope::create_root(|cx| {
+            let cond = cx.create_signal(true);
+
+            let state1 = cx.create_signal(0);
+            let state2 = cx.create_signal(0);
+
+            let counter = cx.create_signal(0);
+
+            cx.create_effect(move |_| {
+                counter.update(|x| *x + 1);
+
+                if *cond.get() {
+                    state1.track();
+                } else {
+                    state2.track();
+                }
+            });
+            assert_eq!(*counter.get(), 1);
+
+            state1.set(1);
+            assert_eq!(*counter.get(), 2);
+
+            state2.set(1);
+            assert_eq!(*counter.get(), 2);
+
+            cond.set(false);
+            assert_eq!(*counter.get(), 3);
+
+            state1.set(2);
+            assert_eq!(*counter.get(), 3);
+
+            state2.set(2);
+            assert_eq!(*counter.get(), 4);
+        });
     }
 }

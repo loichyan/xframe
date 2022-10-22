@@ -59,3 +59,36 @@ impl<'a> Scope<'a> {
         self.try_use_context().expect("context not provided")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn provide_and_use_context() {
+        Scope::create_root(|cx| {
+            cx.provide_context(777i32);
+            let x = cx.use_context::<i32>();
+            assert_eq!(*x.get(), 777);
+        });
+    }
+
+    #[test]
+    fn use_context_from_child_scope() {
+        Scope::create_root(|cx| {
+            cx.provide_context(777i32);
+            cx.create_child(|cx| {
+                let x = cx.use_context::<i32>();
+                assert_eq!(*x.get(), 777);
+            });
+        });
+    }
+
+    #[test]
+    fn unique_context_in_same_scope() {
+        Scope::create_root(|cx| {
+            cx.provide_context(777i32);
+            assert!(cx.try_provide_context(777i32).is_err());
+        });
+    }
+}
