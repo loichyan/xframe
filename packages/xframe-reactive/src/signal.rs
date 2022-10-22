@@ -28,6 +28,14 @@ impl<'a, T> Signal<'a, T> {
         Signal { inner: t }
     }
 
+    pub fn track(&self) {
+        self.inner.context.track();
+    }
+
+    pub fn trigger_subscribers(&self) {
+        self.inner.context.trigger_subscribers();
+    }
+
     pub fn get(&self) -> Ref<'a, T> {
         self.inner.context.track();
         self.get_untracked()
