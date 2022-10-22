@@ -3,10 +3,13 @@ use crate::{
     context::Contexts,
     effect::RawEffect,
 };
+use smallvec::SmallVec;
 use std::{
     cell::{Cell, RefCell},
     marker::PhantomData,
 };
+
+const INITIALIAL_VARIABLE_SLOTS: usize = 4;
 
 pub type Scope<'a> = BoundedScope<'a, 'a>;
 
@@ -39,7 +42,7 @@ struct ScopeInner<'a> {
     arena: Arena,
     inherited: ScopeInherited<'a>,
     effects: RefCell<Vec<Disposer>>,
-    variables: RefCell<Vec<Disposer>>,
+    variables: RefCell<SmallVec<[Disposer; INITIALIAL_VARIABLE_SLOTS]>>,
 }
 
 #[derive(Debug)]
