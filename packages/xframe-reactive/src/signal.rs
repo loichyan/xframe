@@ -9,7 +9,7 @@ use crate::{
     scope::{Scope, ScopeShared},
     utils::ByAddress,
 };
-use ahash::AHashSet;
+use indexmap::IndexSet;
 use std::cell::RefCell;
 
 #[derive(Debug)]
@@ -71,7 +71,7 @@ pub(crate) struct RawSignal<T> {
 #[derive(Debug)]
 pub(crate) struct SignalContext {
     shared: ByAddress<'static, ScopeShared>,
-    subscribers: RefCell<AHashSet<ByAddress<'static, RawEffect<'static>>>>,
+    subscribers: RefCell<IndexSet<ByAddress<'static, RawEffect<'static>>, ahash::RandomState>>,
 }
 
 impl SignalContext {
@@ -93,7 +93,13 @@ impl SignalContext {
     }
 
     pub fn trigger_subscribers(&self) {
-        let subscribers = self.subscribers.take();
+        let subscribers = self.subscribers.replace_with(|subs| {
+            IndexSet::with_capacity_and_hasher(subs.len(), Default::default())
+        });
+        // Effects attach to subscribers at the end of the effect scope,
+        // an effect created inside another scope might send signals to its
+        // outer scope, so we should ensure the inner effects re-execute
+        // before outer ones to avoid potential double executions.
         for eff in subscribers {
             eff.0.run();
         }
