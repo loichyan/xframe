@@ -1,5 +1,6 @@
 use super::{Signal, SignalContext};
 use std::{
+    fmt,
     mem::ManuallyDrop,
     ops::{Deref, DerefMut},
 };
@@ -13,10 +14,15 @@ impl<T> Signal<T> {
     }
 }
 
-#[derive(Debug)]
 pub struct Modify<'a, T> {
     value: ManuallyDrop<std::cell::RefMut<'a, T>>,
     context: &'a SignalContext,
+}
+
+impl<T: fmt::Debug> fmt::Debug for Modify<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Modify").field(&self.value).finish()
+    }
 }
 
 impl<'a, T> Modify<'a, T> {

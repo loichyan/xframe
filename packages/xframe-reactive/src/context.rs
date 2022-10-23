@@ -1,13 +1,20 @@
-use crate::{scope::ScopeInherited, store::Store, utils::ByAddress, Scope, Signal};
+use crate::{scope::ScopeInherited, store::Store, Scope, Signal};
 use ahash::AHashMap;
 use std::{
     any::{Any, TypeId},
     cell::RefCell,
+    fmt,
 };
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub(crate) struct Contexts<'a> {
-    inner: RefCell<AHashMap<TypeId, ByAddress<'a, dyn Any>>>,
+    inner: RefCell<AHashMap<TypeId, &'a dyn Any>>,
+}
+
+impl fmt::Debug for Contexts<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_set().entries(self.inner.borrow().keys()).finish()
+    }
 }
 
 fn type_id<T: 'static>() -> TypeId {
@@ -15,13 +22,16 @@ fn type_id<T: 'static>() -> TypeId {
 }
 
 fn use_context_impl<'a, T: 'static>(inherited: &'a ScopeInherited) -> Option<&'a T> {
-    if let Some(any) = inherited.contexts.inner.borrow().get(&type_id::<T>()) {
-        Some(downcast_context(any.0))
+    if let Some(any) = inherited
+        .contexts
+        .inner
+        .borrow()
+        .get(&type_id::<T>())
+        .copied()
+    {
+        Some(downcast_context(any))
     } else {
-        inherited
-            .parent
-            .map(|addr| addr.0)
-            .and_then(use_context_impl)
+        inherited.parent.and_then(use_context_impl)
     }
 }
 
@@ -40,9 +50,9 @@ impl<'a> Scope<'a> {
             .contexts
             .inner
             .borrow_mut()
-            .insert(type_id::<T>(), ByAddress(store as &dyn Any))
+            .insert(type_id::<T>(), store as &dyn Any)
         {
-            Err(downcast_context(prev.0))
+            Err(downcast_context(prev))
         } else {
             Ok(store)
         }

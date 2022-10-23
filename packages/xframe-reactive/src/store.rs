@@ -1,5 +1,8 @@
 use crate::Scope;
-use std::ops::{Deref, DerefMut};
+use std::{
+    fmt,
+    ops::{Deref, DerefMut},
+};
 
 pub trait Store {
     type Input;
@@ -13,8 +16,13 @@ impl<'a> Scope<'a> {
     }
 }
 
-#[derive(Debug)]
 pub struct PlainStore<T>(T);
+
+impl<T: fmt::Debug> fmt::Debug for PlainStore<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 impl<T> Store for PlainStore<T> {
     type Input = T;

@@ -7,9 +7,15 @@ use ahash::AHashSet;
 use core::fmt;
 use std::cell::RefCell;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct Effect<'a> {
     inner: &'a RawEffect<'a>,
+}
+
+impl fmt::Debug for Effect<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Effect").finish_non_exhaustive()
+    }
 }
 
 impl<'a> Effect<'a> {
@@ -18,10 +24,9 @@ impl<'a> Effect<'a> {
     }
 }
 
-#[derive(Debug)]
 pub(crate) struct RawEffect<'a> {
     effect: &'a (dyn 'a + AnyEffect),
-    shared: ByAddress<'static, ScopeShared>,
+    shared: &'static ScopeShared,
     dependencies: RefCell<AHashSet<ByAddress<'a, SignalContext>>>,
 }
 
@@ -55,8 +60,8 @@ impl<'a> RawEffect<'a> {
         self.clear_dependencies();
 
         // 2) Save previous subscriber.
-        let saved = self.shared.0.observer.take();
-        self.shared.0.observer.set(Some(ByAddress(this)));
+        let saved = self.shared.observer.take();
+        self.shared.observer.set(Some(this));
 
         // 3) Call the effect.
         self.effect.run();
@@ -67,7 +72,7 @@ impl<'a> RawEffect<'a> {
         }
 
         // 5) Restore previous subscriber.
-        self.shared.0.observer.set(saved);
+        self.shared.observer.set(saved);
     }
 }
 
@@ -79,12 +84,6 @@ impl Drop for RawEffect<'_> {
 
 trait AnyEffect {
     fn run(&self);
-}
-
-impl<'a> fmt::Debug for dyn 'a + AnyEffect {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("AnyEffect").finish_non_exhaustive()
-    }
 }
 
 struct AnyEffectImpl<T, F> {
@@ -106,7 +105,7 @@ where
 fn create_effect_impl<'a>(cx: Scope<'a>, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
     let inner = cx.create_variable(RawEffect {
         effect,
-        shared: ByAddress(cx.shared()),
+        shared: cx.shared(),
         dependencies: Default::default(),
     });
     inner.run();

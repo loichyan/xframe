@@ -8,14 +8,19 @@ use crate::{
 };
 use ahash::AHashSet;
 use indexmap::IndexSet;
-use std::{cell::RefCell, ops::Deref};
+use std::{cell::RefCell, fmt, ops::Deref};
 
 pub use modify::Modify;
 
-#[derive(Debug)]
 pub struct ReadSignal<T> {
     value: RefCell<T>,
     context: SignalContext,
+}
+
+impl<T: fmt::Debug> fmt::Debug for ReadSignal<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Signal").field(&self.value.borrow()).finish()
+    }
 }
 
 impl<T> Store for ReadSignal<T> {
@@ -25,7 +30,7 @@ impl<T> Store for ReadSignal<T> {
         ReadSignal {
             value: RefCell::new(input),
             context: SignalContext {
-                shared: ByAddress(cx.shared()),
+                shared: cx.shared(),
                 future_subscribers: Default::default(),
                 subscribers: Default::default(),
             },
@@ -52,9 +57,14 @@ impl<T> ReadSignal<T> {
     }
 }
 
-#[derive(Debug)]
 pub struct Signal<T> {
     inner: ReadSignal<T>,
+}
+
+impl<T: fmt::Debug> fmt::Debug for Signal<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
+    }
 }
 
 impl<T> Store for Signal<T> {
@@ -101,9 +111,8 @@ impl<T> std::ops::Deref for Signal<T> {
     }
 }
 
-#[derive(Debug)]
 pub(crate) struct SignalContext {
-    shared: ByAddress<'static, ScopeShared>,
+    shared: &'static ScopeShared,
     future_subscribers: RefCell<AHashSet<ByAddress<'static, RawEffect<'static>>>>,
     subscribers: RefCell<IndexSet<ByAddress<'static, RawEffect<'static>>, ahash::RandomState>>,
 }
@@ -120,7 +129,7 @@ impl Drop for SignalContext {
 
 impl SignalContext {
     pub fn track(&self) {
-        if let Some(e) = self.shared.0.observer.get() {
+        if let Some(e) = self.shared.observer.get() {
             // SAFETY: An effect might captured a signal created inside the
             // child scope, we should notify the effect to remove the signal
             // to avoid access dangling pointer.
@@ -128,8 +137,8 @@ impl SignalContext {
             // The signal might be used as a dependence in the future, we should
             // record this effect, and notify it of unsubscribing when the signal
             // is disposed.
-            self.future_subscribers.borrow_mut().insert(ByAddress(e.0));
-            e.0.add_dependence(this);
+            self.future_subscribers.borrow_mut().insert(ByAddress(e));
+            e.add_dependence(this);
         }
     }
 
@@ -154,8 +163,13 @@ impl SignalContext {
     }
 }
 
-#[derive(Debug)]
 pub struct Ref<'a, T>(std::cell::Ref<'a, T>);
+
+impl<T: fmt::Debug> fmt::Debug for Ref<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 impl<'a, T> Ref<'a, T> {
     pub fn map<U, F>(orig: Self, f: F) -> Ref<'a, U>
