@@ -94,6 +94,10 @@ impl<'a> ScopeDisposerManually<'a> {
         }
     }
 
+    /// # Safety
+    ///
+    /// Dispose all alloced memory immediately, you must ensure that all references
+    /// created by [`Scope`] will never be accessed again.
     pub unsafe fn dispose(self) {
         ManuallyDrop::into_inner(self.0);
     }

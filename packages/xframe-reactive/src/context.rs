@@ -18,11 +18,11 @@ fn use_context_impl<'a, T: 'static>(inherited: &'a ScopeInherited) -> Option<Sig
     if let Some(any) = inherited.contexts.inner.borrow().get(&type_id::<T>()) {
         Some(downcast_context(any.0))
     } else {
-        inherited.parent.map(use_context_impl).flatten()
+        inherited.parent.and_then(use_context_impl)
     }
 }
 
-fn downcast_context<'a, T: 'static>(any: &'a dyn Any) -> Signal<'a, T> {
+fn downcast_context<T: 'static>(any: &dyn Any) -> Signal<T> {
     let raw = any
         .downcast_ref::<RawSignal<T>>()
         .unwrap_or_else(|| unreachable!());

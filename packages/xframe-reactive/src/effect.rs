@@ -36,7 +36,7 @@ impl<'a> RawEffect<'a> {
 
     pub fn clear_dependencies(&self) {
         // SAFETY: this will be dropped after disposing, it's safe to access it.
-        let this: &'static RawEffect<'static> = unsafe { std::mem::transmute(&*self) };
+        let this: &'static RawEffect<'static> = unsafe { std::mem::transmute(self) };
         let deps = &mut *self.dependencies.borrow_mut();
         for dep in deps.iter() {
             dep.0.unsubscribe(this);
