@@ -9,7 +9,7 @@ pub trait Store<'a> {
     type Output;
 
     fn create_source(cx: Scope<'a>, this: Self) -> Self::Source;
-    fn make_output(cx: Scope<'a>, source: &'a Self::Source) -> Self::Output;
+    fn map_source(source: &'a Self::Source) -> Self::Output;
 }
 
 pub struct DefaultStore<T>(pub PhantomData<T>);
@@ -28,7 +28,7 @@ impl<'a, T: 'a + Default> Store<'a> for DefaultStore<T> {
         T::default()
     }
 
-    fn make_output(_cx: Scope<'a>, source: &'a Self::Source) -> Self::Output {
+    fn map_source(source: &'a Self::Source) -> Self::Output {
         &source
     }
 }
@@ -43,23 +43,23 @@ impl<'a, T: 'a> Store<'a> for PlainStore<T> {
         this.0
     }
 
-    fn make_output(_cx: Scope<'a>, source: &'a Self::Source) -> Self::Output {
+    fn map_source(source: &'a Self::Source) -> Self::Output {
         &source
     }
 }
 
 pub struct ReactiveStore<T>(pub T);
-pub struct ReactiveStoreSource<T>(RawSignal<T>);
+pub struct ReactiveStoreSource<'a, T>(RawSignal<'a, T>);
 
 impl<'a, T: 'a> Store<'a> for ReactiveStore<T> {
-    type Source = ReactiveStoreSource<T>;
+    type Source = ReactiveStoreSource<'a, T>;
     type Output = Signal<'a, T>;
 
     fn create_source(cx: Scope<'a>, this: Self) -> Self::Source {
         ReactiveStoreSource(RawSignal::new(cx, this.0))
     }
 
-    fn make_output(_cx: Scope<'a>, source: &'a Self::Source) -> Self::Output {
+    fn map_source(source: &'a Self::Source) -> Self::Output {
         Signal::from_raw(&source.0)
     }
 }
@@ -71,6 +71,6 @@ impl<'a> Scope<'a> {
         T::Source: 'a,
     {
         let source = self.create_variable(T::create_source(self, t));
-        T::make_output(self, source)
+        T::map_source(source)
     }
 }

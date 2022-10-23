@@ -11,7 +11,7 @@ use indexmap::IndexSet;
 use std::{cell::RefCell, fmt};
 
 pub struct Signal<'a, T> {
-    inner: &'a RawSignal<T>,
+    inner: &'a RawSignal<'a, T>,
 }
 
 impl<T: fmt::Debug> fmt::Debug for Signal<'_, T> {
@@ -77,13 +77,13 @@ impl<'a, T> Signal<'a, T> {
     }
 }
 
-pub(crate) struct RawSignal<T> {
+pub(crate) struct RawSignal<'a, T> {
     value: RefCell<T>,
-    context: SignalContext,
+    context: SignalContext<'a>,
 }
 
-impl<T> RawSignal<T> {
-    pub fn new(cx: Scope, t: T) -> Self {
+impl<'a, T> RawSignal<'a, T> {
+    pub fn new(cx: Scope<'a>, t: T) -> Self {
         RawSignal {
             value: RefCell::new(t),
             context: SignalContext {
@@ -95,23 +95,23 @@ impl<T> RawSignal<T> {
     }
 }
 
-impl Drop for SignalContext {
+impl Drop for SignalContext<'_> {
     fn drop(&mut self) {
         // SAFETY: this will be dropped after disposing, it's safe to access it.
-        let this: &'static SignalContext = unsafe { std::mem::transmute(&*self) };
+        let this: &'static SignalContext<'static> = unsafe { std::mem::transmute(&*self) };
         for eff in self.future_subscribers.get_mut().iter() {
             eff.0.remove_dependence(this);
         }
     }
 }
 
-pub(crate) struct SignalContext {
-    shared: &'static ScopeShared,
+pub(crate) struct SignalContext<'a> {
+    shared: &'a ScopeShared,
     future_subscribers: RefCell<AHashSet<ByAddress<'static, RawEffect<'static>>>>,
     subscribers: RefCell<IndexSet<ByAddress<'static, RawEffect<'static>>, ahash::RandomState>>,
 }
 
-impl SignalContext {
+impl<'a> SignalContext<'a> {
     pub fn track(&self) {
         if let Some(e) = self.shared.observer.get() {
             // SAFETY: An effect might captured a signal created inside the

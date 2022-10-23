@@ -45,11 +45,11 @@ impl<'a> Scope<'a> {
     {
         let contexts = &mut self.inherited().contexts.inner.borrow_mut();
         if let Some(source) = use_source_from::<T>(contexts) {
-            Err(T::make_output(self, source))
+            Err(T::map_source(source))
         } else {
             let source = self.create_variable(T::create_source(self, t));
             contexts.insert(TypeId::of::<T>(), source as &dyn Empty);
-            Ok(T::make_output(self, source))
+            Ok(T::map_source(source))
         }
     }
 
@@ -65,7 +65,7 @@ impl<'a> Scope<'a> {
     where
         T: 'static + Store<'a>,
     {
-        use_context_impl::<T>(self.inherited()).map(|source| T::make_output(self, source))
+        use_context_impl::<T>(self.inherited()).map(T::map_source)
     }
 
     pub fn use_context<T>(self) -> T::Output

@@ -18,7 +18,7 @@ impl fmt::Debug for Scope<'_> {
 }
 
 impl<'a> Scope<'a> {
-    pub(crate) fn shared(&self) -> &'static ScopeShared {
+    pub(crate) fn shared(&self) -> &'a ScopeShared {
         self.inner.inherited.shared
     }
 
@@ -46,7 +46,7 @@ impl fmt::Debug for ScopeInner<'_> {
 pub(crate) struct ScopeInherited<'a> {
     pub parent: Option<&'a ScopeInherited<'a>>,
     pub contexts: Contexts<'a>,
-    shared: &'static ScopeShared,
+    shared: &'a ScopeShared,
 }
 
 impl fmt::Debug for ScopeInherited<'_> {
@@ -134,7 +134,6 @@ fn create_scope_inner<'a>(parent: Option<&'a ScopeInherited<'a>>) -> &'a ScopeIn
         })
         .unwrap_or_else(|| {
             let shared = Box::new(ScopeShared::default());
-
             ScopeInherited {
                 parent: None,
                 contexts: Default::default(),

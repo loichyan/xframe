@@ -26,8 +26,8 @@ impl<'a> Effect<'a> {
 
 pub(crate) struct RawEffect<'a> {
     effect: &'a (dyn 'a + AnyEffect),
-    shared: &'static ScopeShared,
-    dependencies: RefCell<AHashSet<ByAddress<'a, SignalContext>>>,
+    shared: &'a ScopeShared,
+    dependencies: RefCell<AHashSet<ByAddress<'a, SignalContext<'a>>>>,
 }
 
 impl<'a> RawEffect<'a> {

@@ -16,7 +16,7 @@ impl<'a, T> Signal<'a, T> {
 
 pub struct Modify<'a, T> {
     value: ManuallyDrop<std::cell::RefMut<'a, T>>,
-    context: &'a SignalContext,
+    context: &'a SignalContext<'a>,
 }
 
 impl<T: fmt::Debug> fmt::Debug for Modify<'_, T> {
