@@ -2,6 +2,7 @@ use crate::{
     arena::{Arena, Disposer},
     context::Contexts,
     effect::RawEffect,
+    utils::ByAddress,
 };
 use smallvec::SmallVec;
 use std::{
@@ -41,7 +42,7 @@ struct ScopeInner<'a> {
 
 #[derive(Debug)]
 pub(crate) struct ScopeInherited<'a> {
-    pub parent: Option<&'a ScopeInherited<'a>>,
+    pub parent: Option<ByAddress<'a, ScopeInherited<'a>>>,
     pub contexts: Contexts<'a>,
     shared: &'static ScopeShared,
 }
@@ -106,7 +107,7 @@ impl<'a> ScopeDisposerManually<'a> {
 fn create_scope_inner<'a>(parent: Option<&'a ScopeInherited<'a>>) -> &'a ScopeInner<'a> {
     let inherited = parent
         .map(|parent| ScopeInherited {
-            parent: Some(parent),
+            parent: Some(ByAddress(parent)),
             contexts: Default::default(),
             shared: parent.shared,
         })

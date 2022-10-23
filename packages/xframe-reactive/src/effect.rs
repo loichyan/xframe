@@ -84,7 +84,7 @@ trait AnyEffect {
 
 impl<'a> fmt::Debug for dyn 'a + AnyEffect {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "<dyn AnyEffect>")
+        f.debug_struct("AnyEffect").finish_non_exhaustive()
     }
 }
 

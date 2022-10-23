@@ -1,6 +1,5 @@
-use crate::Modify;
-
 use super::{Ref, Signal};
+use crate::Modify;
 
 impl<'a, T> Signal<'a, T> {
     pub fn split(&self) -> (ReadSignal<'a, T>, WriteSignal<'a, T>) {

@@ -18,7 +18,10 @@ fn use_context_impl<'a, T: 'static>(inherited: &'a ScopeInherited) -> Option<Sig
     if let Some(any) = inherited.contexts.inner.borrow().get(&type_id::<T>()) {
         Some(downcast_context(any.0))
     } else {
-        inherited.parent.and_then(use_context_impl)
+        inherited
+            .parent
+            .map(|addr| addr.0)
+            .and_then(use_context_impl)
     }
 }
 
