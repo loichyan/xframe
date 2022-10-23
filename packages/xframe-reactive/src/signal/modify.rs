@@ -4,8 +4,8 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-impl<'a, T> Signal<'a, T> {
-    pub fn modify(&self) -> Modify<'a, T> {
+impl<T> Signal<T> {
+    pub fn modify(&self) -> Modify<T> {
         Modify {
             value: ManuallyDrop::new(self.inner.value.borrow_mut()),
             context: &self.inner.context,
