@@ -7,6 +7,7 @@ use smallvec::SmallVec;
 use std::{
     cell::{Cell, RefCell},
     marker::PhantomData,
+    mem::ManuallyDrop,
 };
 
 const INITIALIAL_VARIABLE_SLOTS: usize = 4;
@@ -56,6 +57,12 @@ pub struct ScopeDisposer<'a> {
     is_root: bool,
 }
 
+impl<'a> ScopeDisposer<'a> {
+    pub fn into_manually(self) -> ScopeDisposerManually<'a> {
+        ScopeDisposerManually(ManuallyDrop::new(self))
+    }
+}
+
 impl Drop for ScopeDisposer<'_> {
     fn drop(&mut self) {
         let mut inner =
@@ -73,6 +80,22 @@ impl Drop for ScopeDisposer<'_> {
             };
             drop(shared);
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct ScopeDisposerManually<'a>(ManuallyDrop<ScopeDisposer<'a>>);
+
+impl<'a> ScopeDisposerManually<'a> {
+    pub fn scope(&self) -> Scope<'a> {
+        Scope {
+            inner: self.0.inner,
+            bounds: PhantomData,
+        }
+    }
+
+    pub unsafe fn dispose(self) {
+        ManuallyDrop::into_inner(self.0);
     }
 }
 
@@ -101,7 +124,7 @@ fn create_scope_inner<'a>(parent: Option<&'a ScopeInherited<'a>>) -> &'a ScopeIn
 }
 
 impl<'a> Scope<'a> {
-    pub fn create_root<'disposer>(f: impl for<'b> FnOnce(Scope<'b>)) -> ScopeDisposer<'disposer> {
+    pub fn create_root(f: impl for<'b> FnOnce(BoundedScope<'b, 'a>)) -> ScopeDisposer<'a> {
         let inner = create_scope_inner(None);
         f(Scope {
             inner,
