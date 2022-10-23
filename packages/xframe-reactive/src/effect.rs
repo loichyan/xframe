@@ -50,25 +50,24 @@ impl<'a> RawEffect<'a> {
         // necessary for an effect to notify all its dependencies to unsubscribe
         // itself before it's disposed.
         let this: &'static RawEffect<'static> = unsafe { std::mem::transmute(self) };
-        let obs = &self.shared.0.observer;
 
-        // Ignore the recursive effect calls.
-        if obs.get().map(ByAddress) == Some(ByAddress(this)) {
-            return;
-        }
-
-        // Save previous subscriber.
-        let saved = obs.take();
-        obs.set(Some(this));
-
-        // Re-calculate dependencies.
+        // 1) Clear dependencies.
         self.clear_dependencies();
 
-        // Call the effect.
+        // 2) Save previous subscriber.
+        let saved = self.shared.0.observer.take();
+        self.shared.0.observer.set(Some(ByAddress(this)));
+
+        // 3) Call the effect.
         self.effect.run();
 
-        // Restore previous subscriber.
-        obs.set(saved);
+        // 4) Re-calculate dependencies.
+        for dep in self.dependencies.borrow().iter() {
+            dep.0.subscribe(this);
+        }
+
+        // 5) Restore previous subscriber.
+        self.shared.0.observer.set(saved);
     }
 }
 
@@ -183,12 +182,26 @@ mod tests {
     #[test]
     fn no_infinite_loop_in_effect() {
         Scope::create_root(|cx| {
-            let state = cx.create_signal(0);
+            let state = cx.create_signal(());
             cx.create_effect(move |_| {
                 state.track();
-                state.update(|x| *x + 1);
+                state.trigger_subscribers();
             });
-            state.update(|x| *x + 1);
+            state.trigger_subscribers();
+        });
+    }
+
+    #[test]
+    fn no_infinite_loop_in_nested_effect() {
+        Scope::create_root(|cx| {
+            let state = cx.create_signal(());
+            cx.create_effect(move |prev| {
+                if prev.is_none() {
+                    state.track();
+                    state.trigger_subscribers();
+                }
+            });
+            state.trigger_subscribers();
         });
     }
 
