@@ -11,7 +11,7 @@ use indexmap::IndexSet;
 use std::{cell::RefCell, fmt};
 
 pub struct Signal<'a, T> {
-    inner: &'a RawSignal<'a, T>,
+    inner: &'a SignalInner<'a, T>,
 }
 
 impl<T: fmt::Debug> fmt::Debug for Signal<'_, T> {
@@ -31,10 +31,6 @@ impl<T> Clone for Signal<'_, T> {
 impl<T> Copy for Signal<'_, T> {}
 
 impl<'a, T> Signal<'a, T> {
-    pub(crate) fn from_raw(t: &'a RawSignal<T>) -> Self {
-        Signal { inner: t }
-    }
-
     pub fn track(&self) {
         self.inner.context.track();
     }
@@ -77,14 +73,14 @@ impl<'a, T> Signal<'a, T> {
     }
 }
 
-pub(crate) struct RawSignal<'a, T> {
+struct SignalInner<'a, T> {
     value: RefCell<T>,
     context: SignalContext<'a>,
 }
 
-impl<'a, T> RawSignal<'a, T> {
+impl<'a, T> SignalInner<'a, T> {
     pub fn new(cx: Scope<'a>, t: T) -> Self {
-        RawSignal {
+        SignalInner {
             value: RefCell::new(t),
             context: SignalContext {
                 shared: cx.shared(),
@@ -174,7 +170,7 @@ impl<'a, T> std::ops::Deref for Ref<'a, T> {
 
 impl<'a> Scope<'a> {
     pub fn create_signal<T: 'a>(self, t: T) -> Signal<'a, T> {
-        let inner = self.create_variable(RawSignal::new(self, t));
+        let inner = self.create_variable(SignalInner::new(self, t));
         Signal { inner }
     }
 }

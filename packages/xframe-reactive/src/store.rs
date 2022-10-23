@@ -1,76 +1,54 @@
-use crate::{
-    scope::Scope,
-    signal::{RawSignal, Signal},
-};
+use crate::{scope::Scope, signal::Signal};
 use std::marker::PhantomData;
 
-pub trait Store<'a> {
-    type Source;
-    type Output;
-
-    fn create_source(cx: Scope<'a>, this: Self) -> Self::Source;
-    fn map_source(source: &'a Self::Source) -> Self::Output;
+pub trait StoreBuilder<'a> {
+    type Store;
+    fn build_store(cx: Scope<'a>, this: Self) -> Self::Store;
 }
 
-pub struct DefaultStore<T>(pub PhantomData<T>);
+pub struct CreateDefault<T>(pub PhantomData<T>);
 
-impl<T> Default for DefaultStore<T> {
+impl<T> Default for CreateDefault<T> {
     fn default() -> Self {
-        DefaultStore(PhantomData)
+        CreateDefault(PhantomData)
     }
 }
 
-impl<'a, T: 'a + Default> Store<'a> for DefaultStore<T> {
-    type Source = T;
-    type Output = &'a T;
+impl<'a, T: Default> StoreBuilder<'a> for CreateDefault<T> {
+    type Store = T;
 
-    fn create_source(_cx: Scope<'a>, _this: Self) -> Self::Source {
+    fn build_store(_cx: Scope<'a>, _this: Self) -> Self::Store {
         T::default()
     }
-
-    fn map_source(source: &'a Self::Source) -> Self::Output {
-        &source
-    }
 }
 
-pub struct PlainStore<T>(pub T);
+#[derive(Default)]
+pub struct CreateSelf<T>(pub T);
 
-impl<'a, T: 'a> Store<'a> for PlainStore<T> {
-    type Source = T;
-    type Output = &'a T;
+impl<'a, T> StoreBuilder<'a> for CreateSelf<T> {
+    type Store = T;
 
-    fn create_source(_cx: Scope<'a>, this: Self) -> Self::Source {
+    fn build_store(_cx: Scope<'a>, this: Self) -> Self::Store {
         this.0
     }
-
-    fn map_source(source: &'a Self::Source) -> Self::Output {
-        &source
-    }
 }
 
-pub struct ReactiveStore<T>(pub T);
-pub struct ReactiveStoreSource<'a, T>(RawSignal<'a, T>);
+#[derive(Default)]
+pub struct CreateSignal<T>(pub T);
 
-impl<'a, T: 'a> Store<'a> for ReactiveStore<T> {
-    type Source = ReactiveStoreSource<'a, T>;
-    type Output = Signal<'a, T>;
+impl<'a, T: 'a> StoreBuilder<'a> for CreateSignal<T> {
+    type Store = Signal<'a, T>;
 
-    fn create_source(cx: Scope<'a>, this: Self) -> Self::Source {
-        ReactiveStoreSource(RawSignal::new(cx, this.0))
-    }
-
-    fn map_source(source: &'a Self::Source) -> Self::Output {
-        Signal::from_raw(&source.0)
+    fn build_store(cx: Scope<'a>, this: Self) -> Self::Store {
+        cx.create_signal(this.0)
     }
 }
 
 impl<'a> Scope<'a> {
-    pub fn create_store<T>(self, t: T) -> T::Output
+    pub fn create_store<T>(self, t: T) -> &'a T::Store
     where
-        T: Store<'a>,
-        T::Source: 'a,
+        T: StoreBuilder<'a>,
     {
-        let source = self.create_variable(T::create_source(self, t));
-        T::map_source(source)
+        self.create_variable(T::build_store(self, t))
     }
 }
