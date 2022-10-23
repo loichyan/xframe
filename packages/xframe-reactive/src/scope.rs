@@ -1,17 +1,5 @@
-use crate::{
-    arena::{Arena, Disposer},
-    context::Contexts,
-    effect::RawEffect,
-};
-use smallvec::SmallVec;
-use std::{
-    cell::{Cell, RefCell},
-    fmt,
-    marker::PhantomData,
-    mem::ManuallyDrop,
-};
-
-const INITIALIAL_VARIABLE_SLOTS: usize = 4;
+use crate::{arena::Arena, context::Contexts, effect::RawEffect};
+use std::{cell::Cell, fmt, marker::PhantomData, mem::ManuallyDrop};
 
 pub type Scope<'a> = BoundedScope<'a, 'a>;
 
@@ -40,9 +28,8 @@ impl<'a> Scope<'a> {
 }
 
 struct ScopeInner<'a> {
-    arena: Arena,
+    arena: Arena<'a>,
     inherited: ScopeInherited<'a>,
-    variables: RefCell<SmallVec<[Disposer; INITIALIAL_VARIABLE_SLOTS]>>,
 }
 
 impl fmt::Debug for ScopeInner<'_> {
@@ -50,7 +37,6 @@ impl fmt::Debug for ScopeInner<'_> {
         f.debug_struct("Scope")
             .field("arena", &self.arena)
             .field("inherited", &self.inherited)
-            .field("variables", &self.variables.borrow() as &dyn fmt::Debug)
             .finish()
     }
 }
@@ -100,12 +86,8 @@ impl Drop for ScopeDisposer<'_> {
     fn drop(&mut self) {
         let mut inner =
             unsafe { Box::from_raw(self.scope as *const ScopeInner as *mut ScopeInner) };
-        // SAFETY: last alloced variables must be disposed first because signals
-        // and effects need to do some cleanup works with its captured references.
-        for var in inner.variables.get_mut().iter_mut().rev() {
-            unsafe {
-                var.dispose();
-            }
+        unsafe {
+            inner.arena.dispose();
         }
         if self.is_root {
             let shared = unsafe {
@@ -160,7 +142,6 @@ fn create_scope_inner<'a>(parent: Option<&'a ScopeInherited<'a>>) -> &'a ScopeIn
     let boxed = Box::new(ScopeInner {
         arena: Default::default(),
         inherited,
-        variables: Default::default(),
     });
     &*Box::leak(boxed)
 }
@@ -194,9 +175,7 @@ impl<'a> Scope<'a> {
     }
 
     pub fn create_variable<T: 'a>(self, t: T) -> &'a T {
-        let (val, disposer) = self.inner.arena.alloc(t);
-        self.inner.variables.borrow_mut().push(disposer);
-        val
+        self.inner.arena.alloc(t)
     }
 
     pub fn untrack(self, f: impl FnOnce()) {
