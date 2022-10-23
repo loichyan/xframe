@@ -31,10 +31,6 @@ impl<T> Clone for Signal<'_, T> {
 impl<T> Copy for Signal<'_, T> {}
 
 impl<'a, T> Signal<'a, T> {
-    pub(crate) fn into_raw(self) -> &'a RawSignal<T> {
-        self.inner
-    }
-
     pub(crate) fn from_raw(t: &'a RawSignal<T>) -> Self {
         Signal { inner: t }
     }
@@ -84,6 +80,19 @@ impl<'a, T> Signal<'a, T> {
 pub(crate) struct RawSignal<T> {
     value: RefCell<T>,
     context: SignalContext,
+}
+
+impl<T> RawSignal<T> {
+    pub fn new(cx: Scope, t: T) -> Self {
+        RawSignal {
+            value: RefCell::new(t),
+            context: SignalContext {
+                shared: cx.shared(),
+                future_subscribers: Default::default(),
+                subscribers: Default::default(),
+            },
+        }
+    }
 }
 
 impl Drop for SignalContext {
@@ -165,14 +174,7 @@ impl<'a, T> std::ops::Deref for Ref<'a, T> {
 
 impl<'a> Scope<'a> {
     pub fn create_signal<T: 'a>(self, t: T) -> Signal<'a, T> {
-        let inner = self.create_variable(RawSignal {
-            value: RefCell::new(t),
-            context: SignalContext {
-                shared: self.shared(),
-                future_subscribers: Default::default(),
-                subscribers: Default::default(),
-            },
-        });
+        let inner = self.create_variable(RawSignal::new(self, t));
         Signal { inner }
     }
 }

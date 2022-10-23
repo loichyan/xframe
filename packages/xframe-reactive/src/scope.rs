@@ -30,6 +30,8 @@ impl<'a> Scope<'a> {
 struct ScopeInner<'a> {
     arena: Arena<'a>,
     inherited: ScopeInherited<'a>,
+    // Ensure the 'a lifebounds is invariance.
+    phantom: PhantomData<&'a mut &'a mut ()>,
 }
 
 impl fmt::Debug for ScopeInner<'_> {
@@ -142,6 +144,7 @@ fn create_scope_inner<'a>(parent: Option<&'a ScopeInherited<'a>>) -> &'a ScopeIn
     let boxed = Box::new(ScopeInner {
         arena: Default::default(),
         inherited,
+        phantom: PhantomData,
     });
     &*Box::leak(boxed)
 }
