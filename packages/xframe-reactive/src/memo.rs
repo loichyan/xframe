@@ -7,9 +7,9 @@ use std::cell::Cell;
 fn create_memo_impl<'a, T>(
     cx: Scope<'a>,
     mut f: impl 'a + FnMut() -> T,
-    mut update: impl 'a + FnMut(T, &'a Signal<T>),
-) -> &'a Signal<T> {
-    let memo = cx.create_variable(Cell::new(None::<&'a Signal<T>>));
+    mut update: impl 'a + FnMut(T, Signal<'a, T>),
+) -> Signal<'a, T> {
+    let memo = cx.create_variable(Cell::new(None::<Signal<'a, T>>));
     cx.create_effect(move |_| {
         let new_val = f();
         if let Some(signal) = memo.get() {
@@ -23,11 +23,11 @@ fn create_memo_impl<'a, T>(
 }
 
 impl<'a> Scope<'a> {
-    pub fn create_memo<T>(self, f: impl 'a + FnMut() -> T) -> &'a Signal<T> {
+    pub fn create_memo<T>(self, f: impl 'a + FnMut() -> T) -> Signal<'a, T> {
         create_memo_impl(self, f, |new_val, memo| memo.set(new_val))
     }
 
-    pub fn create_seletor<T>(self, f: impl 'a + FnMut() -> T) -> &'a Signal<T>
+    pub fn create_seletor<T, F>(self, f: impl 'a + FnMut() -> T) -> Signal<'a, T>
     where
         T: PartialEq,
     {
@@ -38,7 +38,7 @@ impl<'a> Scope<'a> {
         self,
         f: impl 'a + FnMut() -> T,
         mut is_equal: impl 'a + FnMut(&T, &T) -> bool,
-    ) -> &'a Signal<T> {
+    ) -> Signal<'a, T> {
         create_memo_impl(self, f, move |new_val, memo| {
             let mut modify_memo = memo.modify();
             if !is_equal(&*modify_memo, &new_val) {

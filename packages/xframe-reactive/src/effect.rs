@@ -143,7 +143,7 @@ mod tests {
             let state = cx.create_signal(0);
             let double = cx.create_variable(Cell::new(-1));
 
-            cx.create_effect(|_| {
+            cx.create_effect(move |_| {
                 double.set(*state.get() * 2);
             });
             assert_eq!(double.get(), 0);
@@ -162,7 +162,7 @@ mod tests {
             let state = cx.create_signal(0);
             let prev_state = cx.create_signal(-1);
 
-            cx.create_effect(|prev| {
+            cx.create_effect(move |prev| {
                 if let Some(prev) = prev {
                     prev_state.set(prev)
                 }
@@ -182,7 +182,7 @@ mod tests {
     fn no_infinite_loop_in_effect() {
         Scope::create_root(|cx| {
             let state = cx.create_signal(());
-            cx.create_effect(|_| {
+            cx.create_effect(move |_| {
                 state.track();
                 state.trigger_subscribers();
             });
@@ -194,7 +194,7 @@ mod tests {
     fn no_infinite_loop_in_nested_effect() {
         Scope::create_root(|cx| {
             let state = cx.create_signal(());
-            cx.create_effect(|prev| {
+            cx.create_effect(move |prev| {
                 if prev.is_none() {
                     state.track();
                     state.trigger_subscribers();
@@ -214,7 +214,7 @@ mod tests {
 
             let counter = cx.create_signal(0);
 
-            cx.create_effect(|_| {
+            cx.create_effect(move |_| {
                 counter.update(|x| *x + 1);
 
                 if *cond.get() {
@@ -253,7 +253,7 @@ mod tests {
                 state.track();
                 if inner_counter.get() < 2 {
                     cx.create_effect_scoped(move |cx| {
-                        cx.create_effect(|_| {
+                        cx.create_effect(move |_| {
                             state.track();
                             inner_counter.set(inner_counter.get() + 1);
                         });

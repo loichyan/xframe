@@ -1,83 +1,61 @@
 mod modify;
+pub use modify::Modify;
 
 use crate::{
     effect::RawEffect,
     scope::{Scope, ScopeShared},
-    store::Store,
     utils::ByAddress,
 };
 use ahash::AHashSet;
 use indexmap::IndexSet;
-use std::{cell::RefCell, fmt, ops::Deref};
+use std::{cell::RefCell, fmt};
 
-pub use modify::Modify;
-
-pub struct ReadSignal<T> {
-    value: RefCell<T>,
-    context: SignalContext,
+pub struct Signal<'a, T> {
+    inner: &'a RawSignal<T>,
 }
 
-impl<T: fmt::Debug> fmt::Debug for ReadSignal<T> {
+impl<T: fmt::Debug> fmt::Debug for Signal<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Signal").field(&self.value.borrow()).finish()
+        f.debug_tuple("Signal")
+            .field(&self.inner.value.borrow())
+            .finish()
     }
 }
 
-impl<T> Store for ReadSignal<T> {
-    type Input = T;
-
-    fn new_in(cx: Scope, input: Self::Input) -> Self {
-        ReadSignal {
-            value: RefCell::new(input),
-            context: SignalContext {
-                shared: cx.shared(),
-                future_subscribers: Default::default(),
-                subscribers: Default::default(),
-            },
-        }
+impl<T> Clone for Signal<'_, T> {
+    fn clone(&self) -> Self {
+        Signal { inner: self.inner }
     }
 }
 
-impl<T> ReadSignal<T> {
+impl<T> Copy for Signal<'_, T> {}
+
+impl<'a, T> Signal<'a, T> {
+    pub(crate) fn into_raw(self) -> &'a RawSignal<T> {
+        self.inner
+    }
+
+    pub(crate) fn from_raw(t: &'a RawSignal<T>) -> Self {
+        Signal { inner: t }
+    }
+
     pub fn track(&self) {
-        self.context.track();
+        self.inner.context.track();
     }
 
     pub fn trigger_subscribers(&self) {
-        self.context.trigger_subscribers();
+        self.inner.context.trigger_subscribers();
     }
 
-    pub fn get(&self) -> Ref<T> {
-        self.context.track();
+    pub fn get(&self) -> Ref<'a, T> {
+        self.inner.context.track();
         self.get_untracked()
     }
 
-    pub fn get_untracked(&self) -> Ref<T> {
-        Ref(self.value.borrow())
+    pub fn get_untracked(&self) -> Ref<'a, T> {
+        Ref(self.inner.value.borrow())
     }
-}
 
-pub struct Signal<T> {
-    inner: ReadSignal<T>,
-}
-
-impl<T: fmt::Debug> fmt::Debug for Signal<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.inner.fmt(f)
-    }
-}
-
-impl<T> Store for Signal<T> {
-    type Input = T;
-
-    fn new_in(cx: Scope, input: Self::Input) -> Self {
-        Self {
-            inner: ReadSignal::new_in(cx, input),
-        }
-    }
-}
-
-impl<T> Signal<T> {
     pub fn set(&self, val: T) {
         self.set_slient(val);
         self.inner.context.trigger_subscribers();
@@ -103,18 +81,9 @@ impl<T> Signal<T> {
     }
 }
 
-impl<T> std::ops::Deref for Signal<T> {
-    type Target = ReadSignal<T>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-pub(crate) struct SignalContext {
-    shared: &'static ScopeShared,
-    future_subscribers: RefCell<AHashSet<ByAddress<'static, RawEffect<'static>>>>,
-    subscribers: RefCell<IndexSet<ByAddress<'static, RawEffect<'static>>, ahash::RandomState>>,
+pub(crate) struct RawSignal<T> {
+    value: RefCell<T>,
+    context: SignalContext,
 }
 
 impl Drop for SignalContext {
@@ -125,6 +94,12 @@ impl Drop for SignalContext {
             eff.0.remove_dependence(this);
         }
     }
+}
+
+pub(crate) struct SignalContext {
+    shared: &'static ScopeShared,
+    future_subscribers: RefCell<AHashSet<ByAddress<'static, RawEffect<'static>>>>,
+    subscribers: RefCell<IndexSet<ByAddress<'static, RawEffect<'static>>, ahash::RandomState>>,
 }
 
 impl SignalContext {
@@ -180,7 +155,7 @@ impl<'a, T> Ref<'a, T> {
     }
 }
 
-impl<'a, T> Deref for Ref<'a, T> {
+impl<'a, T> std::ops::Deref for Ref<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -189,7 +164,15 @@ impl<'a, T> Deref for Ref<'a, T> {
 }
 
 impl<'a> Scope<'a> {
-    pub fn create_signal<T: 'a>(self, t: T) -> &'a Signal<T> {
-        self.create_variable(Signal::new_in(self, t))
+    pub fn create_signal<T: 'a>(self, t: T) -> Signal<'a, T> {
+        let inner = self.create_variable(RawSignal {
+            value: RefCell::new(t),
+            context: SignalContext {
+                shared: self.shared(),
+                future_subscribers: Default::default(),
+                subscribers: Default::default(),
+            },
+        });
+        Signal { inner }
     }
 }

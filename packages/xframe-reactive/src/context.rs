@@ -1,4 +1,4 @@
-use crate::{scope::ScopeInherited, store::Store, Scope, Signal};
+use crate::{scope::ScopeInherited, signal::RawSignal, Scope, Signal};
 use ahash::AHashMap;
 use std::{
     any::{Any, TypeId},
@@ -18,10 +18,10 @@ impl fmt::Debug for Contexts<'_> {
 }
 
 fn type_id<T: 'static>() -> TypeId {
-    TypeId::of::<Signal<T>>()
+    TypeId::of::<RawSignal<T>>()
 }
 
-fn use_context_impl<'a, T: 'static>(inherited: &'a ScopeInherited) -> Option<&'a T> {
+fn use_context_impl<'a, T: 'static>(inherited: &'a ScopeInherited) -> Option<Signal<'a, T>> {
     if let Some(any) = inherited
         .contexts
         .inner
@@ -35,42 +35,40 @@ fn use_context_impl<'a, T: 'static>(inherited: &'a ScopeInherited) -> Option<&'a
     }
 }
 
-fn downcast_context<T: 'static>(any: &dyn Any) -> &T {
-    any.downcast_ref::<T>().unwrap_or_else(|| unreachable!())
+fn downcast_context<T: 'static>(any: &dyn Any) -> Signal<T> {
+    let raw = any
+        .downcast_ref::<RawSignal<T>>()
+        .unwrap_or_else(|| unreachable!());
+    Signal::from_raw(raw)
 }
 
 impl<'a> Scope<'a> {
-    pub fn try_provide_context<T>(self, input: T::Input) -> Result<&'a T, &'a T>
-    where
-        T: 'static + Store,
-    {
-        let store = self.create_store(input);
+    pub fn try_provide_context<T: 'static>(self, t: T) -> Result<Signal<'a, T>, Signal<'a, T>> {
+        let signal = self.create_signal(t);
+        let raw = signal.into_raw();
         if let Some(prev) = self
             .inherited()
             .contexts
             .inner
             .borrow_mut()
-            .insert(type_id::<T>(), store as &dyn Any)
+            .insert(type_id::<T>(), raw as &dyn Any)
         {
             Err(downcast_context(prev))
         } else {
-            Ok(store)
+            Ok(signal)
         }
     }
 
-    pub fn provide_context<T>(self, input: T::Input) -> &'a T
-    where
-        T: 'static + Store,
-    {
-        self.try_provide_context(input)
+    pub fn provide_context<T: 'static>(self, t: T) -> Signal<'a, T> {
+        self.try_provide_context(t)
             .unwrap_or_else(|_| panic!("context provided in current scope"))
     }
 
-    pub fn try_use_context<T: 'static>(self) -> Option<&'a T> {
+    pub fn try_use_context<T: 'static>(self) -> Option<Signal<'a, T>> {
         use_context_impl(self.inherited())
     }
 
-    pub fn use_context<T: 'static>(self) -> &'a T {
+    pub fn use_context<T: 'static>(self) -> Signal<'a, T> {
         self.try_use_context().expect("context not provided")
     }
 }
@@ -78,24 +76,23 @@ impl<'a> Scope<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::PlainStore;
 
     #[test]
     fn provide_and_use_context() {
         Scope::create_root(|cx| {
-            cx.provide_context::<PlainStore<_>>(777i32);
-            let x = cx.use_context::<PlainStore<i32>>();
-            assert_eq!(**x, 777);
+            cx.provide_context(777i32);
+            let x = cx.use_context::<i32>();
+            assert_eq!(*x.get(), 777);
         });
     }
 
     #[test]
     fn use_context_from_child_scope() {
         Scope::create_root(|cx| {
-            cx.provide_context::<PlainStore<_>>(777i32);
+            cx.provide_context(777i32);
             cx.create_child(|cx| {
-                let x = cx.use_context::<PlainStore<i32>>();
-                assert_eq!(**x, 777);
+                let x = cx.use_context::<i32>();
+                assert_eq!(*x.get(), 777);
             });
         });
     }
@@ -103,8 +100,8 @@ mod tests {
     #[test]
     fn unique_context_in_same_scope() {
         Scope::create_root(|cx| {
-            cx.provide_context::<PlainStore<_>>(777i32);
-            assert!(cx.try_provide_context::<PlainStore<_>>(777i32).is_err());
+            cx.provide_context(777i32);
+            assert!(cx.try_provide_context(777i32).is_err());
         });
     }
 }
