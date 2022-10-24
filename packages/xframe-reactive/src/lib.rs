@@ -5,7 +5,6 @@ mod memo;
 mod scope;
 mod signal;
 mod store;
-mod utils;
 
 pub use effect::Effect;
 pub use scope::{BoundedScope, Scope, ScopeDisposer};

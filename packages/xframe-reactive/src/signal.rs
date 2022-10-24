@@ -2,8 +2,9 @@ mod modify;
 pub use modify::Modify;
 
 use crate::{
+    arena::{SlotDisposer, SlotKey},
     effect::RawEffect,
-    scope::{EffectId, Scope, ScopeShared, SignalId},
+    scope::Scope,
 };
 use indexmap::IndexSet;
 use std::{cell::RefCell, fmt};
@@ -73,66 +74,51 @@ impl<'a, T> Signal<'a, T> {
 
 struct SignalInner<'a, T> {
     value: RefCell<T>,
-    context: SignalContextWithShared<'a>,
+    context: WrappedSignalContext<'a>,
 }
 
-#[derive(Default)]
-pub(crate) struct SignalContext {
-    subscribers: RefCell<IndexSet<EffectId>>,
+struct WrappedSignalContext<'a> {
+    inner: &'a SignalContext,
+    slot: SlotDisposer<'a, SignalContext>,
 }
 
-impl SignalContext {
-    pub fn subscribe(&self, effect: EffectId) {
-        self.subscribers.borrow_mut().insert(effect);
-    }
-
-    pub fn unsubscribe(&self, effect: EffectId) {
-        self.subscribers.borrow_mut().remove(&effect);
-    }
-}
-
-struct SignalContextWithShared<'a> {
-    id: SignalId,
-    shared: &'a ScopeShared,
-}
-
-impl Drop for SignalContextWithShared<'_> {
-    fn drop(&mut self) {
-        self.shared.signal_contexts.borrow_mut().remove(self.id);
-    }
-}
-
-impl<'a> SignalContextWithShared<'a> {
-    fn with(&self, f: impl FnOnce(&SignalContext)) {
-        f(self
-            .shared
-            .signal_contexts
-            .borrow()
-            .get(self.id)
-            .unwrap_or_else(|| unreachable!()));
-    }
-
-    fn with_effect(&self, eid: EffectId, f: impl FnOnce(&RawEffect<'static>)) {
-        self.shared.effects.borrow().get(eid).copied().map(f);
+impl<'a> WrappedSignalContext<'a> {
+    fn with_effect(&self, key: SlotKey<RawEffect<'static>>, f: impl FnOnce(&RawEffect<'static>)) {
+        self.slot.shared.slots.get(key).map(f);
     }
 
     pub fn track(&self) {
-        if let Some(eid) = self.shared.observer.get() {
-            self.with_effect(eid, |eff| eff.add_dependence(self.id));
+        if let Some(key) = self.slot.shared.observer.get() {
+            self.with_effect(key, |eff| eff.add_dependency(self.slot.key));
         }
     }
 
     pub fn trigger_subscribers(&self) {
-        self.with(|context| {
-            let subscribers = context.subscribers.take();
-            // Effects attach to subscribers at the end of the effect scope,
-            // an effect created inside another scope might send signals to its
-            // outer scope, so we should ensure the inner effects re-execute
-            // before outer ones to avoid potential double executions.
-            for eid in subscribers {
-                self.with_effect(eid, |eff| eff.run());
-            }
+        let subscribers = self.inner.subscribers.replace_with(|subs| {
+            IndexSet::with_capacity_and_hasher(subs.len(), Default::default())
         });
+        // Effects attach to subscribers at the end of the effect scope,
+        // an effect created inside another scope might send signals to its
+        // outer scope, so we should ensure the inner effects re-execute
+        // before outer ones to avoid potential double executions.
+        for key in subscribers {
+            self.with_effect(key, |eff| eff.run());
+        }
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct SignalContext {
+    subscribers: RefCell<IndexSet<SlotKey<RawEffect<'static>>>>,
+}
+
+impl SignalContext {
+    pub fn subscribe(&self, effect: SlotKey<RawEffect<'static>>) {
+        self.subscribers.borrow_mut().insert(effect);
+    }
+
+    pub fn unsubscribe(&self, effect: SlotKey<RawEffect<'static>>) {
+        self.subscribers.borrow_mut().remove(&effect);
     }
 }
 
@@ -163,12 +149,17 @@ impl<'a, T> std::ops::Deref for Ref<'a, T> {
 
 impl<'a> Scope<'a> {
     pub fn create_signal<T: 'a>(self, t: T) -> Signal<'a, T> {
-        let shared = self.shared();
-        let id = shared
-            .signal_contexts
-            .borrow_mut()
-            .insert(Default::default());
-        let context = SignalContextWithShared { id, shared };
+        let context = {
+            let mut slot = None;
+            let inner = self.create_in_slots(|s| {
+                slot = Some(s);
+                SignalContext::default()
+            });
+            WrappedSignalContext {
+                inner,
+                slot: slot.unwrap_or_else(|| unreachable!()),
+            }
+        };
         let inner = self.create_variable(SignalInner {
             value: RefCell::new(t),
             context,

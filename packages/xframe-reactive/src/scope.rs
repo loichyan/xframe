@@ -1,15 +1,9 @@
 use crate::{
-    arena::{Arena, Slots},
+    arena::{Arena, SlotDisposer, SlotKey, Slots},
     context::Contexts,
     effect::RawEffect,
-    signal::SignalContext,
 };
-use slotmap::{new_key_type, SlotMap};
-use std::{
-    cell::{Cell, RefCell},
-    fmt,
-    marker::PhantomData,
-};
+use std::{cell::Cell, fmt, marker::PhantomData};
 
 pub type Scope<'a> = BoundedScope<'a, 'a>;
 
@@ -28,12 +22,14 @@ impl fmt::Debug for Scope<'_> {
 }
 
 impl<'a> Scope<'a> {
-    pub(crate) fn shared(&self) -> &'a ScopeShared {
-        self.inner.inherited.shared
-    }
-
     pub(crate) fn inherited(&self) -> &'a ScopeInherited<'a> {
         &self.inner.inherited
+    }
+
+    pub(crate) fn create_in_slots<T: 'a>(self, f: impl FnOnce(SlotDisposer<'a, T>) -> T) -> &'a T {
+        self.inner
+            .arena
+            .alloc_in_slots(self.inner.inherited.shared, f)
     }
 }
 
@@ -69,19 +65,9 @@ impl fmt::Debug for ScopeInherited<'_> {
     }
 }
 
-new_key_type! {
-    pub(crate) struct EffectId;
-}
-
-new_key_type! {
-    pub(crate) struct SignalId;
-}
-
 #[derive(Default)]
 pub(crate) struct ScopeShared {
-    pub observer: Cell<Option<EffectId>>,
-    pub effects: RefCell<SlotMap<EffectId, &'static RawEffect<'static>>>,
-    pub signal_contexts: RefCell<SlotMap<SignalId, SignalContext>>,
+    pub observer: Cell<Option<SlotKey<RawEffect<'static>>>>,
     pub slots: Slots,
 }
 

@@ -1,5 +1,6 @@
 use crate::{
-    scope::{BoundedScope, EffectId, Scope, ScopeShared, SignalId},
+    arena::{SlotDisposer, SlotKey},
+    scope::{BoundedScope, Scope},
     signal::SignalContext,
 };
 use ahash::AHashSet;
@@ -23,38 +24,38 @@ impl<'a> Effect<'a> {
 }
 
 pub(crate) struct RawEffect<'a> {
-    this: EffectId,
+    slot: SlotDisposer<'a, RawEffect<'static>>,
     effect: &'a (dyn 'a + AnyEffect),
-    shared: &'a ScopeShared,
-    dependencies: RefCell<AHashSet<SignalId>>,
-}
-
-impl Drop for RawEffect<'_> {
-    fn drop(&mut self) {
-        self.shared.effects.borrow_mut().remove(self.this);
-    }
+    dependencies: RefCell<AHashSet<SlotKey<SignalContext>>>,
 }
 
 impl<'a> RawEffect<'a> {
-    fn with_signal(&self, sid: SignalId, f: impl FnOnce(&SignalContext)) {
-        self.shared.signal_contexts.borrow().get(sid).map(f);
+    fn with_signal(&self, key: SlotKey<SignalContext>, f: impl FnOnce(&SignalContext)) {
+        self.slot.shared.slots.get(key).map(f);
     }
 
-    pub fn add_dependence(&self, signal: SignalId) {
-        self.dependencies.borrow_mut().insert(signal);
-    }
-
-    pub fn run(&self) {
-        // 1) Clear dependencies.
-        let this = self.this;
-        for sid in self.dependencies.take() {
+    pub fn clear_dependencies(&self) {
+        let this = self.slot.key;
+        let deps = &mut *self.dependencies.borrow_mut();
+        for sid in deps.iter().copied() {
             self.with_signal(sid, |signal| {
                 signal.unsubscribe(this);
             });
         }
+        deps.clear();
+    }
+
+    pub fn add_dependency(&self, key: SlotKey<SignalContext>) {
+        self.dependencies.borrow_mut().insert(key);
+    }
+
+    pub fn run(&self) {
+        // 1) Clear dependencies.
+        let this = self.slot.key;
+        self.clear_dependencies();
 
         // 2) Save previous subscriber.
-        let observer = &self.shared.observer;
+        let observer = &self.slot.shared.observer;
         let saved = observer.take();
         observer.set(Some(this));
 
@@ -93,21 +94,15 @@ where
 
 impl<'a> Scope<'a> {
     fn create_effect_impl(self, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
-        let shared = self.shared();
-        let mut eff = None;
-        shared.effects.borrow_mut().insert_with_key(|this| {
-            let raw = RawEffect {
-                this,
+        let eff = self.create_in_slots(|slot| {
+            // SAFETY: thiss effect can't be accessed once the slot is disposed.
+            let slot = unsafe { std::mem::transmute(slot) };
+            RawEffect {
+                slot,
                 effect,
-                shared,
                 dependencies: Default::default(),
-            };
-            let ptr = self.create_variable(raw);
-            eff = Some(ptr);
-            // SAFETY: this entry will be removed once the effect is disposed.
-            unsafe { std::mem::transmute(ptr) }
+            }
         });
-        let eff = eff.unwrap_or_else(|| unreachable!());
         eff.run();
         Effect { inner: eff }
     }
@@ -274,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_a_disposed_dependence() {
+    fn remove_a_disposed_dependency() {
         Scope::create_root(|cx| {
             let eff = cx.create_effect(move |prev| {
                 if prev.is_none() {
@@ -289,7 +284,7 @@ mod tests {
                 .dependencies
                 .borrow()
                 .iter()
-                .map(|sid| cx.shared().signal_contexts.borrow().contains_key(*sid))
+                .map(|key| eff.inner.slot.shared.slots.get(*key).is_some())
                 .filter(|x| *x)
                 .count();
             assert_eq!(dep_count, 0);
