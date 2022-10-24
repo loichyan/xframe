@@ -5,6 +5,7 @@ use crate::{
 };
 use ahash::AHashSet;
 use core::fmt;
+use once_cell::sync::OnceCell;
 use std::cell::RefCell;
 
 #[derive(Clone, Copy)]
@@ -25,23 +26,32 @@ impl<'a> Effect<'a> {
 }
 
 pub(crate) struct RawEffect<'a> {
+    this: OnceCell<&'static RawEffect<'static>>,
     effect: &'a (dyn 'a + AnyEffect),
     shared: &'a ScopeShared,
-    dependencies: RefCell<AHashSet<ByAddress<'a, SignalContext<'a>>>>,
+    dependencies: RefCell<AHashSet<ByAddress<'static, SignalContext<'static>>>>,
 }
 
 impl<'a> RawEffect<'a> {
-    pub fn add_dependence(&self, signal: &'a SignalContext) {
+    fn this(&self) -> &'static RawEffect<'static> {
+        let this = *self.this.get().unwrap_or_else(|| unreachable!());
+        debug_assert_eq!(
+            this as *const RawEffect as *const (),
+            self as *const RawEffect as *const ()
+        );
+        this
+    }
+
+    pub fn add_dependence(&self, signal: &'static SignalContext<'static>) {
         self.dependencies.borrow_mut().insert(ByAddress(signal));
     }
 
-    pub fn remove_dependence(&self, signal: &'a SignalContext) {
+    pub fn remove_dependence(&self, signal: &'static SignalContext<'static>) {
         self.dependencies.borrow_mut().remove(&ByAddress(signal));
     }
 
     pub fn clear_dependencies(&self) {
-        // SAFETY: this will be dropped after disposing, it's safe to access it.
-        let this: &'static RawEffect<'static> = unsafe { std::mem::transmute(self) };
+        let this = self.this();
         let deps = &mut *self.dependencies.borrow_mut();
         for dep in deps.iter() {
             dep.0.unsubscribe(this);
@@ -50,11 +60,7 @@ impl<'a> RawEffect<'a> {
     }
 
     pub fn run(&self) {
-        // SAFETY: A signal might be subscribed by an effect created inside a
-        // child scope, calling the effect causes undefined behavior, it's
-        // necessary for an effect to notify all its dependencies to unsubscribe
-        // itself before it's disposed.
-        let this: &'static RawEffect<'static> = unsafe { std::mem::transmute(self) };
+        let this = self.this();
 
         // 1) Clear dependencies.
         self.clear_dependencies();
@@ -104,10 +110,14 @@ where
 
 fn create_effect_impl<'a>(cx: Scope<'a>, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
     let inner = cx.create_variable(RawEffect {
+        this: Default::default(),
         effect,
         shared: cx.shared(),
         dependencies: Default::default(),
     });
+    // SAFETY: alloced variables has a stable address.
+    let addr = unsafe { std::mem::transmute(inner) };
+    inner.this.set(addr).unwrap_or_else(|_| unreachable!());
     inner.run();
     Effect { inner }
 }

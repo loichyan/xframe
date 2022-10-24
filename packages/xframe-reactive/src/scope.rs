@@ -1,5 +1,5 @@
 use crate::{arena::Arena, context::Contexts, effect::RawEffect};
-use std::{cell::Cell, fmt, marker::PhantomData, mem::ManuallyDrop};
+use std::{cell::Cell, fmt, marker::PhantomData};
 
 pub type Scope<'a> = BoundedScope<'a, 'a>;
 
@@ -65,115 +65,95 @@ pub(crate) struct ScopeShared {
 }
 
 pub struct ScopeDisposer<'a> {
-    scope: &'a ScopeInner<'a>,
-    is_root: bool,
+    scope: Option<Box<ScopeInner<'a>>>,
 }
 
 impl fmt::Debug for ScopeDisposer<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ScopeDisposer")
-            .field("scope", &(self.scope as *const ScopeInner))
-            .field("is_root", &self.is_root)
-            .finish()
+        f.debug_tuple("ScopeDisposer").field(&self.scope).finish()
     }
 }
 
 impl<'a> ScopeDisposer<'a> {
-    pub fn into_manually(self) -> ScopeDisposerManually<'a> {
-        ScopeDisposerManually(ManuallyDrop::new(self))
+    fn new(parent: Option<&'a ScopeInherited<'a>>) -> Self {
+        let inherited = parent
+            .map(|parent| ScopeInherited {
+                parent: Some(parent),
+                contexts: Default::default(),
+                shared: parent.shared,
+            })
+            .unwrap_or_else(|| {
+                let shared = Box::new(ScopeShared::default());
+                ScopeInherited {
+                    parent: None,
+                    contexts: Default::default(),
+                    shared: Box::leak(shared),
+                }
+            });
+        let scope = Box::new(ScopeInner {
+            arena: Default::default(),
+            inherited,
+            phantom: PhantomData,
+        });
+        ScopeDisposer { scope: Some(scope) }
+    }
+
+    fn new_within(
+        parent: Option<&'a ScopeInherited<'a>>,
+        f: impl for<'b> FnOnce(BoundedScope<'b, 'a>),
+    ) -> Self {
+        let scope = ScopeDisposer::new(parent).leak();
+        f(scope);
+        // SAFETY: no variables escape from the closure `f`, it's safe to
+        // dispose the scope.
+        unsafe { ScopeDisposer::from_leaked(scope) }
+    }
+
+    pub fn leak(mut self) -> Scope<'a> {
+        self.scope
+            .take()
+            .map(Box::leak)
+            .map(|inner| BoundedScope {
+                inner,
+                bounds: PhantomData,
+            })
+            .unwrap_or_else(|| unreachable!())
+    }
+
+    /// # Safety
+    ///
+    /// This function is unsafe because a scope might be disposed twice, and
+    /// there may be references to variables created in the scope.
+    pub unsafe fn from_leaked(scope: Scope<'a>) -> Self {
+        let scope = Box::from_raw(scope.inner as *const ScopeInner as *mut ScopeInner);
+        ScopeDisposer { scope: Some(scope) }
     }
 }
 
 impl Drop for ScopeDisposer<'_> {
     fn drop(&mut self) {
-        let mut inner =
-            unsafe { Box::from_raw(self.scope as *const ScopeInner as *mut ScopeInner) };
-        unsafe {
-            inner.arena.dispose();
-        }
-        if self.is_root {
-            let shared = unsafe {
-                Box::from_raw(inner.inherited.shared as *const ScopeShared as *mut ScopeShared)
-            };
-            drop(shared);
-        }
-    }
-}
-
-pub struct ScopeDisposerManually<'a>(ManuallyDrop<ScopeDisposer<'a>>);
-
-impl fmt::Debug for ScopeDisposerManually<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl<'a> ScopeDisposerManually<'a> {
-    pub fn scope(&self) -> Scope<'a> {
-        Scope {
-            inner: self.0.scope,
-            bounds: PhantomData,
-        }
-    }
-
-    /// # Safety
-    ///
-    /// Dispose all alloced memory immediately, you must ensure that all references
-    /// created by [`Scope`] will never be accessed again.
-    pub unsafe fn dispose(self) {
-        ManuallyDrop::into_inner(self.0);
-    }
-}
-
-fn create_scope_inner<'a>(parent: Option<&'a ScopeInherited<'a>>) -> &'a ScopeInner<'a> {
-    let inherited = parent
-        .map(|parent| ScopeInherited {
-            parent: Some(parent),
-            contexts: Default::default(),
-            shared: parent.shared,
-        })
-        .unwrap_or_else(|| {
-            let shared = Box::new(ScopeShared::default());
-            ScopeInherited {
-                parent: None,
-                contexts: Default::default(),
-                shared: Box::leak(shared),
+        if let Some(scope) = &self.scope {
+            unsafe { scope.arena.dispose() };
+            if scope.inherited.parent.is_none() {
+                let shared = unsafe {
+                    Box::from_raw(scope.inherited.shared as *const ScopeShared as *mut ScopeShared)
+                };
+                drop(shared);
             }
-        });
-    let boxed = Box::new(ScopeInner {
-        arena: Default::default(),
-        inherited,
-        phantom: PhantomData,
-    });
-    &*Box::leak(boxed)
+        }
+    }
 }
 
 impl<'a> Scope<'a> {
     pub fn create_root(f: impl for<'b> FnOnce(BoundedScope<'b, 'a>)) -> ScopeDisposer<'a> {
-        let inner = create_scope_inner(None);
-        f(Scope {
-            inner,
-            bounds: PhantomData,
-        });
-        ScopeDisposer {
-            scope: inner,
-            is_root: true,
-        }
+        ScopeDisposer::new_within(None, f)
     }
 
     pub fn create_child(
         self,
         f: impl for<'child> FnOnce(BoundedScope<'child, 'a>),
     ) -> ScopeDisposer<'a> {
-        let inner = create_scope_inner(Some(&self.inner.inherited));
-        f(Scope {
-            inner,
-            bounds: PhantomData,
-        });
-        ScopeDisposer {
-            scope: inner,
-            is_root: false,
-        }
+        ScopeDisposer::new_within(Some(&self.inner.inherited), f)
     }
 
     pub fn create_variable<T: 'a>(self, t: T) -> &'a T {

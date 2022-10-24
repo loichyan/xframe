@@ -36,10 +36,10 @@ impl<'a> Arena<'a> {
         val
     }
 
-    pub unsafe fn dispose(&mut self) {
+    pub unsafe fn dispose(&self) {
         // SAFETY: last alloced variables must be disposed first because signals
         // and effects need to do some cleanup works with its captured references.
-        for ptr in self.variables.get_mut().iter().copied().rev() {
+        for ptr in self.variables.take().into_iter().rev() {
             std::ptr::drop_in_place(ptr as *const dyn Empty as *mut dyn Empty);
         }
     }

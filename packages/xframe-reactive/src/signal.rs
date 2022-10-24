@@ -8,6 +8,7 @@ use crate::{
 };
 use ahash::AHashSet;
 use indexmap::IndexSet;
+use once_cell::sync::OnceCell;
 use std::{cell::RefCell, fmt};
 
 pub struct Signal<'a, T> {
@@ -40,7 +41,7 @@ impl<'a, T> Signal<'a, T> {
     }
 
     pub fn get(&self) -> Ref<'a, T> {
-        self.inner.context.track();
+        self.track();
         self.get_untracked()
     }
 
@@ -78,42 +79,39 @@ struct SignalInner<'a, T> {
     context: SignalContext<'a>,
 }
 
-impl<'a, T> SignalInner<'a, T> {
-    pub fn new(cx: Scope<'a>, t: T) -> Self {
-        SignalInner {
-            value: RefCell::new(t),
-            context: SignalContext {
-                shared: cx.shared(),
-                future_subscribers: Default::default(),
-                subscribers: Default::default(),
-            },
-        }
-    }
+pub(crate) struct SignalContext<'a> {
+    this: OnceCell<&'static SignalContext<'static>>,
+    shared: &'a ScopeShared,
+    future_subscribers: RefCell<AHashSet<ByAddress<'static, RawEffect<'static>>>>,
+    subscribers: RefCell<IndexSet<ByAddress<'static, RawEffect<'static>>, ahash::RandomState>>,
 }
 
 impl Drop for SignalContext<'_> {
     fn drop(&mut self) {
         // SAFETY: this will be dropped after disposing, it's safe to access it.
-        let this: &'static SignalContext<'static> = unsafe { std::mem::transmute(&*self) };
+        let this = self.this();
         for eff in self.future_subscribers.get_mut().iter() {
             eff.0.remove_dependence(this);
         }
     }
 }
 
-pub(crate) struct SignalContext<'a> {
-    shared: &'a ScopeShared,
-    future_subscribers: RefCell<AHashSet<ByAddress<'static, RawEffect<'static>>>>,
-    subscribers: RefCell<IndexSet<ByAddress<'static, RawEffect<'static>>, ahash::RandomState>>,
-}
-
 impl<'a> SignalContext<'a> {
+    fn this(&self) -> &'static SignalContext<'static> {
+        let this = *self.this.get().unwrap_or_else(|| unreachable!());
+        debug_assert_eq!(
+            this as *const SignalContext as *const (),
+            self as *const SignalContext as *const ()
+        );
+        this
+    }
+
     pub fn track(&self) {
         if let Some(e) = self.shared.observer.get() {
             // SAFETY: An effect might captured a signal created inside the
             // child scope, we should notify the effect to remove the signal
             // to avoid access dangling pointer.
-            let this: &'static SignalContext = unsafe { std::mem::transmute(self) };
+            let this = self.this();
             // The signal might be used as a dependence in the future, we should
             // record this effect, and notify it of unsubscribing when the signal
             // is disposed.
@@ -170,7 +168,23 @@ impl<'a, T> std::ops::Deref for Ref<'a, T> {
 
 impl<'a> Scope<'a> {
     pub fn create_signal<T: 'a>(self, t: T) -> Signal<'a, T> {
-        let inner = self.create_variable(SignalInner::new(self, t));
+        let inner = self.create_variable(SignalInner {
+            value: RefCell::new(t),
+            context: SignalContext {
+                this: OnceCell::default(),
+                shared: self.shared(),
+                future_subscribers: Default::default(),
+                subscribers: Default::default(),
+            },
+        });
+        // SAFETY: crated variable has a stable address and lives as long
+        // as the scope.
+        let ptr = unsafe { std::mem::transmute(&inner.context) };
+        inner
+            .context
+            .this
+            .set(ptr)
+            .unwrap_or_else(|_| unreachable!());
         Signal { inner }
     }
 }
