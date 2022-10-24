@@ -5,11 +5,18 @@ use crate::{
 };
 use ahash::AHashSet;
 use core::fmt;
+use once_cell::sync::OnceCell;
 use std::cell::RefCell;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct Effect<'a> {
     inner: &'a RawEffect<'a>,
+}
+
+impl fmt::Debug for Effect<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Effect").finish_non_exhaustive()
+    }
 }
 
 impl<'a> Effect<'a> {
@@ -18,25 +25,33 @@ impl<'a> Effect<'a> {
     }
 }
 
-#[derive(Debug)]
 pub(crate) struct RawEffect<'a> {
+    this: OnceCell<&'static RawEffect<'static>>,
     effect: &'a (dyn 'a + AnyEffect),
-    shared: ByAddress<'static, ScopeShared>,
-    dependencies: RefCell<AHashSet<ByAddress<'a, SignalContext>>>,
+    shared: &'a ScopeShared,
+    dependencies: RefCell<AHashSet<ByAddress<'static, SignalContext<'static>>>>,
 }
 
 impl<'a> RawEffect<'a> {
-    pub fn add_dependence(&self, signal: &'a SignalContext) {
+    fn this(&self) -> &'static RawEffect<'static> {
+        let this = *self.this.get().unwrap_or_else(|| unreachable!());
+        debug_assert_eq!(
+            this as *const RawEffect as *const (),
+            self as *const RawEffect as *const ()
+        );
+        this
+    }
+
+    pub fn add_dependence(&self, signal: &'static SignalContext<'static>) {
         self.dependencies.borrow_mut().insert(ByAddress(signal));
     }
 
-    pub fn remove_dependence(&self, signal: &'a SignalContext) {
+    pub fn remove_dependence(&self, signal: &'static SignalContext<'static>) {
         self.dependencies.borrow_mut().remove(&ByAddress(signal));
     }
 
     pub fn clear_dependencies(&self) {
-        // SAFETY: this will be dropped after disposing, it's safe to access it.
-        let this: &'static RawEffect<'static> = unsafe { std::mem::transmute(self) };
+        let this = self.this();
         let deps = &mut *self.dependencies.borrow_mut();
         for dep in deps.iter() {
             dep.0.unsubscribe(this);
@@ -45,18 +60,14 @@ impl<'a> RawEffect<'a> {
     }
 
     pub fn run(&self) {
-        // SAFETY: A signal might be subscribed by an effect created inside a
-        // child scope, calling the effect causes undefined behavior, it's
-        // necessary for an effect to notify all its dependencies to unsubscribe
-        // itself before it's disposed.
-        let this: &'static RawEffect<'static> = unsafe { std::mem::transmute(self) };
+        let this = self.this();
 
         // 1) Clear dependencies.
         self.clear_dependencies();
 
         // 2) Save previous subscriber.
-        let saved = self.shared.0.observer.take();
-        self.shared.0.observer.set(Some(ByAddress(this)));
+        let saved = self.shared.observer.take();
+        self.shared.observer.set(Some(this));
 
         // 3) Call the effect.
         self.effect.run();
@@ -67,7 +78,7 @@ impl<'a> RawEffect<'a> {
         }
 
         // 5) Restore previous subscriber.
-        self.shared.0.observer.set(saved);
+        self.shared.observer.set(saved);
     }
 }
 
@@ -79,12 +90,6 @@ impl Drop for RawEffect<'_> {
 
 trait AnyEffect {
     fn run(&self);
-}
-
-impl<'a> fmt::Debug for dyn 'a + AnyEffect {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("AnyEffect").finish_non_exhaustive()
-    }
 }
 
 struct AnyEffectImpl<T, F> {
@@ -105,10 +110,14 @@ where
 
 fn create_effect_impl<'a>(cx: Scope<'a>, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
     let inner = cx.create_variable(RawEffect {
+        this: Default::default(),
         effect,
-        shared: ByAddress(cx.shared()),
+        shared: cx.shared(),
         dependencies: Default::default(),
     });
+    // SAFETY: alloced variables has a stable address.
+    let addr = unsafe { std::mem::transmute(inner) };
+    inner.this.set(addr).unwrap_or_else(|_| unreachable!());
     inner.run();
     Effect { inner }
 }

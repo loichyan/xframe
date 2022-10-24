@@ -9,7 +9,7 @@ fn create_memo_impl<'a, T>(
     mut f: impl 'a + FnMut() -> T,
     mut update: impl 'a + FnMut(T, Signal<'a, T>),
 ) -> Signal<'a, T> {
-    let memo = cx.create_variable(Cell::new(None::<Signal<T>>));
+    let memo = cx.create_variable(Cell::new(None::<Signal<'a, T>>));
     cx.create_effect(move |_| {
         let new_val = f();
         if let Some(signal) = memo.get() {
@@ -27,7 +27,7 @@ impl<'a> Scope<'a> {
         create_memo_impl(self, f, |new_val, memo| memo.set(new_val))
     }
 
-    pub fn create_seletor<T, F>(self, f: impl 'a + FnMut() -> T) -> Signal<'a, T>
+    pub fn create_seletor<T>(self, f: impl 'a + FnMut() -> T) -> Signal<'a, T>
     where
         T: PartialEq,
     {
