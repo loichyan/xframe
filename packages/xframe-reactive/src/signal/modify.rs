@@ -1,4 +1,4 @@
-use super::{Signal, SignalContext};
+use super::{Signal, SignalContextWithShared};
 use std::{
     fmt,
     ops::{Deref, DerefMut},
@@ -58,7 +58,7 @@ impl<'a, T> DerefMut for Modify<'a, T> {
     }
 }
 
-struct ModifyTrigger<'a>(&'a SignalContext<'a>);
+struct ModifyTrigger<'a>(&'a SignalContextWithShared<'a>);
 
 impl Drop for ModifyTrigger<'_> {
     fn drop(&mut self) {

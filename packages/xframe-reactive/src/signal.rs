@@ -3,12 +3,9 @@ pub use modify::Modify;
 
 use crate::{
     effect::RawEffect,
-    scope::{Scope, ScopeShared},
-    utils::ByAddress,
+    scope::{EffectId, Scope, ScopeShared, SignalId},
 };
-use ahash::AHashSet;
 use indexmap::IndexSet;
-use once_cell::sync::OnceCell;
 use std::{cell::RefCell, fmt};
 
 pub struct Signal<'a, T> {
@@ -76,68 +73,66 @@ impl<'a, T> Signal<'a, T> {
 
 struct SignalInner<'a, T> {
     value: RefCell<T>,
-    context: SignalContext<'a>,
+    context: SignalContextWithShared<'a>,
 }
 
-pub(crate) struct SignalContext<'a> {
-    this: OnceCell<&'static SignalContext<'static>>,
-    shared: &'a ScopeShared,
-    future_subscribers: RefCell<AHashSet<ByAddress<'static, RawEffect<'static>>>>,
-    subscribers: RefCell<IndexSet<ByAddress<'static, RawEffect<'static>>, ahash::RandomState>>,
+#[derive(Default)]
+pub(crate) struct SignalContext {
+    subscribers: RefCell<IndexSet<EffectId>>,
 }
 
-impl Drop for SignalContext<'_> {
-    fn drop(&mut self) {
-        // SAFETY: this will be dropped after disposing, it's safe to access it.
-        let this = self.this();
-        for eff in self.future_subscribers.get_mut().iter() {
-            eff.0.remove_dependence(this);
-        }
+impl SignalContext {
+    pub fn subscribe(&self, effect: EffectId) {
+        self.subscribers.borrow_mut().insert(effect);
+    }
+
+    pub fn unsubscribe(&self, effect: EffectId) {
+        self.subscribers.borrow_mut().remove(&effect);
     }
 }
 
-impl<'a> SignalContext<'a> {
-    fn this(&self) -> &'static SignalContext<'static> {
-        let this = *self.this.get().unwrap_or_else(|| unreachable!());
-        debug_assert_eq!(
-            this as *const SignalContext as *const (),
-            self as *const SignalContext as *const ()
-        );
-        this
+struct SignalContextWithShared<'a> {
+    id: SignalId,
+    shared: &'a ScopeShared,
+}
+
+impl Drop for SignalContextWithShared<'_> {
+    fn drop(&mut self) {
+        self.shared.signal_contexts.borrow_mut().remove(self.id);
+    }
+}
+
+impl<'a> SignalContextWithShared<'a> {
+    fn with(&self, f: impl FnOnce(&SignalContext)) {
+        f(self
+            .shared
+            .signal_contexts
+            .borrow()
+            .get(self.id)
+            .unwrap_or_else(|| unreachable!()));
+    }
+
+    fn with_effect(&self, eid: EffectId, f: impl FnOnce(&RawEffect<'static>)) {
+        self.shared.effects.borrow().get(eid).copied().map(f);
     }
 
     pub fn track(&self) {
-        if let Some(e) = self.shared.observer.get() {
-            // SAFETY: An effect might captured a signal created inside the
-            // child scope, we should notify the effect to remove the signal
-            // to avoid access dangling pointer.
-            let this = self.this();
-            // The signal might be used as a dependence in the future, we should
-            // record this effect, and notify it of unsubscribing when the signal
-            // is disposed.
-            self.future_subscribers.borrow_mut().insert(ByAddress(e));
-            e.add_dependence(this);
+        if let Some(eid) = self.shared.observer.get() {
+            self.with_effect(eid, |eff| eff.add_dependence(self.id));
         }
-    }
-
-    pub fn subscribe(&self, effect: &'static RawEffect<'static>) {
-        self.subscribers.borrow_mut().insert(ByAddress(effect));
-    }
-
-    pub fn unsubscribe(&self, effect: &'static RawEffect<'static>) {
-        self.subscribers.borrow_mut().remove(&ByAddress(effect));
     }
 
     pub fn trigger_subscribers(&self) {
-        self.future_subscribers.borrow_mut().clear();
-        let subscribers = self.subscribers.take();
-        // Effects attach to subscribers at the end of the effect scope,
-        // an effect created inside another scope might send signals to its
-        // outer scope, so we should ensure the inner effects re-execute
-        // before outer ones to avoid potential double executions.
-        for eff in subscribers {
-            eff.0.run();
-        }
+        self.with(|context| {
+            let subscribers = context.subscribers.take();
+            // Effects attach to subscribers at the end of the effect scope,
+            // an effect created inside another scope might send signals to its
+            // outer scope, so we should ensure the inner effects re-execute
+            // before outer ones to avoid potential double executions.
+            for eid in subscribers {
+                self.with_effect(eid, |eff| eff.run());
+            }
+        });
     }
 }
 
@@ -168,23 +163,16 @@ impl<'a, T> std::ops::Deref for Ref<'a, T> {
 
 impl<'a> Scope<'a> {
     pub fn create_signal<T: 'a>(self, t: T) -> Signal<'a, T> {
+        let shared = self.shared();
+        let id = shared
+            .signal_contexts
+            .borrow_mut()
+            .insert(Default::default());
+        let context = SignalContextWithShared { id, shared };
         let inner = self.create_variable(SignalInner {
             value: RefCell::new(t),
-            context: SignalContext {
-                this: OnceCell::default(),
-                shared: self.shared(),
-                future_subscribers: Default::default(),
-                subscribers: Default::default(),
-            },
+            context,
         });
-        // SAFETY: crated variable has a stable address and lives as long
-        // as the scope.
-        let ptr = unsafe { std::mem::transmute(&inner.context) };
-        inner
-            .context
-            .this
-            .set(ptr)
-            .unwrap_or_else(|_| unreachable!());
         Signal { inner }
     }
 }

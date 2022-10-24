@@ -1,12 +1,9 @@
 use crate::{
-    scope::{BoundedScope, Scope, ScopeShared},
+    scope::{BoundedScope, EffectId, Scope, ScopeShared, SignalId},
     signal::SignalContext,
-    utils::ByAddress,
 };
 use ahash::AHashSet;
-use core::fmt;
-use once_cell::sync::OnceCell;
-use std::cell::RefCell;
+use std::{cell::RefCell, fmt};
 
 #[derive(Clone, Copy)]
 pub struct Effect<'a> {
@@ -26,65 +23,51 @@ impl<'a> Effect<'a> {
 }
 
 pub(crate) struct RawEffect<'a> {
-    this: OnceCell<&'static RawEffect<'static>>,
+    this: EffectId,
     effect: &'a (dyn 'a + AnyEffect),
     shared: &'a ScopeShared,
-    dependencies: RefCell<AHashSet<ByAddress<'static, SignalContext<'static>>>>,
+    dependencies: RefCell<AHashSet<SignalId>>,
+}
+
+impl Drop for RawEffect<'_> {
+    fn drop(&mut self) {
+        self.shared.effects.borrow_mut().remove(self.this);
+    }
 }
 
 impl<'a> RawEffect<'a> {
-    fn this(&self) -> &'static RawEffect<'static> {
-        let this = *self.this.get().unwrap_or_else(|| unreachable!());
-        debug_assert_eq!(
-            this as *const RawEffect as *const (),
-            self as *const RawEffect as *const ()
-        );
-        this
+    fn with_signal(&self, sid: SignalId, f: impl FnOnce(&SignalContext)) {
+        self.shared.signal_contexts.borrow().get(sid).map(f);
     }
 
-    pub fn add_dependence(&self, signal: &'static SignalContext<'static>) {
-        self.dependencies.borrow_mut().insert(ByAddress(signal));
-    }
-
-    pub fn remove_dependence(&self, signal: &'static SignalContext<'static>) {
-        self.dependencies.borrow_mut().remove(&ByAddress(signal));
-    }
-
-    pub fn clear_dependencies(&self) {
-        let this = self.this();
-        let deps = &mut *self.dependencies.borrow_mut();
-        for dep in deps.iter() {
-            dep.0.unsubscribe(this);
-        }
-        deps.clear();
+    pub fn add_dependence(&self, signal: SignalId) {
+        self.dependencies.borrow_mut().insert(signal);
     }
 
     pub fn run(&self) {
-        let this = self.this();
-
         // 1) Clear dependencies.
-        self.clear_dependencies();
+        let this = self.this;
+        for sid in self.dependencies.take() {
+            self.with_signal(sid, |signal| {
+                signal.unsubscribe(this);
+            });
+        }
 
         // 2) Save previous subscriber.
-        let saved = self.shared.observer.take();
-        self.shared.observer.set(Some(this));
+        let observer = &self.shared.observer;
+        let saved = observer.take();
+        observer.set(Some(this));
 
         // 3) Call the effect.
         self.effect.run();
 
         // 4) Re-calculate dependencies.
-        for dep in self.dependencies.borrow().iter() {
-            dep.0.subscribe(this);
+        for sid in self.dependencies.borrow().iter().copied() {
+            self.with_signal(sid, |signal| signal.subscribe(this));
         }
 
         // 5) Restore previous subscriber.
-        self.shared.observer.set(saved);
-    }
-}
-
-impl Drop for RawEffect<'_> {
-    fn drop(&mut self) {
-        self.clear_dependencies();
+        observer.set(saved);
     }
 }
 
@@ -108,37 +91,43 @@ where
     }
 }
 
-fn create_effect_impl<'a>(cx: Scope<'a>, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
-    let inner = cx.create_variable(RawEffect {
-        this: Default::default(),
-        effect,
-        shared: cx.shared(),
-        dependencies: Default::default(),
-    });
-    // SAFETY: alloced variables has a stable address.
-    let addr = unsafe { std::mem::transmute(inner) };
-    inner.this.set(addr).unwrap_or_else(|_| unreachable!());
-    inner.run();
-    Effect { inner }
-}
-
 impl<'a> Scope<'a> {
+    fn create_effect_impl(self, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
+        let shared = self.shared();
+        let mut eff = None;
+        shared.effects.borrow_mut().insert_with_key(|this| {
+            let raw = RawEffect {
+                this,
+                effect,
+                shared,
+                dependencies: Default::default(),
+            };
+            let ptr = self.create_variable(raw);
+            eff = Some(ptr);
+            // SAFETY: this entry will be removed once the effect is disposed.
+            unsafe { std::mem::transmute(ptr) }
+        });
+        let eff = eff.unwrap_or_else(|| unreachable!());
+        eff.run();
+        Effect { inner: eff }
+    }
+
     pub fn create_effect<T: 'a>(self, f: impl 'a + FnMut(Option<T>) -> T) -> Effect<'a> {
         let eff = self.create_variable(RefCell::new(AnyEffectImpl {
             prev: None,
             func: f,
         }));
-        create_effect_impl(self, eff)
+        self.create_effect_impl(eff)
     }
 
     pub fn create_effect_scoped(
         self,
         mut f: impl 'a + for<'child> FnMut(BoundedScope<'child, 'a>),
-    ) -> Effect<'a> {
+    ) {
         self.create_effect(move |disposer| {
             drop(disposer);
             self.create_child(|cx| f(cx))
-        })
+        });
     }
 }
 
@@ -295,7 +284,15 @@ mod tests {
                     });
                 }
             });
-            assert_eq!(eff.inner.dependencies.borrow().len(), 0);
+            let dep_count = eff
+                .inner
+                .dependencies
+                .borrow()
+                .iter()
+                .map(|sid| cx.shared().signal_contexts.borrow().contains_key(*sid))
+                .filter(|x| *x)
+                .count();
+            assert_eq!(dep_count, 0);
         });
     }
 }
