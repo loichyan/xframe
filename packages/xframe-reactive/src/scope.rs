@@ -1,4 +1,8 @@
-use crate::{arena::Arena, context::Contexts, effect::RawEffect};
+use crate::{
+    arena::{Arena, SlotDisposer, SlotKey, Slots},
+    context::Contexts,
+    effect::RawEffect,
+};
 use std::{cell::Cell, fmt, marker::PhantomData};
 
 pub type Scope<'a> = BoundedScope<'a, 'a>;
@@ -18,12 +22,14 @@ impl fmt::Debug for Scope<'_> {
 }
 
 impl<'a> Scope<'a> {
-    pub(crate) fn shared(&self) -> &'a ScopeShared {
-        self.inner.inherited.shared
-    }
-
     pub(crate) fn inherited(&self) -> &'a ScopeInherited<'a> {
         &self.inner.inherited
+    }
+
+    pub(crate) fn create_in_slots<T: 'a>(self, f: impl FnOnce(SlotDisposer<'a, T>) -> T) -> &'a T {
+        self.inner
+            .arena
+            .alloc_in_slots(self.inner.inherited.shared, f)
     }
 }
 
@@ -61,7 +67,8 @@ impl fmt::Debug for ScopeInherited<'_> {
 
 #[derive(Default)]
 pub(crate) struct ScopeShared {
-    pub observer: Cell<Option<&'static RawEffect<'static>>>,
+    pub observer: Cell<Option<SlotKey<RawEffect<'static>>>>,
+    pub slots: Slots,
 }
 
 pub struct ScopeDisposer<'a> {

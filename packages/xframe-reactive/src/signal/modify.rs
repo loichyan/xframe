@@ -1,22 +1,21 @@
-use super::{Signal, SignalContext};
+use super::{Signal, WrappedSignalContext};
 use std::{
     fmt,
-    mem::ManuallyDrop,
     ops::{Deref, DerefMut},
 };
 
 impl<'a, T> Signal<'a, T> {
     pub fn modify(&self) -> Modify<'a, T> {
         Modify {
-            value: ManuallyDrop::new(self.inner.value.borrow_mut()),
-            context: &self.inner.context,
+            value: self.inner.value.borrow_mut(),
+            trigger: ModifyTrigger(&self.inner.context),
         }
     }
 }
 
 pub struct Modify<'a, T> {
-    value: ManuallyDrop<std::cell::RefMut<'a, T>>,
-    context: &'a SignalContext<'a>,
+    value: std::cell::RefMut<'a, T>,
+    trigger: ModifyTrigger<'a>,
 }
 
 impl<T: fmt::Debug> fmt::Debug for Modify<'_, T> {
@@ -26,27 +25,22 @@ impl<T: fmt::Debug> fmt::Debug for Modify<'_, T> {
 }
 
 impl<'a, T> Modify<'a, T> {
-    fn take_value(mut this: Self) -> std::cell::RefMut<'a, T> {
-        // SAFETY: this is forgotten immediately and value will never be accessed.
-        let value = unsafe { ManuallyDrop::take(&mut this.value) };
-        std::mem::forget(this);
-        value
-    }
-
     pub fn map<U, F>(this: Self, f: F) -> Modify<'a, U>
     where
         F: FnOnce(&mut T) -> &mut U,
     {
-        let context = this.context;
-        let value = Modify::take_value(this);
+        let Modify { value, trigger } = this;
         Modify {
-            value: ManuallyDrop::new(std::cell::RefMut::map(value, f)),
-            context,
+            value: std::cell::RefMut::map(value, f),
+            trigger,
         }
     }
 
     pub fn drop_silent(this: Self) {
-        drop(Modify::take_value(this));
+        let Modify { value, trigger } = this;
+        drop(value);
+        // Just a reference, it's cheap to forget it.
+        std::mem::forget(trigger);
     }
 }
 
@@ -64,11 +58,10 @@ impl<'a, T> DerefMut for Modify<'a, T> {
     }
 }
 
-impl<'a, T> Drop for Modify<'a, T> {
+struct ModifyTrigger<'a>(&'a WrappedSignalContext<'a>);
+
+impl Drop for ModifyTrigger<'_> {
     fn drop(&mut self) {
-        // SAFETY: this variable is dropped and will never be accessed.
-        let value = unsafe { ManuallyDrop::take(&mut self.value) };
-        drop(value);
-        self.context.trigger_subscribers();
+        self.0.trigger_subscribers();
     }
 }

@@ -2,13 +2,11 @@ mod modify;
 pub use modify::Modify;
 
 use crate::{
+    arena::{SlotDisposer, SlotKey},
     effect::RawEffect,
-    scope::{Scope, ScopeShared},
-    utils::ByAddress,
+    scope::Scope,
 };
-use ahash::AHashSet;
 use indexmap::IndexSet;
-use once_cell::sync::OnceCell;
 use std::{cell::RefCell, fmt};
 
 pub struct Signal<'a, T> {
@@ -76,68 +74,51 @@ impl<'a, T> Signal<'a, T> {
 
 struct SignalInner<'a, T> {
     value: RefCell<T>,
-    context: SignalContext<'a>,
+    context: WrappedSignalContext<'a>,
 }
 
-pub(crate) struct SignalContext<'a> {
-    this: OnceCell<&'static SignalContext<'static>>,
-    shared: &'a ScopeShared,
-    future_subscribers: RefCell<AHashSet<ByAddress<'static, RawEffect<'static>>>>,
-    subscribers: RefCell<IndexSet<ByAddress<'static, RawEffect<'static>>, ahash::RandomState>>,
+struct WrappedSignalContext<'a> {
+    inner: &'a SignalContext,
+    slot: SlotDisposer<'a, SignalContext>,
 }
 
-impl Drop for SignalContext<'_> {
-    fn drop(&mut self) {
-        // SAFETY: this will be dropped after disposing, it's safe to access it.
-        let this = self.this();
-        for eff in self.future_subscribers.get_mut().iter() {
-            eff.0.remove_dependence(this);
-        }
-    }
-}
-
-impl<'a> SignalContext<'a> {
-    fn this(&self) -> &'static SignalContext<'static> {
-        let this = *self.this.get().unwrap_or_else(|| unreachable!());
-        debug_assert_eq!(
-            this as *const SignalContext as *const (),
-            self as *const SignalContext as *const ()
-        );
-        this
+impl<'a> WrappedSignalContext<'a> {
+    fn with_effect(&self, key: SlotKey<RawEffect<'static>>, f: impl FnOnce(&RawEffect<'static>)) {
+        self.slot.shared.slots.get(key).map(f);
     }
 
     pub fn track(&self) {
-        if let Some(e) = self.shared.observer.get() {
-            // SAFETY: An effect might captured a signal created inside the
-            // child scope, we should notify the effect to remove the signal
-            // to avoid access dangling pointer.
-            let this = self.this();
-            // The signal might be used as a dependence in the future, we should
-            // record this effect, and notify it of unsubscribing when the signal
-            // is disposed.
-            self.future_subscribers.borrow_mut().insert(ByAddress(e));
-            e.add_dependence(this);
+        if let Some(key) = self.slot.shared.observer.get() {
+            self.with_effect(key, |eff| eff.add_dependency(self.slot.key));
         }
     }
 
-    pub fn subscribe(&self, effect: &'static RawEffect<'static>) {
-        self.subscribers.borrow_mut().insert(ByAddress(effect));
-    }
-
-    pub fn unsubscribe(&self, effect: &'static RawEffect<'static>) {
-        self.subscribers.borrow_mut().remove(&ByAddress(effect));
-    }
-
     pub fn trigger_subscribers(&self) {
-        self.future_subscribers.borrow_mut().clear();
-        let subscribers = self.subscribers.take();
+        let subscribers = self.inner.subscribers.replace_with(|subs| {
+            IndexSet::with_capacity_and_hasher(subs.len(), Default::default())
+        });
         // Effects attach to subscribers at the end of the effect scope,
         // an effect created inside another scope might send signals to its
         // outer scope, so we should ensure the inner effects re-execute
         // before outer ones to avoid potential double executions.
-        for eff in subscribers {
-            eff.0.run();
+        for key in subscribers {
+            self.with_effect(key, |eff| eff.run());
         }
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct SignalContext {
+    subscribers: RefCell<IndexSet<SlotKey<RawEffect<'static>>>>,
+}
+
+impl SignalContext {
+    pub fn subscribe(&self, effect: SlotKey<RawEffect<'static>>) {
+        self.subscribers.borrow_mut().insert(effect);
+    }
+
+    pub fn unsubscribe(&self, effect: SlotKey<RawEffect<'static>>) {
+        self.subscribers.borrow_mut().remove(&effect);
     }
 }
 
@@ -168,23 +149,21 @@ impl<'a, T> std::ops::Deref for Ref<'a, T> {
 
 impl<'a> Scope<'a> {
     pub fn create_signal<T: 'a>(self, t: T) -> Signal<'a, T> {
+        let context = {
+            let mut slot = None;
+            let inner = self.create_in_slots(|s| {
+                slot = Some(s);
+                SignalContext::default()
+            });
+            WrappedSignalContext {
+                inner,
+                slot: slot.unwrap_or_else(|| unreachable!()),
+            }
+        };
         let inner = self.create_variable(SignalInner {
             value: RefCell::new(t),
-            context: SignalContext {
-                this: OnceCell::default(),
-                shared: self.shared(),
-                future_subscribers: Default::default(),
-                subscribers: Default::default(),
-            },
+            context,
         });
-        // SAFETY: crated variable has a stable address and lives as long
-        // as the scope.
-        let ptr = unsafe { std::mem::transmute(&inner.context) };
-        inner
-            .context
-            .this
-            .set(ptr)
-            .unwrap_or_else(|_| unreachable!());
         Signal { inner }
     }
 }
