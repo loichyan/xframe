@@ -1,7 +1,8 @@
-use crate::scope::ScopeShared;
+mod gbump;
+pub(crate) use gbump::{GBump, Owned, WeakRef};
+
 use bumpalo::Bump;
-use slotmap::{DefaultKey, SlotMap};
-use std::{cell::RefCell, fmt, hash::Hash, marker::PhantomData};
+use std::{cell::RefCell, fmt};
 
 trait Empty {}
 impl<T> Empty for T {}
@@ -35,27 +36,6 @@ impl<'a> Arena<'a> {
         val
     }
 
-    pub fn alloc_in_slots<T: 'a>(
-        &'a self,
-        shared: &'a ScopeShared,
-        f: impl FnOnce(SlotDisposer<'a, T>) -> T,
-    ) -> &'a T {
-        let mut slot = None;
-        shared.slots.inner.borrow_mut().insert_with_key(|id| {
-            let key = SlotKey {
-                id,
-                ty: PhantomData::<T>,
-            };
-            let dispoer = SlotDisposer { key, shared };
-            let ptr = self.alloc(f(dispoer));
-            slot = Some(ptr);
-            // SAFETY: The type is constraint by SlotKey, and it can't be accessed
-            // once the SlotDisposer is disposed.
-            unsafe { std::mem::transmute(ptr as *const dyn Empty) }
-        });
-        slot.unwrap_or_else(|| unreachable!())
-    }
-
     pub unsafe fn dispose(&self) {
         // SAFETY: last alloced variables must be disposed first because signals
         // and effects need to do some cleanup works with its captured references.
@@ -64,59 +44,3 @@ impl<'a> Arena<'a> {
         }
     }
 }
-
-#[derive(Default)]
-pub(crate) struct Slots {
-    inner: RefCell<SlotMap<DefaultKey, *const dyn Empty>>,
-}
-
-impl Slots {
-    pub fn get<T>(&self, key: SlotKey<T>) -> Option<&T> {
-        self.inner
-            .borrow()
-            .get(key.id)
-            .copied()
-            .map(|ptr| unsafe { &*(ptr as *const T) })
-    }
-}
-
-pub(crate) struct SlotDisposer<'a, T> {
-    pub key: SlotKey<T>,
-    pub shared: &'a ScopeShared,
-}
-
-impl<T> Drop for SlotDisposer<'_, T> {
-    fn drop(&mut self) {
-        self.shared.slots.inner.borrow_mut().remove(self.key.id);
-    }
-}
-
-pub(crate) struct SlotKey<T> {
-    id: DefaultKey,
-    ty: PhantomData<T>,
-}
-
-impl<T> Clone for SlotKey<T> {
-    fn clone(&self) -> Self {
-        SlotKey {
-            id: self.id,
-            ty: PhantomData,
-        }
-    }
-}
-
-impl<T> Copy for SlotKey<T> {}
-
-impl<T> Hash for SlotKey<T> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
-    }
-}
-
-impl<T> PartialEq for SlotKey<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.id.eq(&other.id)
-    }
-}
-
-impl<T> Eq for SlotKey<T> {}

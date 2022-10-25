@@ -1,14 +1,13 @@
 use crate::{
-    arena::{SlotDisposer, SlotKey},
-    scope::{BoundedScope, Scope},
-    signal::SignalContext,
+    arena::Owned,
+    scope::{BoundedScope, BoundedScopeShared, EffectRef, Scope, SignalContextRef},
 };
 use ahash::AHashSet;
 use std::{cell::RefCell, fmt};
 
 #[derive(Clone, Copy)]
 pub struct Effect<'a> {
-    inner: &'a RawEffect<'a>,
+    inner: &'a Owned<'a, RawEffect<'static>>,
 }
 
 impl fmt::Debug for Effect<'_> {
@@ -24,38 +23,35 @@ impl<'a> Effect<'a> {
 }
 
 pub(crate) struct RawEffect<'a> {
-    slot: SlotDisposer<'a, RawEffect<'static>>,
+    this: EffectRef,
+    shared: BoundedScopeShared<'a>,
     effect: &'a (dyn 'a + AnyEffect),
-    dependencies: RefCell<AHashSet<SlotKey<SignalContext>>>,
+    dependencies: RefCell<AHashSet<SignalContextRef>>,
 }
 
 impl<'a> RawEffect<'a> {
-    fn with_signal(&self, key: SlotKey<SignalContext>, f: impl FnOnce(&SignalContext)) {
-        self.slot.shared.slots.get(key).map(f);
-    }
-
     pub fn clear_dependencies(&self) {
-        let this = self.slot.key;
+        let this = self.this;
         let deps = &mut *self.dependencies.borrow_mut();
-        for sid in deps.iter().copied() {
-            self.with_signal(sid, |signal| {
-                signal.unsubscribe(this);
+        for sig in deps.iter().copied() {
+            sig.with(|sig| {
+                sig.unsubscribe(this);
             });
         }
         deps.clear();
     }
 
-    pub fn add_dependency(&self, key: SlotKey<SignalContext>) {
+    pub fn add_dependency(&self, key: SignalContextRef) {
         self.dependencies.borrow_mut().insert(key);
     }
 
     pub fn run(&self) {
         // 1) Clear dependencies.
-        let this = self.slot.key;
+        let this = self.this;
         self.clear_dependencies();
 
         // 2) Save previous subscriber.
-        let observer = &self.slot.shared.observer;
+        let observer = &self.shared.observer;
         let saved = observer.take();
         observer.set(Some(this));
 
@@ -63,8 +59,8 @@ impl<'a> RawEffect<'a> {
         self.effect.run();
 
         // 4) Re-calculate dependencies.
-        for sid in self.dependencies.borrow().iter().copied() {
-            self.with_signal(sid, |signal| signal.subscribe(this));
+        for sig in self.dependencies.borrow().iter().copied() {
+            sig.with(|sig| sig.subscribe(this));
         }
 
         // 5) Restore previous subscriber.
@@ -94,17 +90,21 @@ where
 
 impl<'a> Scope<'a> {
     fn create_effect_impl(self, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
-        let eff = self.create_in_slots(|slot| {
-            // SAFETY: thiss effect can't be accessed once the slot is disposed.
-            let slot = unsafe { std::mem::transmute(slot) };
-            RawEffect {
-                slot,
+        let shared = self.shared();
+        let owned = shared.effects.alloc_with_weak(|this| {
+            let raw = RawEffect {
+                this,
+                shared,
                 effect,
                 dependencies: Default::default(),
-            }
+            };
+            // SAFETY: once this scope is disposed, the owned effect is dropped
+            // and no longer accessable for weak references.
+            unsafe { std::mem::transmute(raw) }
         });
-        eff.run();
-        Effect { inner: eff }
+        let inner = self.create_variable(owned);
+        inner.run();
+        Effect { inner }
     }
 
     pub fn create_effect<T: 'a>(self, f: impl 'a + FnMut(Option<T>) -> T) -> Effect<'a> {
@@ -284,7 +284,7 @@ mod tests {
                 .dependencies
                 .borrow()
                 .iter()
-                .map(|key| eff.inner.slot.shared.slots.get(*key).is_some())
+                .map(|sig| sig.upgrade().is_some())
                 .filter(|x| *x)
                 .count();
             assert_eq!(dep_count, 0);

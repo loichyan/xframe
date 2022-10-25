@@ -1,9 +1,10 @@
 use crate::{
-    arena::{Arena, SlotDisposer, SlotKey, Slots},
+    arena::{Arena, GBump, WeakRef},
     context::Contexts,
     effect::RawEffect,
+    signal::SignalContext,
 };
-use std::{cell::Cell, fmt, marker::PhantomData};
+use std::{cell::Cell, fmt, marker::PhantomData, ops::Deref};
 
 pub type Scope<'a> = BoundedScope<'a, 'a>;
 
@@ -26,10 +27,8 @@ impl<'a> Scope<'a> {
         &self.inner.inherited
     }
 
-    pub(crate) fn create_in_slots<T: 'a>(self, f: impl FnOnce(SlotDisposer<'a, T>) -> T) -> &'a T {
-        self.inner
-            .arena
-            .alloc_in_slots(self.inner.inherited.shared, f)
+    pub(crate) fn shared(&self) -> BoundedScopeShared<'a> {
+        self.inner.inherited.shared
     }
 }
 
@@ -52,7 +51,7 @@ impl fmt::Debug for ScopeInner<'_> {
 pub(crate) struct ScopeInherited<'a> {
     pub parent: Option<&'a ScopeInherited<'a>>,
     pub contexts: Contexts<'a>,
-    shared: &'a ScopeShared,
+    shared: BoundedScopeShared<'a>,
 }
 
 impl fmt::Debug for ScopeInherited<'_> {
@@ -60,15 +59,33 @@ impl fmt::Debug for ScopeInherited<'_> {
         f.debug_struct("ScopeInherited")
             .field("parent", &self.parent.map(|x| x as *const ScopeInherited))
             .field("contexts", &self.contexts)
-            .field("shared", &(self.shared as *const ScopeShared))
+            .field("shared", &(self.shared.inner as *const ScopeShared))
             .finish()
+    }
+}
+
+pub(crate) type EffectRef = WeakRef<'static, RawEffect<'static>>;
+pub(crate) type SignalContextRef = WeakRef<'static, SignalContext>;
+
+#[derive(Clone, Copy)]
+pub(crate) struct BoundedScopeShared<'a> {
+    inner: &'static ScopeShared,
+    bounds: PhantomData<&'a ()>,
+}
+
+impl Deref for BoundedScopeShared<'_> {
+    type Target = &'static ScopeShared;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }
 
 #[derive(Default)]
 pub(crate) struct ScopeShared {
-    pub observer: Cell<Option<SlotKey<RawEffect<'static>>>>,
-    pub slots: Slots,
+    pub observer: Cell<Option<EffectRef>>,
+    pub singal_contexts: GBump<SignalContext>,
+    pub effects: GBump<RawEffect<'static>>,
 }
 
 pub struct ScopeDisposer<'a> {
@@ -90,11 +107,17 @@ impl<'a> ScopeDisposer<'a> {
                 shared: parent.shared,
             })
             .unwrap_or_else(|| {
-                let shared = Box::new(ScopeShared::default());
+                let shared = {
+                    let boxed = Box::new(ScopeShared::default());
+                    BoundedScopeShared {
+                        inner: Box::leak(boxed),
+                        bounds: PhantomData,
+                    }
+                };
                 ScopeInherited {
                     parent: None,
                     contexts: Default::default(),
-                    shared: Box::leak(shared),
+                    shared,
                 }
             });
         let scope = Box::new(ScopeInner {
@@ -143,7 +166,9 @@ impl Drop for ScopeDisposer<'_> {
             unsafe { scope.arena.dispose() };
             if scope.inherited.parent.is_none() {
                 let shared = unsafe {
-                    Box::from_raw(scope.inherited.shared as *const ScopeShared as *mut ScopeShared)
+                    Box::from_raw(
+                        scope.inherited.shared.inner as *const ScopeShared as *mut ScopeShared,
+                    )
                 };
                 drop(shared);
             }

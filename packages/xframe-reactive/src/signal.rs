@@ -2,9 +2,8 @@ mod modify;
 pub use modify::Modify;
 
 use crate::{
-    arena::{SlotDisposer, SlotKey},
-    effect::RawEffect,
-    scope::Scope,
+    arena::Owned,
+    scope::{BoundedScopeShared, EffectRef, Scope},
 };
 use indexmap::IndexSet;
 use std::{cell::RefCell, fmt};
@@ -78,46 +77,42 @@ struct SignalInner<'a, T> {
 }
 
 struct WrappedSignalContext<'a> {
-    inner: &'a SignalContext,
-    slot: SlotDisposer<'a, SignalContext>,
+    owned: Owned<'static, SignalContext>,
+    shared: BoundedScopeShared<'a>,
 }
 
 impl<'a> WrappedSignalContext<'a> {
-    fn with_effect(&self, key: SlotKey<RawEffect<'static>>, f: impl FnOnce(&RawEffect<'static>)) {
-        self.slot.shared.slots.get(key).map(f);
-    }
-
     pub fn track(&self) {
-        if let Some(key) = self.slot.shared.observer.get() {
-            self.with_effect(key, |eff| eff.add_dependency(self.slot.key));
+        if let Some(eff) = self.shared.observer.get() {
+            eff.with(|eff| eff.add_dependency(Owned::downgrade(&self.owned)));
         }
     }
 
     pub fn trigger_subscribers(&self) {
-        let subscribers = self.inner.subscribers.replace_with(|subs| {
+        let subscribers = self.owned.subscribers.replace_with(|subs| {
             IndexSet::with_capacity_and_hasher(subs.len(), Default::default())
         });
         // Effects attach to subscribers at the end of the effect scope,
         // an effect created inside another scope might send signals to its
         // outer scope, so we should ensure the inner effects re-execute
         // before outer ones to avoid potential double executions.
-        for key in subscribers {
-            self.with_effect(key, |eff| eff.run());
+        for eff in subscribers {
+            eff.with(|eff| eff.run());
         }
     }
 }
 
 #[derive(Default)]
 pub(crate) struct SignalContext {
-    subscribers: RefCell<IndexSet<SlotKey<RawEffect<'static>>>>,
+    subscribers: RefCell<IndexSet<EffectRef>>,
 }
 
 impl SignalContext {
-    pub fn subscribe(&self, effect: SlotKey<RawEffect<'static>>) {
+    pub fn subscribe(&self, effect: EffectRef) {
         self.subscribers.borrow_mut().insert(effect);
     }
 
-    pub fn unsubscribe(&self, effect: SlotKey<RawEffect<'static>>) {
+    pub fn unsubscribe(&self, effect: EffectRef) {
         self.subscribers.borrow_mut().remove(&effect);
     }
 }
@@ -149,16 +144,10 @@ impl<'a, T> std::ops::Deref for Ref<'a, T> {
 
 impl<'a> Scope<'a> {
     pub fn create_signal<T: 'a>(self, t: T) -> Signal<'a, T> {
+        let shared = self.shared();
         let context = {
-            let mut slot = None;
-            let inner = self.create_in_slots(|s| {
-                slot = Some(s);
-                SignalContext::default()
-            });
-            WrappedSignalContext {
-                inner,
-                slot: slot.unwrap_or_else(|| unreachable!()),
-            }
+            let owned = shared.singal_contexts.alloc(SignalContext::default());
+            WrappedSignalContext { owned, shared }
         };
         let inner = self.create_variable(SignalInner {
             value: RefCell::new(t),
