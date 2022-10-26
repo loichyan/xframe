@@ -4,7 +4,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-impl<'a, T: 'static> Signal<'a, T> {
+impl<'a, T> Signal<'a, T> {
     pub fn modify(&self) -> Modify<'a, T> {
         Modify {
             value: self.value().borrow_mut(),

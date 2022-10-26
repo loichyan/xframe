@@ -1,9 +1,12 @@
 mod modify;
 pub use modify::Modify;
 
-use crate::scope::{Cleanup, EffectRef, Scope, Shared, SignalRef};
+use crate::{
+    scope::{Cleanup, EffectRef, Scope, Shared, SignalRef},
+    Empty,
+};
 use indexmap::IndexSet;
-use std::{any::Any, cell::RefCell, fmt, marker::PhantomData};
+use std::{cell::RefCell, fmt, marker::PhantomData};
 
 pub struct Signal<'a, T> {
     inner: &'a RawSignal<'a>,
@@ -26,13 +29,10 @@ impl<T> Clone for Signal<'_, T> {
 
 impl<T> Copy for Signal<'_, T> {}
 
-impl<'a, T: 'static> Signal<'a, T> {
+impl<'a, T> Signal<'a, T> {
     fn value(&self) -> &'a RefCell<T> {
-        self.inner
-            .value
-            .downcast_ref()
-            // SAFETY: the type is guaranteed by self.ty
-            .unwrap_or_else(|| unreachable!())
+        // SAFETY: the type is guaranteed by self.ty
+        unsafe { &*(self.inner.value as *const dyn Empty as *const RefCell<T>) }
     }
 
     pub fn track(&self) {
@@ -80,7 +80,7 @@ impl<'a, T: 'static> Signal<'a, T> {
 pub(crate) struct RawSignal<'a> {
     this: SignalRef,
     shared: &'static Shared,
-    value: &'a dyn Any,
+    value: &'a (dyn 'a + Empty),
     subscribers: RefCell<IndexSet<EffectRef>>,
 }
 
@@ -137,7 +137,7 @@ impl<'a, T> std::ops::Deref for Ref<'a, T> {
 }
 
 impl<'a> Scope<'a> {
-    fn create_signal_impl<T>(self, value: &'a dyn Any) -> Signal<'a, T> {
+    fn create_signal_impl<T>(self, value: &'a (dyn 'a + Empty)) -> Signal<'a, T> {
         let shared = self.shared();
         let raw = shared.signals.alloc_with_weak(|this| {
             let raw = RawSignal {
@@ -158,7 +158,7 @@ impl<'a> Scope<'a> {
         }
     }
 
-    pub fn create_signal<T: 'static>(self, t: T) -> Signal<'a, T> {
+    pub fn create_signal<T: 'a>(self, t: T) -> Signal<'a, T> {
         let value = self.create_variable(RefCell::new(t));
         self.create_signal_impl(value)
     }
@@ -197,6 +197,18 @@ mod tests {
             assert_eq!(*double.get(), 2);
             state.set_slient(2);
             assert_eq!(*double.get(), 2);
+        });
+    }
+
+    #[test]
+    fn signal_of_signal() {
+        Scope::create_root(|cx| {
+            let state = cx.create_signal(1);
+            let state2 = cx.create_signal(state);
+            let double = cx.create_memo(move || *state2.get().get() * 2);
+            assert_eq!(*state2.get().get(), 1);
+            state.set(2);
+            assert_eq!(*double.get(), 4);
         });
     }
 }

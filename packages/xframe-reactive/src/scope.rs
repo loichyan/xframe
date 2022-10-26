@@ -3,7 +3,7 @@ use crate::{
     context::Contexts,
     effect::RawEffect,
     signal::RawSignal,
-    CovariantLifetime, InvariantLifetime,
+    CovariantLifetime, Empty, InvariantLifetime,
 };
 use bumpalo::Bump;
 use smallvec::SmallVec;
@@ -45,15 +45,10 @@ impl<'a> Scope<'a> {
     }
 }
 
-trait Empty {}
-impl<T> Empty for T {}
-
-pub(crate) struct Variable<'a>(&'a dyn Empty);
-
 pub(crate) enum Cleanup<'a> {
     Signal(SignalRef),
     Effect(EffectRef),
-    Variable(Variable<'a>),
+    Variable(&'a (dyn 'a + Empty)),
     Callback(Box<dyn 'a + FnOnce()>),
 }
 
@@ -85,7 +80,7 @@ impl Drop for RawScope<'_> {
                     self.inherited.shared.effects.free(eff);
                 }
                 Cleanup::Variable(ptr) => unsafe {
-                    std::ptr::drop_in_place(ptr.0 as *const dyn Empty as *mut dyn Empty);
+                    std::ptr::drop_in_place(ptr as *const dyn Empty as *mut dyn Empty);
                 },
                 Cleanup::Callback(f) => f(),
             }
@@ -214,7 +209,7 @@ impl<'a> Scope<'a> {
 
     pub fn create_variable<T: 'a>(self, t: T) -> &'a T {
         let ptr = &*self.inner.variables.alloc(t);
-        self.push_cleanup(Cleanup::Variable(Variable(ptr)));
+        self.push_cleanup(Cleanup::Variable(ptr));
         ptr
     }
 

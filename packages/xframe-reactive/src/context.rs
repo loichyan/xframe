@@ -1,11 +1,8 @@
-use crate::{scope::ScopeInherited, store::StoreBuilder, Scope};
+use crate::{scope::ScopeInherited, store::StoreBuilder, Empty, Scope};
 use ahash::AHashMap;
 use std::{any::TypeId, cell::RefCell, fmt};
 
 type ContextsInner<'a> = AHashMap<TypeId, &'a (dyn 'a + Empty)>;
-
-trait Empty {}
-impl<T> Empty for T {}
 
 #[derive(Default)]
 pub(crate) struct Contexts<'a> {

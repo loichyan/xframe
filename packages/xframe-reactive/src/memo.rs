@@ -5,7 +5,7 @@ use crate::{
 use std::cell::Cell;
 
 impl<'a> Scope<'a> {
-    fn create_memo_impl<T: 'static>(
+    fn create_memo_impl<T: 'a>(
         self,
         mut f: impl 'a + FnMut() -> T,
         mut update: impl 'a + FnMut(T, Signal<'a, T>),
@@ -23,18 +23,18 @@ impl<'a> Scope<'a> {
         memo.get().unwrap()
     }
 
-    pub fn create_memo<T: 'static>(self, f: impl 'a + FnMut() -> T) -> Signal<'a, T> {
+    pub fn create_memo<T: 'a>(self, f: impl 'a + FnMut() -> T) -> Signal<'a, T> {
         self.create_memo_impl(f, |new_val, memo| memo.set(new_val))
     }
 
-    pub fn create_seletor<T: 'static>(self, f: impl 'a + FnMut() -> T) -> Signal<'a, T>
+    pub fn create_seletor<T: 'a>(self, f: impl 'a + FnMut() -> T) -> Signal<'a, T>
     where
         T: PartialEq,
     {
         self.create_seletor_with(f, T::eq)
     }
 
-    pub fn create_seletor_with<T: 'static>(
+    pub fn create_seletor_with<T: 'a>(
         self,
         f: impl 'a + FnMut() -> T,
         mut is_equal: impl 'a + FnMut(&T, &T) -> bool,
