@@ -27,6 +27,10 @@ impl<T> Default for Arena<T> {
 
 impl<T> Arena<T> {
     pub fn alloc(&self, t: T) -> WeakRef<'_, T> {
+        self.alloc_with_weak(|_| t)
+    }
+
+    pub fn alloc_with_weak<'a>(&'a self, f: impl FnOnce(WeakRef<'a, T>) -> T) -> WeakRef<'a, T> {
         let free_head = self.free_head.get().map(|addr| unsafe { addr.as_ref() });
 
         // 1) get slot
@@ -37,8 +41,12 @@ impl<T> Arena<T> {
             self.bump.alloc(Slot { version, content })
         });
 
-        // 2) bump version
+        // 2) get value
         let version = slot.version.get() | 1;
+        let weak = WeakRef { version, slot };
+        let val = f(weak);
+
+        // 2) bump version
         debug_assert_eq!(slot.version.get() + 1, version);
         slot.version.set(version);
 
@@ -48,10 +56,10 @@ impl<T> Arena<T> {
         self.free_head.set(next_free);
 
         // 4) write value
-        content.value = ManuallyDrop::new(t);
+        content.value = ManuallyDrop::new(val);
 
         // 5) return
-        WeakRef { version, slot }
+        weak
     }
 
     pub fn free(&self, weak: WeakRef<'_, T>) -> bool {
@@ -127,6 +135,11 @@ impl<'a, T> WeakRef<'a, T> {
         (self.version, self.slot as *const Slot<T>)
     }
 
+    pub fn as_ptr(&self) -> *const T {
+        let ptr: &T = unsafe { &self.slot.content.borrow().value };
+        ptr as *const T
+    }
+
     pub fn can_upgrade(&self) -> bool {
         self.slot.version.get() == self.version
     }
@@ -137,6 +150,10 @@ impl<'a, T> WeakRef<'a, T> {
         }
         let val = unsafe { &self.slot.content.borrow().value };
         Some(f(val))
+    }
+
+    pub unsafe fn leak_ref(self) -> &'a T {
+        &(*self.slot.content.as_ptr()).value
     }
 }
 
@@ -202,6 +219,15 @@ mod tests {
 
         val.with(|_| {
             assert!(arena.try_free(val).is_err());
+        });
+    }
+
+    #[test]
+    fn cannot_upgrade_a_weak_before_alloc() {
+        let arena = Arena::<i32>::default();
+        arena.alloc_with_weak(|weak| {
+            assert!(!weak.can_upgrade());
+            0
         });
     }
 

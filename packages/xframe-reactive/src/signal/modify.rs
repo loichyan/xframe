@@ -1,5 +1,4 @@
-use super::Signal;
-use crate::scope::SignalRef;
+use super::{RawSignal, Signal};
 use std::{
     fmt,
     ops::{Deref, DerefMut},
@@ -16,7 +15,7 @@ impl<'a, T: 'static> Signal<'a, T> {
 
 pub struct Modify<'a, T> {
     value: std::cell::RefMut<'a, T>,
-    trigger: ModifyTrigger,
+    trigger: ModifyTrigger<'a>,
 }
 
 impl<T: fmt::Debug> fmt::Debug for Modify<'_, T> {
@@ -59,12 +58,10 @@ impl<'a, T> DerefMut for Modify<'a, T> {
     }
 }
 
-struct ModifyTrigger(SignalRef);
+struct ModifyTrigger<'a>(&'a RawSignal<'a>);
 
-impl Drop for ModifyTrigger {
+impl Drop for ModifyTrigger<'_> {
     fn drop(&mut self) {
-        self.0
-            .with(|raw| raw.trigger_subscribers())
-            .unwrap_or_else(|| unreachable!())
+        self.0.trigger_subscribers();
     }
 }

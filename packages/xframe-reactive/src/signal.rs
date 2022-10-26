@@ -6,8 +6,8 @@ use indexmap::IndexSet;
 use std::{any::Any, cell::RefCell, fmt, marker::PhantomData};
 
 pub struct Signal<'a, T> {
-    inner: SignalRef,
-    ty: PhantomData<&'a T>,
+    inner: &'a RawSignal<'a>,
+    ty: PhantomData<T>,
 }
 
 impl<T: fmt::Debug> fmt::Debug for Signal<'_, T> {
@@ -27,26 +27,20 @@ impl<T> Clone for Signal<'_, T> {
 impl<T> Copy for Signal<'_, T> {}
 
 impl<'a, T: 'static> Signal<'a, T> {
-    fn with<U>(&self, f: impl FnOnce(&RawSignal<'static>) -> U) -> U {
-        self.inner.with(f).unwrap_or_else(|| unreachable!())
-    }
-
     fn value(&self) -> &'a RefCell<T> {
-        self.with(|raw| raw.value.downcast_ref().unwrap_or_else(|| unreachable!()))
+        self.inner
+            .value
+            .downcast_ref()
+            // SAFETY: the type is guaranteed by self.ty
+            .unwrap_or_else(|| unreachable!())
     }
 
     pub fn track(&self) {
-        self.inner.with(|raw| {
-            if let Some(eff) = raw.shared.observer.get() {
-                eff.with(|raw| raw.add_dependency(self.inner));
-            }
-        });
+        self.inner.track();
     }
 
     pub fn trigger_subscribers(&self) {
-        self.inner.with(|raw| {
-            raw.trigger_subscribers();
-        });
+        self.inner.trigger_subscribers();
     }
 
     pub fn get(&self) -> Ref<'a, T> {
@@ -84,12 +78,19 @@ impl<'a, T: 'static> Signal<'a, T> {
 }
 
 pub(crate) struct RawSignal<'a> {
+    this: SignalRef,
     shared: &'static Shared,
     value: &'a dyn Any,
     subscribers: RefCell<IndexSet<EffectRef>>,
 }
 
 impl<'a> RawSignal<'a> {
+    pub fn track(&self) {
+        if let Some(eff) = self.shared.observer.get() {
+            eff.with(|eff| eff.add_dependency(self.this));
+        }
+    }
+
     pub fn subscribe(&self, effect: EffectRef) {
         self.subscribers.borrow_mut().insert(effect);
     }
@@ -105,7 +106,7 @@ impl<'a> RawSignal<'a> {
         // outer scope, so we should ensure the inner effects re-execute
         // before outer ones to avoid potential double executions.
         for eff in subscribers {
-            eff.with(|raw| raw.run(eff));
+            eff.with(|eff| eff.run());
         }
     }
 }
@@ -138,16 +139,19 @@ impl<'a, T> std::ops::Deref for Ref<'a, T> {
 impl<'a> Scope<'a> {
     fn create_signal_impl<T>(self, value: &'a dyn Any) -> Signal<'a, T> {
         let shared = self.shared();
-        let raw = RawSignal {
-            shared,
-            value,
-            subscribers: Default::default(),
-        };
-        // SAFETY: the signal will be freed and no longer accessible for weak
-        // references once current scope is disposed.
-        let raw = unsafe { std::mem::transmute(raw) };
-        let inner = shared.signals.alloc(raw);
-        self.push_cleanup(Cleanup::Signal(inner));
+        let raw = shared.signals.alloc_with_weak(|this| {
+            let raw = RawSignal {
+                this,
+                shared,
+                value,
+                subscribers: Default::default(),
+            };
+            // SAFETY: the signal will be freed and no longer accessible for weak
+            // references once current scope is disposed.
+            unsafe { std::mem::transmute(raw) }
+        });
+        let inner = unsafe { raw.leak_ref() };
+        self.push_cleanup(Cleanup::Signal(raw));
         Signal {
             inner,
             ty: PhantomData,

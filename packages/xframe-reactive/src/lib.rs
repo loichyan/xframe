@@ -6,6 +6,9 @@ mod scope;
 mod signal;
 mod store;
 
+type InvariantLifetime<'a> = &'a mut &'a mut ();
+type CovariantLifetime<'a> = &'a ();
+
 pub use effect::Effect;
 pub use scope::{BoundedScope, Scope, ScopeDisposer};
 pub use signal::{Modify, Ref, Signal};
