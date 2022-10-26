@@ -1,11 +1,11 @@
-use crate::scope::{BoundedScope, Cleanup, EffectId, Scope, Shared, SignalId};
+use crate::scope::{BoundedScope, Cleanup, EffectRef, Scope, Shared, SignalRef};
 use ahash::AHashSet;
-use std::{cell::RefCell, fmt};
+use std::{cell::RefCell, fmt, marker::PhantomData};
 
 #[derive(Clone, Copy)]
 pub struct Effect<'a> {
-    id: EffectId,
-    shared: &'a Shared,
+    inner: EffectRef,
+    bounds: PhantomData<&'a ()>,
 }
 
 impl fmt::Debug for Effect<'_> {
@@ -15,64 +15,56 @@ impl fmt::Debug for Effect<'_> {
 }
 
 impl<'a> Effect<'a> {
-    pub fn clear_dependencies(&self) {
-        self.id.with_context(self.shared, |ctx| {
-            let mut deps = ctx.dependencies.borrow_mut();
-            for id in deps.iter().copied() {
-                self.shared
-                    .signals
-                    .borrow()
-                    .get(id)
-                    .map(|sig| sig.unsubscribe(self.id));
-            }
-            deps.clear();
-        });
-    }
-
     pub fn run(&self) {
-        self.id.with_effect(self.shared, |raw| {
-            self.run_with_raw(raw);
-        });
+        self.inner
+            .with(|raw| raw.run(self.inner))
+            .unwrap_or_else(|| unreachable!());
+    }
+}
+
+pub(crate) struct RawEffect<'a> {
+    shared: &'static Shared,
+    effect: &'a (dyn 'a + AnyEffect),
+    dependencies: RefCell<AHashSet<SignalRef>>,
+}
+
+impl<'a> RawEffect<'a> {
+    pub fn add_dependency(&self, signal: SignalRef) {
+        self.dependencies.borrow_mut().insert(signal);
     }
 
-    fn run_with_raw(&self, raw: RawEffect) {
+    pub fn clear_dependencies(&self, this: EffectRef) {
+        let mut dependencies = self.dependencies.borrow_mut();
+        for sig in dependencies.iter() {
+            sig.with(|sig| sig.unsubscribe(this));
+        }
+        dependencies.clear();
+    }
+
+    pub fn run(&self, this: EffectRef) {
         // 1) Clear dependencies.
-        self.clear_dependencies();
+        self.clear_dependencies(this);
 
         // 2) Save previous subscriber.
         let observer = &self.shared.observer;
         let saved = observer.take();
-        observer.set(Some(self.id));
+        observer.set(Some(this));
 
         // 3) Call the effect.
-        raw.run_untracked();
+        self.effect.run_untracked();
 
         // 4) Re-calculate dependencies.
-        self.id.with_context(self.shared, |ctx| {
-            for id in ctx.dependencies.borrow().iter().copied() {
-                self.shared
-                    .signals
-                    .borrow()
-                    .get(id)
-                    .map(|sig| sig.subscribe(self.id));
-            }
-        });
+        for sig in self.dependencies.borrow().iter() {
+            sig.with(|sig| sig.subscribe(this));
+        }
 
         // 5) Restore previous subscriber.
         observer.set(saved);
     }
 }
 
-pub(crate) type RawEffect<'a> = &'a (dyn 'a + AnyEffect);
-
-pub(crate) trait AnyEffect {
+trait AnyEffect {
     fn run_untracked(&self);
-}
-
-impl<'a> dyn 'a + AnyEffect {
-    pub fn run(&self, this: EffectId, shared: &Shared) {
-        Effect { id: this, shared }.run_with_raw(self)
-    }
 }
 
 struct AnyEffectImpl<T, F> {
@@ -91,57 +83,26 @@ where
     }
 }
 
-pub(crate) struct EffectContext {
-    dependencies: RefCell<AHashSet<SignalId>>,
-}
-
-impl EffectContext {
-    pub fn add_dependency(&self, id: SignalId) {
-        self.dependencies.borrow_mut().insert(id);
-    }
-}
-
-impl EffectId {
-    pub fn with_effect<'a, T>(self, shared: &'a Shared, f: impl FnOnce(RawEffect<'a>) -> T) -> T {
-        let effect = shared
-            .raw_effects
-            .borrow()
-            .get(self)
-            .copied()
-            .unwrap_or_else(|| unreachable!());
-        f(effect)
-    }
-
-    pub fn with_context<T>(self, shared: &Shared, f: impl FnOnce(&EffectContext) -> T) -> T {
-        f(shared
-            .effect_contexts
-            .borrow()
-            .get(self)
-            .unwrap_or_else(|| unreachable!()))
-    }
-}
-
 impl<'a> Scope<'a> {
-    fn create_effect_impl(self, raw: RawEffect<'a>) -> Effect<'a> {
+    fn create_effect_impl(self, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
         let shared = self.shared();
+        let raw = RawEffect {
+            effect,
+            shared,
+            dependencies: Default::default(),
+        };
+        // SAFETY: same as what we do on RawSignal, the effect cannot be accessed
+        // once this scope is disposed.
         let raw = unsafe { std::mem::transmute(raw) };
-        let id = shared.raw_effects.borrow_mut().insert(raw);
-        // Create or reuse existed contexts.
-        {
-            let mut contexts = shared.effect_contexts.borrow_mut();
-            if let Some(context) = contexts.get_mut(id) {
-                context.dependencies.get_mut().clear();
-            } else {
-                let ctx = EffectContext {
-                    dependencies: Default::default(),
-                };
-                contexts.insert(id, ctx);
-            }
+        let inner = shared.effects.alloc(raw);
+        inner
+            .with(|raw| raw.run(inner))
+            .unwrap_or_else(|| unreachable!());
+        self.push_cleanup(Cleanup::Effect(inner));
+        Effect {
+            inner,
+            bounds: PhantomData,
         }
-        self.push_cleanup(Cleanup::Effect(id));
-        let effect = Effect { id, shared };
-        effect.run_with_raw(raw);
-        effect
     }
 
     pub fn create_effect<T: 'a>(self, f: impl 'a + FnMut(Option<T>) -> T) -> Effect<'a> {
@@ -316,15 +277,17 @@ mod tests {
                     });
                 }
             });
-            let count = eff.id.with_context(cx.shared(), |ctx| {
-                ctx.dependencies
-                    .borrow()
-                    .iter()
-                    .copied()
-                    .map(|id| cx.shared().signals.borrow().get(id).is_some())
-                    .filter(|x| *x)
-                    .count()
-            });
+            let count = eff
+                .inner
+                .with(|raw| {
+                    raw.dependencies
+                        .borrow()
+                        .iter()
+                        .map(|sig| sig.can_upgrade())
+                        .filter(|x| *x)
+                        .count()
+                })
+                .unwrap();
             assert_eq!(count, 0);
         });
     }

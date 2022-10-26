@@ -1,5 +1,5 @@
 use super::Signal;
-use crate::scope::{Shared, SignalId};
+use crate::scope::SignalRef;
 use std::{
     fmt,
     ops::{Deref, DerefMut},
@@ -7,17 +7,16 @@ use std::{
 
 impl<'a, T: 'static> Signal<'a, T> {
     pub fn modify(&self) -> Modify<'a, T> {
-        let Signal { id, shared, .. } = *self;
         Modify {
             value: self.value().borrow_mut(),
-            trigger: ModifyTrigger { id, shared },
+            trigger: ModifyTrigger(self.inner),
         }
     }
 }
 
 pub struct Modify<'a, T> {
     value: std::cell::RefMut<'a, T>,
-    trigger: ModifyTrigger<'a>,
+    trigger: ModifyTrigger,
 }
 
 impl<T: fmt::Debug> fmt::Debug for Modify<'_, T> {
@@ -60,14 +59,12 @@ impl<'a, T> DerefMut for Modify<'a, T> {
     }
 }
 
-struct ModifyTrigger<'a> {
-    id: SignalId,
-    shared: &'a Shared,
-}
+struct ModifyTrigger(SignalRef);
 
-impl Drop for ModifyTrigger<'_> {
+impl Drop for ModifyTrigger {
     fn drop(&mut self) {
-        self.id
-            .with_signal(self.shared, |sig| sig.trigger_subscribers(self.shared));
+        self.0
+            .with(|raw| raw.trigger_subscribers())
+            .unwrap_or_else(|| unreachable!())
     }
 }

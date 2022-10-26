@@ -1,15 +1,18 @@
 use crate::{
+    arena::{Arena, WeakRef},
     context::Contexts,
-    effect::{EffectContext, RawEffect},
+    effect::RawEffect,
     signal::RawSignal,
 };
 use bumpalo::Bump;
-use slotmap::{new_key_type, SecondaryMap, SlotMap};
+use smallvec::SmallVec;
 use std::{
     cell::{Cell, RefCell},
     fmt,
     marker::PhantomData,
 };
+
+const INITIAL_CLEANUP_SLOTS: usize = 4;
 
 pub type Scope<'a> = BoundedScope<'a, 'a>;
 
@@ -32,7 +35,7 @@ impl<'a> Scope<'a> {
         &self.inner.inherited
     }
 
-    pub(crate) fn shared(&self) -> &'a Shared {
+    pub(crate) fn shared(&self) -> &'static Shared {
         self.inner.inherited.shared
     }
 
@@ -47,8 +50,8 @@ impl<T> Empty for T {}
 pub(crate) struct Variable<'a>(&'a dyn Empty);
 
 pub(crate) enum Cleanup<'a> {
-    Signal(SignalId),
-    Effect(EffectId),
+    Signal(SignalRef),
+    Effect(EffectRef),
     Variable(Variable<'a>),
     Callback(Box<dyn 'a + FnOnce()>),
 }
@@ -56,7 +59,7 @@ pub(crate) enum Cleanup<'a> {
 struct ScopeInner<'a> {
     arena: Bump,
     inherited: ScopeInherited<'a>,
-    cleanups: RefCell<Vec<Cleanup<'a>>>,
+    cleanups: RefCell<SmallVec<[Cleanup<'a>; INITIAL_CLEANUP_SLOTS]>>,
     // Ensure the 'a lifebounds is invariance.
     phantom: PhantomData<&'a mut &'a mut ()>,
 }
@@ -73,7 +76,7 @@ impl fmt::Debug for ScopeInner<'_> {
 pub(crate) struct ScopeInherited<'a> {
     pub parent: Option<&'a ScopeInherited<'a>>,
     pub contexts: Contexts<'a>,
-    shared: &'a Shared,
+    shared: &'static Shared,
 }
 
 impl fmt::Debug for ScopeInherited<'_> {
@@ -86,16 +89,14 @@ impl fmt::Debug for ScopeInherited<'_> {
     }
 }
 
-new_key_type! {pub(crate) struct SignalId;}
-new_key_type! {pub(crate) struct EffectId;}
-new_key_type! {pub(crate) struct ScopeId;}
+pub(crate) type SignalRef = WeakRef<'static, RawSignal<'static>>;
+pub(crate) type EffectRef = WeakRef<'static, RawEffect<'static>>;
 
 #[derive(Default)]
 pub(crate) struct Shared {
-    pub observer: Cell<Option<EffectId>>,
-    pub signals: RefCell<SlotMap<SignalId, RawSignal<'static>>>,
-    pub raw_effects: RefCell<SlotMap<EffectId, RawEffect<'static>>>,
-    pub effect_contexts: RefCell<SecondaryMap<EffectId, EffectContext>>,
+    pub observer: Cell<Option<WeakRef<'static, RawEffect<'static>>>>,
+    pub signals: Arena<RawSignal<'static>>,
+    pub effects: Arena<RawEffect<'static>>,
     // TODO: manage scopes
     // scopes: RefCell<SlotMap<ScopeId, ScopeInner<'static>>>,
 }
@@ -176,11 +177,11 @@ impl Drop for ScopeDisposer<'_> {
             // and effects need to do some cleanup works with its captured references.
             for ty in scope.cleanups.take().into_iter().rev() {
                 match ty {
-                    Cleanup::Signal(id) => {
-                        shared.signals.borrow_mut().remove(id);
+                    Cleanup::Signal(sig) => {
+                        scope.inherited.shared.signals.free(sig);
                     }
-                    Cleanup::Effect(id) => {
-                        shared.raw_effects.borrow_mut().remove(id);
+                    Cleanup::Effect(eff) => {
+                        scope.inherited.shared.effects.free(eff);
                     }
                     Cleanup::Variable(ptr) => unsafe {
                         std::ptr::drop_in_place(ptr.0 as *const dyn Empty as *mut dyn Empty);

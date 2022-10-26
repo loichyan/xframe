@@ -1,14 +1,13 @@
 mod modify;
 pub use modify::Modify;
 
-use crate::scope::{Cleanup, EffectId, Scope, Shared, SignalId};
+use crate::scope::{Cleanup, EffectRef, Scope, Shared, SignalRef};
 use indexmap::IndexSet;
 use std::{any::Any, cell::RefCell, fmt, marker::PhantomData};
 
 pub struct Signal<'a, T> {
-    id: SignalId,
-    shared: &'a Shared,
-    ty: PhantomData<T>,
+    inner: SignalRef,
+    ty: PhantomData<&'a T>,
 }
 
 impl<T: fmt::Debug> fmt::Debug for Signal<'_, T> {
@@ -28,25 +27,26 @@ impl<T> Clone for Signal<'_, T> {
 impl<T> Copy for Signal<'_, T> {}
 
 impl<'a, T: 'static> Signal<'a, T> {
+    fn with<U>(&self, f: impl FnOnce(&RawSignal<'static>) -> U) -> U {
+        self.inner.with(f).unwrap_or_else(|| unreachable!())
+    }
+
     fn value(&self) -> &'a RefCell<T> {
-        self.id.with_signal(self.shared, |sig| {
-            sig.value.downcast_ref().unwrap_or_else(|| unreachable!())
-        })
+        self.with(|raw| raw.value.downcast_ref().unwrap_or_else(|| unreachable!()))
     }
 
     pub fn track(&self) {
-        if let Some(id) = self.shared.observer.get() {
-            self.shared
-                .effect_contexts
-                .borrow()
-                .get(id)
-                .map(|ctx| ctx.add_dependency(self.id));
-        }
+        self.inner.with(|raw| {
+            if let Some(eff) = raw.shared.observer.get() {
+                eff.with(|raw| raw.add_dependency(self.inner));
+            }
+        });
     }
 
     pub fn trigger_subscribers(&self) {
-        self.id
-            .with_signal(self.shared, |sig| sig.trigger_subscribers(self.shared));
+        self.inner.with(|raw| {
+            raw.trigger_subscribers();
+        });
     }
 
     pub fn get(&self) -> Ref<'a, T> {
@@ -84,42 +84,29 @@ impl<'a, T: 'static> Signal<'a, T> {
 }
 
 pub(crate) struct RawSignal<'a> {
+    shared: &'static Shared,
     value: &'a dyn Any,
-    subscribers: RefCell<IndexSet<EffectId>>,
+    subscribers: RefCell<IndexSet<EffectRef>>,
 }
 
 impl<'a> RawSignal<'a> {
-    pub fn subscribe(&self, id: EffectId) {
-        self.subscribers.borrow_mut().insert(id);
+    pub fn subscribe(&self, effect: EffectRef) {
+        self.subscribers.borrow_mut().insert(effect);
     }
 
-    pub fn unsubscribe(&self, id: EffectId) {
-        self.subscribers.borrow_mut().remove(&id);
+    pub fn unsubscribe(&self, effect: EffectRef) {
+        self.subscribers.borrow_mut().remove(&effect);
     }
 
-    pub fn trigger_subscribers(&self, shared: &Shared) {
+    pub fn trigger_subscribers(&self) {
         let subscribers = self.subscribers.take();
         // Effects attach to subscribers at the end of the effect scope,
         // an effect created inside another scope might send signals to its
         // outer scope, so we should ensure the inner effects re-execute
         // before outer ones to avoid potential double executions.
-        for id in subscribers {
-            shared
-                .raw_effects
-                .borrow()
-                .get(id)
-                .map(|eff| eff.run(id, shared));
+        for eff in subscribers {
+            eff.with(|raw| raw.run(eff));
         }
-    }
-}
-
-impl SignalId {
-    pub fn with_signal<'a, T>(self, shared: &'a Shared, f: impl FnOnce(&RawSignal<'a>) -> T) -> T {
-        f(shared
-            .signals
-            .borrow()
-            .get(self)
-            .unwrap_or_else(|| unreachable!()))
     }
 }
 
@@ -152,15 +139,17 @@ impl<'a> Scope<'a> {
     fn create_signal_impl<T>(self, value: &'a dyn Any) -> Signal<'a, T> {
         let shared = self.shared();
         let raw = RawSignal {
+            shared,
             value,
             subscribers: Default::default(),
         };
+        // SAFETY: the signal will be freed and no longer accessible for weak
+        // references once current scope is disposed.
         let raw = unsafe { std::mem::transmute(raw) };
-        let id = shared.signals.borrow_mut().insert(raw);
-        self.push_cleanup(Cleanup::Signal(id));
+        let inner = shared.signals.alloc(raw);
+        self.push_cleanup(Cleanup::Signal(inner));
         Signal {
-            id,
-            shared,
+            inner,
             ty: PhantomData,
         }
     }
