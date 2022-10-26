@@ -16,7 +16,7 @@ pub struct Signal<'a, T> {
 impl<T: fmt::Debug> fmt::Debug for Signal<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Signal")
-            // .field(&self.inner.value.borrow())
+            .field(&self.value().borrow())
             .finish()
     }
 }

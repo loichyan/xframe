@@ -52,6 +52,23 @@ pub(crate) enum Cleanup<'a> {
     Callback(Box<dyn 'a + FnOnce()>),
 }
 
+impl fmt::Debug for Cleanup<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Cleanup::Signal(s) => f.debug_tuple("Signal").field(&s.as_ptr()).finish(),
+            Cleanup::Effect(e) => f.debug_tuple("Effect").field(&e.as_ptr()).finish(),
+            Cleanup::Variable(v) => f
+                .debug_tuple("Variable")
+                .field(&(v as *const dyn Empty))
+                .finish(),
+            Cleanup::Callback(c) => f
+                .debug_tuple("Callback")
+                .field(&(&*c as *const dyn FnOnce()))
+                .finish(),
+        }
+    }
+}
+
 struct RawScope<'a> {
     variables: Bump,
     inherited: ScopeInherited<'a>,
@@ -61,9 +78,9 @@ struct RawScope<'a> {
 impl fmt::Debug for RawScope<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Scope")
-            .field("arena", &self.variables)
             .field("inherited", &self.inherited)
-            .finish()
+            .field("cleanups", &*self.cleanups.borrow() as _)
+            .finish_non_exhaustive()
     }
 }
 
@@ -99,7 +116,7 @@ impl fmt::Debug for ScopeInherited<'_> {
         f.debug_struct("ScopeInherited")
             .field("parent", &self.parent.map(|x| x as *const ScopeInherited))
             .field("contexts", &self.contexts)
-            .field("shared", &(self.shared as *const Shared))
+            .field("shared", &self.shared)
             .finish()
     }
 }
@@ -113,6 +130,14 @@ pub(crate) struct Shared {
     pub signals: Arena<RawSignal<'static>>,
     pub effects: Arena<RawEffect<'static>>,
     scopes: Arena<RawScope<'static>>,
+}
+
+impl fmt::Debug for Shared {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Shared")
+            .field("observer", &self.observer.get().map(|x| x.as_ptr()))
+            .finish_non_exhaustive()
+    }
 }
 
 pub struct ScopeDisposer<'a> {
