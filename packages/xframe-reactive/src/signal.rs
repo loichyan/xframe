@@ -163,3 +163,40 @@ impl<'a> Scope<'a> {
         self.create_signal_impl(value)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reactive_signal() {
+        Scope::create_root(|cx| {
+            let state = cx.create_signal(0);
+            assert_eq!(*state.get(), 0);
+            state.set(1);
+            assert_eq!(*state.get(), 1);
+        });
+    }
+
+    #[test]
+    fn signal_composition() {
+        Scope::create_root(|cx| {
+            let state = cx.create_signal(1);
+            let double = || *state.get() * 2;
+            assert_eq!(double(), 2);
+            state.set(2);
+            assert_eq!(double(), 4);
+        });
+    }
+
+    #[test]
+    fn signal_set_slient() {
+        Scope::create_root(|cx| {
+            let state = cx.create_signal(1);
+            let double = cx.create_memo(move || *state.get() * 2);
+            assert_eq!(*double.get(), 2);
+            state.set_slient(2);
+            assert_eq!(*double.get(), 2);
+        });
+    }
+}

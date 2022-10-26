@@ -49,3 +49,95 @@ impl<'a> Scope<'a> {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reactive_memo() {
+        Scope::create_root(|cx| {
+            let state = cx.create_signal(1);
+
+            let double = cx.create_memo(move || *state.get() * 2);
+            assert_eq!(*double.get(), 2);
+
+            state.set(2);
+            assert_eq!(*double.get(), 4);
+
+            state.set(3);
+            assert_eq!(*double.get(), 6);
+        });
+    }
+
+    #[test]
+    fn memo_only_run_when_triggered() {
+        Scope::create_root(|cx| {
+            let state = cx.create_signal(1);
+            let counter = cx.create_signal(0);
+
+            let double = cx.create_memo(move || {
+                counter.update(|x| *x + 1);
+                *state.get() * 2
+            });
+            assert_eq!(*double.get(), 2);
+            assert_eq!(*counter.get(), 1);
+
+            state.set(2);
+            assert_eq!(*double.get(), 4);
+            assert_eq!(*counter.get(), 2);
+
+            assert_eq!(*double.get(), 4);
+            assert_eq!(*counter.get(), 2);
+        });
+    }
+
+    #[test]
+    fn memo_on_memo() {
+        Scope::create_root(|cx| {
+            let state = cx.create_signal(1);
+            let double = cx.create_memo(move || *state.get() * 2);
+            let quad = cx.create_memo(move || *double.get() * 2);
+
+            assert_eq!(*quad.get(), 4);
+            state.set(2);
+            assert_eq!(*quad.get(), 8);
+        });
+    }
+
+    #[test]
+    fn untracked_memo() {
+        Scope::create_root(|cx| {
+            let state = cx.create_signal(1);
+            let double = cx.create_memo(move || *state.get_untracked() * 2);
+
+            assert_eq!(*double.get(), 2);
+            state.set(2);
+            assert_eq!(*double.get(), 2);
+        });
+    }
+
+    #[test]
+    fn reactive_selector() {
+        Scope::create_root(|cx| {
+            let state = cx.create_signal(1);
+            let double = cx.create_seletor(move || *state.get() * 2);
+
+            let counter2 = cx.create_signal(0);
+            cx.create_effect(move |_| {
+                double.track();
+                counter2.update(|x| *x + 1);
+            });
+            assert_eq!(*counter2.get(), 1);
+            assert_eq!(*double.get(), 2);
+
+            state.set(2);
+            assert_eq!(*counter2.get(), 2);
+            assert_eq!(*double.get(), 4);
+
+            state.set(2);
+            assert_eq!(*counter2.get(), 2);
+            assert_eq!(*double.get(), 4);
+        });
+    }
+}

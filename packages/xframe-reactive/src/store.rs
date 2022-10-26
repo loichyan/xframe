@@ -52,3 +52,58 @@ impl<'a> Scope<'a> {
         self.create_variable(T::build_store(self, t))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Default)]
+    struct Builder {
+        state: i32,
+        data: String,
+    }
+
+    struct Store<'a> {
+        state: Signal<'a, i32>,
+        data: String,
+    }
+
+    impl<'a> StoreBuilder<'a> for Builder {
+        type Store = Store<'a>;
+
+        fn build_store(cx: Scope<'a>, this: Self) -> Self::Store {
+            let Builder { state, data } = this;
+            Store {
+                state: cx.create_signal(state),
+                data,
+            }
+        }
+    }
+
+    #[test]
+    fn store_builder() {
+        Scope::create_root(|cx| {
+            let buidler = Builder {
+                state: -1,
+                data: String::from("xFrame"),
+            };
+            let store = cx.create_store(buidler);
+            assert_eq!(*store.state.get(), -1);
+            assert_eq!(&store.data, "xFrame");
+        });
+    }
+
+    #[test]
+    fn use_store_as_context() {
+        Scope::create_root(|cx| {
+            cx.provide_context(Builder {
+                state: -1,
+                ..Default::default()
+            });
+            cx.create_child(|cx| {
+                let store = cx.use_context::<Builder>();
+                assert_eq!(*store.state.get(), -1);
+            });
+        });
+    }
+}

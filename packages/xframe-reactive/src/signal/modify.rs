@@ -65,3 +65,43 @@ impl Drop for ModifyTrigger<'_> {
         self.0.trigger_subscribers();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Scope;
+
+    #[test]
+    fn signal_modify() {
+        Scope::create_root(|cx| {
+            let state = cx.create_signal(String::from("Hello, "));
+            let counter = cx.create_signal(0);
+            cx.create_effect(move |_| {
+                state.track();
+                counter.update(|x| *x + 1);
+            });
+            assert_eq!(*counter.get(), 1);
+            *state.modify() += "xFrame!";
+            assert_eq!(*state.get(), "Hello, xFrame!");
+            assert_eq!(*counter.get(), 2);
+        });
+    }
+
+    #[test]
+    fn signal_modify_silent() {
+        Scope::create_root(|cx| {
+            let state = cx.create_signal(String::from("Hello, "));
+            let counter = cx.create_signal(0);
+            cx.create_effect(move |_| {
+                state.track();
+                counter.update(|x| *x + 1);
+            });
+            assert_eq!(*counter.get(), 1);
+            let mut modify = state.modify();
+            *modify += "xFrame!";
+            Modify::drop_silent(modify);
+            assert_eq!(*state.get(), "Hello, xFrame!");
+            assert_eq!(*counter.get(), 1);
+        });
+    }
+}
