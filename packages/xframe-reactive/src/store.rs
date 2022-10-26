@@ -36,7 +36,7 @@ impl<'a, T> StoreBuilder<'a> for CreateSelf<T> {
 #[derive(Default)]
 pub struct CreateSignal<T>(pub T);
 
-impl<'a, T: 'a> StoreBuilder<'a> for CreateSignal<T> {
+impl<'a, T: 'static> StoreBuilder<'a> for CreateSignal<T> {
     type Store = Signal<'a, T>;
 
     fn build_store(cx: Scope<'a>, this: Self) -> Self::Store {

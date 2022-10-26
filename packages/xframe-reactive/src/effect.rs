@@ -1,14 +1,10 @@
-use crate::{
-    arena::{SlotDisposer, SlotKey},
-    scope::{BoundedScope, Scope},
-    signal::SignalContext,
-};
+use crate::scope::{BoundedScope, Cleanup, EffectId, Scope, Shared, SignalId};
 use ahash::AHashSet;
 use std::{cell::RefCell, fmt};
 
 #[derive(Clone, Copy)]
 pub struct Effect<'a> {
-    inner: &'a RawEffect<'a>,
+    inner: RawEffect<'a>,
 }
 
 impl fmt::Debug for Effect<'_> {
@@ -23,48 +19,52 @@ impl<'a> Effect<'a> {
     }
 }
 
-pub(crate) struct RawEffect<'a> {
-    slot: SlotDisposer<'a, RawEffect<'static>>,
-    effect: &'a (dyn 'a + AnyEffect),
-    dependencies: RefCell<AHashSet<SlotKey<SignalContext>>>,
+pub(crate) type RawEffect<'a> = &'a (dyn 'a + AnyEffect);
+
+pub(crate) trait AnyEffect {
+    fn this(&self) -> EffectId;
+    fn shared(&self) -> &Shared;
+    fn dependencies(&self) -> &RefCell<AHashSet<SignalId>>;
+    fn run_effect(&self);
 }
 
-impl<'a> RawEffect<'a> {
-    fn with_signal(&self, key: SlotKey<SignalContext>, f: impl FnOnce(&SignalContext)) {
-        self.slot.shared.slots.get(key).map(f);
-    }
-
-    pub fn clear_dependencies(&self) {
-        let this = self.slot.key;
-        let deps = &mut *self.dependencies.borrow_mut();
-        for sid in deps.iter().copied() {
-            self.with_signal(sid, |signal| {
-                signal.unsubscribe(this);
-            });
-        }
-        deps.clear();
-    }
-
-    pub fn add_dependency(&self, key: SlotKey<SignalContext>) {
-        self.dependencies.borrow_mut().insert(key);
+impl<'a> dyn 'a + AnyEffect {
+    pub fn add_dependency(&self, id: SignalId) {
+        self.dependencies().borrow_mut().insert(id);
     }
 
     pub fn run(&self) {
         // 1) Clear dependencies.
-        let this = self.slot.key;
-        self.clear_dependencies();
+        let this = self.this();
+        let shared = self.shared();
+        let dependencies = self.dependencies();
+        {
+            let mut deps = dependencies.borrow_mut();
+            for id in deps.iter().copied() {
+                shared
+                    .signals
+                    .borrow()
+                    .get(id)
+                    .map(|sig| sig.unsubscribe(this));
+            }
+            deps.clear();
+        }
 
         // 2) Save previous subscriber.
-        let observer = &self.slot.shared.observer;
+        let observer = &shared.observer;
         let saved = observer.take();
         observer.set(Some(this));
 
         // 3) Call the effect.
-        self.effect.run();
+        self.run_effect();
 
         // 4) Re-calculate dependencies.
-        for sid in self.dependencies.borrow().iter().copied() {
-            self.with_signal(sid, |signal| signal.subscribe(this));
+        for id in dependencies.borrow().iter().copied() {
+            shared
+                .signals
+                .borrow()
+                .get(id)
+                .map(|sig| sig.subscribe(this));
         }
 
         // 5) Restore previous subscriber.
@@ -72,47 +72,59 @@ impl<'a> RawEffect<'a> {
     }
 }
 
-trait AnyEffect {
-    fn run(&self);
+struct AnyEffectImpl<'a, T, F> {
+    this: EffectId,
+    shared: &'a Shared,
+    prev: RefCell<Option<T>>,
+    func: RefCell<F>,
+    dependencies: RefCell<AHashSet<SignalId>>,
 }
 
-struct AnyEffectImpl<T, F> {
-    prev: T,
-    func: F,
-}
-
-impl<T, F> AnyEffect for RefCell<AnyEffectImpl<Option<T>, F>>
+impl<'a, T, F> AnyEffect for AnyEffectImpl<'a, T, F>
 where
     F: FnMut(Option<T>) -> T,
 {
-    fn run(&self) {
-        let this = &mut *self.borrow_mut();
-        let prev = this.prev.take();
-        this.prev = Some((this.func)(prev));
+    fn this(&self) -> EffectId {
+        self.this
+    }
+
+    fn shared(&self) -> &Shared {
+        self.shared
+    }
+
+    fn dependencies(&self) -> &RefCell<AHashSet<SignalId>> {
+        &self.dependencies
+    }
+
+    fn run_effect(&self) {
+        let mut prev = self.prev.borrow_mut();
+        *prev = Some((self.func.borrow_mut())(prev.take()));
     }
 }
 
 impl<'a> Scope<'a> {
     fn create_effect_impl(self, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
-        let eff = self.create_in_slots(|slot| {
-            // SAFETY: thiss effect can't be accessed once the slot is disposed.
-            let slot = unsafe { std::mem::transmute(slot) };
-            RawEffect {
-                slot,
-                effect,
-                dependencies: Default::default(),
-            }
-        });
-        eff.run();
-        Effect { inner: eff }
+        self.push_cleanup(Cleanup::Effect(effect.this()));
+        effect.run();
+        Effect { inner: effect }
     }
 
     pub fn create_effect<T: 'a>(self, f: impl 'a + FnMut(Option<T>) -> T) -> Effect<'a> {
-        let eff = self.create_variable(RefCell::new(AnyEffectImpl {
-            prev: None,
-            func: f,
-        }));
-        self.create_effect_impl(eff)
+        let shared = self.shared();
+        let mut effect = None;
+        shared.effects.borrow_mut().insert_with_key(|id| {
+            let any_impl = AnyEffectImpl {
+                this: id,
+                shared,
+                prev: None.into(),
+                func: f.into(),
+                dependencies: Default::default(),
+            };
+            let any = self.create_variable(any_impl) as &dyn AnyEffect;
+            effect = Some(any);
+            unsafe { std::mem::transmute(any) }
+        });
+        self.create_effect_impl(effect.unwrap_or_else(|| unreachable!()))
     }
 
     pub fn create_effect_scoped(
@@ -279,15 +291,16 @@ mod tests {
                     });
                 }
             });
-            let dep_count = eff
+            let count = eff
                 .inner
-                .dependencies
+                .dependencies()
                 .borrow()
                 .iter()
-                .map(|key| eff.inner.slot.shared.slots.get(*key).is_some())
+                .copied()
+                .map(|id| cx.shared().signals.borrow().get(id).is_some())
                 .filter(|x| *x)
                 .count();
-            assert_eq!(dep_count, 0);
+            assert_eq!(count, 0);
         });
     }
 }
