@@ -1,41 +1,45 @@
 mod modify;
 pub use modify::Modify;
 
-use crate::{
-    arena::{SlotDisposer, SlotKey},
-    effect::RawEffect,
-    scope::Scope,
-};
+use crate::scope::{Cleanup, EffectId, Scope, Shared, SignalId};
 use indexmap::IndexSet;
-use std::{cell::RefCell, fmt};
+use std::{any::Any, cell::RefCell, fmt, marker::PhantomData};
 
 pub struct Signal<'a, T> {
-    inner: &'a SignalInner<'a, T>,
+    inner: RawSignal<'a>,
+    ty: PhantomData<T>,
 }
 
 impl<T: fmt::Debug> fmt::Debug for Signal<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Signal")
-            .field(&self.inner.value.borrow())
+            // .field(&self.inner.value.borrow())
             .finish()
     }
 }
 
 impl<T> Clone for Signal<'_, T> {
     fn clone(&self) -> Self {
-        Signal { inner: self.inner }
+        Signal { ..*self }
     }
 }
 
 impl<T> Copy for Signal<'_, T> {}
 
-impl<'a, T> Signal<'a, T> {
+impl<'a, T: 'static> Signal<'a, T> {
+    fn value(&self) -> &'a RefCell<T> {
+        self.inner
+            .value()
+            .downcast_ref()
+            .unwrap_or_else(|| unreachable!())
+    }
+
     pub fn track(&self) {
-        self.inner.context.track();
+        self.inner.track();
     }
 
     pub fn trigger_subscribers(&self) {
-        self.inner.context.trigger_subscribers();
+        self.inner.trigger_subscribers();
     }
 
     pub fn get(&self) -> Ref<'a, T> {
@@ -44,16 +48,16 @@ impl<'a, T> Signal<'a, T> {
     }
 
     pub fn get_untracked(&self) -> Ref<'a, T> {
-        Ref(self.inner.value.borrow())
+        Ref(self.value().borrow())
     }
 
     pub fn set(&self, val: T) {
         self.set_slient(val);
-        self.inner.context.trigger_subscribers();
+        self.trigger_subscribers();
     }
 
     pub fn set_slient(&self, val: T) {
-        self.inner.value.replace(val);
+        self.value().replace(val);
     }
 
     pub fn update<F>(&self, f: F)
@@ -61,68 +65,86 @@ impl<'a, T> Signal<'a, T> {
         F: FnOnce(&mut T) -> T,
     {
         self.update_silent(f);
-        self.inner.context.trigger_subscribers();
+        self.trigger_subscribers();
     }
 
     pub fn update_silent<F>(&self, f: F)
     where
         F: FnOnce(&mut T) -> T,
     {
-        self.inner.value.replace_with(f);
+        self.value().replace_with(f);
     }
 }
 
-struct SignalInner<'a, T> {
-    value: RefCell<T>,
-    context: WrappedSignalContext<'a>,
+pub(crate) type RawSignal<'a> = &'a dyn AnySignal;
+
+pub(crate) trait AnySignal {
+    fn this(&self) -> SignalId;
+    fn shared(&self) -> &Shared;
+    fn value(&self) -> &dyn Any;
+    fn subscribers(&self) -> &RefCell<IndexSet<EffectId>>;
 }
 
-struct WrappedSignalContext<'a> {
-    inner: &'a SignalContext,
-    slot: SlotDisposer<'a, SignalContext>,
-}
+impl<'a> dyn 'a + AnySignal {
+    pub fn subscribe(&self, id: EffectId) {
+        self.subscribers().borrow_mut().insert(id);
+    }
 
-impl<'a> WrappedSignalContext<'a> {
-    fn with_effect(&self, key: SlotKey<RawEffect<'static>>, f: impl FnOnce(&RawEffect<'static>)) {
-        self.slot.shared.slots.get(key).map(f);
+    pub fn unsubscribe(&self, id: EffectId) {
+        self.subscribers().borrow_mut().remove(&id);
     }
 
     pub fn track(&self) {
-        if let Some(key) = self.slot.shared.observer.get() {
-            self.with_effect(key, |eff| eff.add_dependency(self.slot.key));
+        let shared = self.shared();
+        let this = self.this();
+        if let Some(id) = shared.observer.get() {
+            shared
+                .effects
+                .borrow()
+                .get(id)
+                .map(|eff| eff.add_dependency(this));
         }
     }
 
     pub fn trigger_subscribers(&self) {
-        let subscribers = self.inner.subscribers.replace_with(|subs| {
-            IndexSet::with_capacity_and_hasher(subs.len(), Default::default())
-        });
+        let shared = self.shared();
+        let subscribers = self.subscribers().take();
         // Effects attach to subscribers at the end of the effect scope,
         // an effect created inside another scope might send signals to its
         // outer scope, so we should ensure the inner effects re-execute
         // before outer ones to avoid potential double executions.
-        for key in subscribers {
-            self.with_effect(key, |eff| eff.run());
+        for id in subscribers {
+            shared.effects.borrow().get(id).map(|eff| eff.run());
         }
     }
 }
 
-#[derive(Default)]
-pub(crate) struct SignalContext {
-    subscribers: RefCell<IndexSet<SlotKey<RawEffect<'static>>>>,
+pub(crate) struct AnySignalImpl<'a, T> {
+    this: SignalId,
+    shared: &'a Shared,
+    value: RefCell<T>,
+    subscribers: RefCell<IndexSet<EffectId>>,
 }
 
-impl SignalContext {
-    pub fn subscribe(&self, effect: SlotKey<RawEffect<'static>>) {
-        self.subscribers.borrow_mut().insert(effect);
+impl<'a, T: 'static> AnySignal for AnySignalImpl<'a, T> {
+    fn this(&self) -> SignalId {
+        self.this
     }
 
-    pub fn unsubscribe(&self, effect: SlotKey<RawEffect<'static>>) {
-        self.subscribers.borrow_mut().remove(&effect);
+    fn shared(&self) -> &Shared {
+        self.shared
+    }
+
+    fn value(&self) -> &dyn Any {
+        &self.value
+    }
+
+    fn subscribers(&self) -> &RefCell<IndexSet<EffectId>> {
+        &self.subscribers
     }
 }
 
-pub struct Ref<'a, T>(std::cell::Ref<'a, T>);
+pub struct Ref<'a, T: ?Sized>(std::cell::Ref<'a, T>);
 
 impl<T: fmt::Debug> fmt::Debug for Ref<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -130,7 +152,7 @@ impl<T: fmt::Debug> fmt::Debug for Ref<'_, T> {
     }
 }
 
-impl<'a, T> Ref<'a, T> {
+impl<'a, T: ?Sized> Ref<'a, T> {
     pub fn map<U, F>(orig: Self, f: F) -> Ref<'a, U>
     where
         F: FnOnce(&T) -> &U,
@@ -148,22 +170,28 @@ impl<'a, T> std::ops::Deref for Ref<'a, T> {
 }
 
 impl<'a> Scope<'a> {
-    pub fn create_signal<T: 'a>(self, t: T) -> Signal<'a, T> {
-        let context = {
-            let mut slot = None;
-            let inner = self.create_in_slots(|s| {
-                slot = Some(s);
-                SignalContext::default()
-            });
-            WrappedSignalContext {
-                inner,
-                slot: slot.unwrap_or_else(|| unreachable!()),
-            }
-        };
-        let inner = self.create_variable(SignalInner {
-            value: RefCell::new(t),
-            context,
+    fn create_signal_impl<T>(self, signal: &'a dyn AnySignal) -> Signal<'a, T> {
+        self.push_cleanup(Cleanup::Signal(signal.this()));
+        Signal {
+            inner: signal,
+            ty: PhantomData,
+        }
+    }
+
+    pub fn create_signal<T: 'static>(self, t: T) -> Signal<'a, T> {
+        let shared = self.shared();
+        let mut signal = None;
+        shared.signals.borrow_mut().insert_with_key(|id| {
+            let any_impl = AnySignalImpl {
+                this: id,
+                shared,
+                value: RefCell::new(t),
+                subscribers: Default::default(),
+            };
+            let any = self.create_variable(any_impl) as &dyn AnySignal;
+            signal = Some(any);
+            unsafe { std::mem::transmute(any) }
         });
-        Signal { inner }
+        self.create_signal_impl(signal.unwrap_or_else(|| unreachable!()))
     }
 }

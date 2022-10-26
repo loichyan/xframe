@@ -1,9 +1,11 @@
-use crate::{
-    arena::{Arena, SlotDisposer, SlotKey, Slots},
-    context::Contexts,
-    effect::RawEffect,
+use crate::{context::Contexts, effect::RawEffect, signal::RawSignal};
+use bumpalo::Bump;
+use slotmap::{new_key_type, SlotMap};
+use std::{
+    cell::{Cell, RefCell},
+    fmt,
+    marker::PhantomData,
 };
-use std::{cell::Cell, fmt, marker::PhantomData};
 
 pub type Scope<'a> = BoundedScope<'a, 'a>;
 
@@ -26,16 +28,31 @@ impl<'a> Scope<'a> {
         &self.inner.inherited
     }
 
-    pub(crate) fn create_in_slots<T: 'a>(self, f: impl FnOnce(SlotDisposer<'a, T>) -> T) -> &'a T {
-        self.inner
-            .arena
-            .alloc_in_slots(self.inner.inherited.shared, f)
+    pub(crate) fn shared(&self) -> &'a Shared {
+        self.inner.inherited.shared
+    }
+
+    pub(crate) fn push_cleanup(&self, ty: Cleanup<'a>) {
+        self.inner.cleanups.borrow_mut().push(ty);
     }
 }
 
+trait Empty {}
+impl<T> Empty for T {}
+
+pub(crate) struct Variable<'a>(&'a dyn Empty);
+
+pub(crate) enum Cleanup<'a> {
+    Signal(SignalId),
+    Effect(EffectId),
+    Variable(Variable<'a>),
+    Callback(Box<dyn 'a + FnOnce()>),
+}
+
 struct ScopeInner<'a> {
-    arena: Arena<'a>,
+    arena: Bump,
     inherited: ScopeInherited<'a>,
+    cleanups: RefCell<Vec<Cleanup<'a>>>,
     // Ensure the 'a lifebounds is invariance.
     phantom: PhantomData<&'a mut &'a mut ()>,
 }
@@ -52,7 +69,7 @@ impl fmt::Debug for ScopeInner<'_> {
 pub(crate) struct ScopeInherited<'a> {
     pub parent: Option<&'a ScopeInherited<'a>>,
     pub contexts: Contexts<'a>,
-    shared: &'a ScopeShared,
+    shared: &'a Shared,
 }
 
 impl fmt::Debug for ScopeInherited<'_> {
@@ -60,15 +77,22 @@ impl fmt::Debug for ScopeInherited<'_> {
         f.debug_struct("ScopeInherited")
             .field("parent", &self.parent.map(|x| x as *const ScopeInherited))
             .field("contexts", &self.contexts)
-            .field("shared", &(self.shared as *const ScopeShared))
+            .field("shared", &(self.shared as *const Shared))
             .finish()
     }
 }
 
+new_key_type! {pub(crate) struct SignalId;}
+new_key_type! {pub(crate) struct EffectId;}
+new_key_type! {pub(crate) struct ScopeId;}
+
 #[derive(Default)]
-pub(crate) struct ScopeShared {
-    pub observer: Cell<Option<SlotKey<RawEffect<'static>>>>,
-    pub slots: Slots,
+pub(crate) struct Shared {
+    pub observer: Cell<Option<EffectId>>,
+    pub signals: RefCell<SlotMap<SignalId, RawSignal<'static>>>,
+    pub effects: RefCell<SlotMap<EffectId, RawEffect<'static>>>,
+    // TODO: manage scopes
+    // scopes: RefCell<SlotMap<ScopeId, ScopeInner<'static>>>,
 }
 
 pub struct ScopeDisposer<'a> {
@@ -90,7 +114,7 @@ impl<'a> ScopeDisposer<'a> {
                 shared: parent.shared,
             })
             .unwrap_or_else(|| {
-                let shared = Box::new(ScopeShared::default());
+                let shared = Box::new(Shared::default());
                 ScopeInherited {
                     parent: None,
                     contexts: Default::default(),
@@ -100,6 +124,7 @@ impl<'a> ScopeDisposer<'a> {
         let scope = Box::new(ScopeInner {
             arena: Default::default(),
             inherited,
+            cleanups: Default::default(),
             phantom: PhantomData,
         });
         ScopeDisposer { scope: Some(scope) }
@@ -140,11 +165,27 @@ impl<'a> ScopeDisposer<'a> {
 impl Drop for ScopeDisposer<'_> {
     fn drop(&mut self) {
         if let Some(scope) = &self.scope {
-            unsafe { scope.arena.dispose() };
+            let shared = scope.inherited.shared;
+
+            // SAFETY: last alloced variables must be disposed first because signals
+            // and effects need to do some cleanup works with its captured references.
+            for ty in scope.cleanups.take().into_iter().rev() {
+                match ty {
+                    Cleanup::Signal(id) => {
+                        shared.signals.borrow_mut().remove(id);
+                    }
+                    Cleanup::Effect(id) => {
+                        shared.effects.borrow_mut().remove(id);
+                    }
+                    Cleanup::Variable(ptr) => unsafe {
+                        std::ptr::drop_in_place(ptr.0 as *const dyn Empty as *mut dyn Empty);
+                    },
+                    Cleanup::Callback(f) => f(),
+                }
+            }
+
             if scope.inherited.parent.is_none() {
-                let shared = unsafe {
-                    Box::from_raw(scope.inherited.shared as *const ScopeShared as *mut ScopeShared)
-                };
+                let shared = unsafe { Box::from_raw(shared as *const Shared as *mut Shared) };
                 drop(shared);
             }
         }
@@ -164,7 +205,13 @@ impl<'a> Scope<'a> {
     }
 
     pub fn create_variable<T: 'a>(self, t: T) -> &'a T {
-        self.inner.arena.alloc(t)
+        let ptr = &*self.inner.arena.alloc(t);
+        self.push_cleanup(Cleanup::Variable(Variable(ptr)));
+        ptr
+    }
+
+    pub fn on_cleanup(&self, f: impl 'a + FnOnce()) {
+        self.push_cleanup(Cleanup::Callback(Box::new(f)));
     }
 
     pub fn untrack(self, f: impl FnOnce()) {

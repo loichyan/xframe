@@ -1,14 +1,14 @@
-use super::{Signal, WrappedSignalContext};
+use super::{RawSignal, Signal};
 use std::{
     fmt,
     ops::{Deref, DerefMut},
 };
 
-impl<'a, T> Signal<'a, T> {
+impl<'a, T: 'static> Signal<'a, T> {
     pub fn modify(&self) -> Modify<'a, T> {
         Modify {
-            value: self.inner.value.borrow_mut(),
-            trigger: ModifyTrigger(&self.inner.context),
+            value: self.value().borrow_mut(),
+            trigger: ModifyTrigger(self.inner),
         }
     }
 }
@@ -58,7 +58,7 @@ impl<'a, T> DerefMut for Modify<'a, T> {
     }
 }
 
-struct ModifyTrigger<'a>(&'a WrappedSignalContext<'a>);
+struct ModifyTrigger<'a>(RawSignal<'a>);
 
 impl Drop for ModifyTrigger<'_> {
     fn drop(&mut self) {
