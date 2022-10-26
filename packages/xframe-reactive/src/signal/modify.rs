@@ -58,7 +58,7 @@ impl<'a, T> DerefMut for Modify<'a, T> {
     }
 }
 
-struct ModifyTrigger<'a>(RawSignal<'a>);
+struct ModifyTrigger<'a>(&'a RawSignal<'a>);
 
 impl Drop for ModifyTrigger<'_> {
     fn drop(&mut self) {
