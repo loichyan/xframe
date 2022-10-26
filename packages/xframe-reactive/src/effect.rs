@@ -4,7 +4,8 @@ use std::{cell::RefCell, fmt};
 
 #[derive(Clone, Copy)]
 pub struct Effect<'a> {
-    inner: RawEffect<'a>,
+    id: EffectId,
+    shared: &'a Shared,
 }
 
 impl fmt::Debug for Effect<'_> {
@@ -14,117 +15,141 @@ impl fmt::Debug for Effect<'_> {
 }
 
 impl<'a> Effect<'a> {
-    pub fn run(&self) {
-        self.inner.run();
-    }
-}
-
-pub(crate) type RawEffect<'a> = &'a (dyn 'a + AnyEffect);
-
-pub(crate) trait AnyEffect {
-    fn this(&self) -> EffectId;
-    fn shared(&self) -> &Shared;
-    fn dependencies(&self) -> &RefCell<AHashSet<SignalId>>;
-    fn run_effect(&self);
-}
-
-impl<'a> dyn 'a + AnyEffect {
-    pub fn add_dependency(&self, id: SignalId) {
-        self.dependencies().borrow_mut().insert(id);
-    }
-
-    pub fn run(&self) {
-        // 1) Clear dependencies.
-        let this = self.this();
-        let shared = self.shared();
-        let dependencies = self.dependencies();
-        {
-            let mut deps = dependencies.borrow_mut();
+    pub fn clear_dependencies(&self) {
+        self.id.with_context(self.shared, |ctx| {
+            let mut deps = ctx.dependencies.borrow_mut();
             for id in deps.iter().copied() {
-                shared
+                self.shared
                     .signals
                     .borrow()
                     .get(id)
-                    .map(|sig| sig.unsubscribe(this));
+                    .map(|sig| sig.unsubscribe(self.id));
             }
             deps.clear();
-        }
+        });
+    }
+
+    pub fn run(&self) {
+        self.id.with_effect(self.shared, |raw| {
+            self.run_with_raw(raw);
+        });
+    }
+
+    fn run_with_raw(&self, raw: RawEffect) {
+        // 1) Clear dependencies.
+        self.clear_dependencies();
 
         // 2) Save previous subscriber.
-        let observer = &shared.observer;
+        let observer = &self.shared.observer;
         let saved = observer.take();
-        observer.set(Some(this));
+        observer.set(Some(self.id));
 
         // 3) Call the effect.
-        self.run_effect();
+        raw.run_untracked();
 
         // 4) Re-calculate dependencies.
-        for id in dependencies.borrow().iter().copied() {
-            shared
-                .signals
-                .borrow()
-                .get(id)
-                .map(|sig| sig.subscribe(this));
-        }
+        self.id.with_context(self.shared, |ctx| {
+            for id in ctx.dependencies.borrow().iter().copied() {
+                self.shared
+                    .signals
+                    .borrow()
+                    .get(id)
+                    .map(|sig| sig.subscribe(self.id));
+            }
+        });
 
         // 5) Restore previous subscriber.
         observer.set(saved);
     }
 }
 
-struct AnyEffectImpl<'a, T, F> {
-    this: EffectId,
-    shared: &'a Shared,
-    prev: RefCell<Option<T>>,
-    func: RefCell<F>,
-    dependencies: RefCell<AHashSet<SignalId>>,
+pub(crate) type RawEffect<'a> = &'a (dyn 'a + AnyEffect);
+
+pub(crate) trait AnyEffect {
+    fn run_untracked(&self);
 }
 
-impl<'a, T, F> AnyEffect for AnyEffectImpl<'a, T, F>
+impl<'a> dyn 'a + AnyEffect {
+    pub fn run(&self, this: EffectId, shared: &Shared) {
+        Effect { id: this, shared }.run_with_raw(self)
+    }
+}
+
+struct AnyEffectImpl<T, F> {
+    prev: Option<T>,
+    func: F,
+}
+
+impl<T, F> AnyEffect for RefCell<AnyEffectImpl<T, F>>
 where
     F: FnMut(Option<T>) -> T,
 {
-    fn this(&self) -> EffectId {
-        self.this
+    fn run_untracked(&self) {
+        let effect = &mut *self.borrow_mut();
+        let prev = effect.prev.take();
+        effect.prev = Some((effect.func)(prev));
+    }
+}
+
+pub(crate) struct EffectContext {
+    dependencies: RefCell<AHashSet<SignalId>>,
+}
+
+impl EffectContext {
+    pub fn add_dependency(&self, id: SignalId) {
+        self.dependencies.borrow_mut().insert(id);
+    }
+}
+
+impl EffectId {
+    pub fn with_effect<'a, T>(self, shared: &'a Shared, f: impl FnOnce(RawEffect<'a>) -> T) -> T {
+        let effect = shared
+            .raw_effects
+            .borrow()
+            .get(self)
+            .copied()
+            .unwrap_or_else(|| unreachable!());
+        f(effect)
     }
 
-    fn shared(&self) -> &Shared {
-        self.shared
-    }
-
-    fn dependencies(&self) -> &RefCell<AHashSet<SignalId>> {
-        &self.dependencies
-    }
-
-    fn run_effect(&self) {
-        let mut prev = self.prev.borrow_mut();
-        *prev = Some((self.func.borrow_mut())(prev.take()));
+    pub fn with_context<T>(self, shared: &Shared, f: impl FnOnce(&EffectContext) -> T) -> T {
+        f(shared
+            .effect_contexts
+            .borrow()
+            .get(self)
+            .unwrap_or_else(|| unreachable!()))
     }
 }
 
 impl<'a> Scope<'a> {
-    fn create_effect_impl(self, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
-        self.push_cleanup(Cleanup::Effect(effect.this()));
-        effect.run();
-        Effect { inner: effect }
+    fn create_effect_impl(self, raw: RawEffect<'a>) -> Effect<'a> {
+        let shared = self.shared();
+        let raw = unsafe { std::mem::transmute(raw) };
+        let id = shared.raw_effects.borrow_mut().insert(raw);
+        // Create or reuse existed contexts.
+        {
+            let mut contexts = shared.effect_contexts.borrow_mut();
+            if let Some(context) = contexts.get_mut(id) {
+                context.dependencies.get_mut().clear();
+            } else {
+                let ctx = EffectContext {
+                    dependencies: Default::default(),
+                };
+                contexts.insert(id, ctx);
+            }
+        }
+        self.push_cleanup(Cleanup::Effect(id));
+        let effect = Effect { id, shared };
+        effect.run_with_raw(raw);
+        effect
     }
 
     pub fn create_effect<T: 'a>(self, f: impl 'a + FnMut(Option<T>) -> T) -> Effect<'a> {
-        let shared = self.shared();
-        let mut effect = None;
-        shared.effects.borrow_mut().insert_with_key(|id| {
-            let any_impl = AnyEffectImpl {
-                this: id,
-                shared,
-                prev: None.into(),
-                func: f.into(),
-                dependencies: Default::default(),
-            };
-            let any = self.create_variable(any_impl) as &dyn AnyEffect;
-            effect = Some(any);
-            unsafe { std::mem::transmute(any) }
-        });
-        self.create_effect_impl(effect.unwrap_or_else(|| unreachable!()))
+        let effect = self.create_variable(RefCell::new(AnyEffectImpl {
+            prev: None,
+            func: f,
+        }));
+        self.create_effect_impl(effect)
     }
 
     pub fn create_effect_scoped(
@@ -291,15 +316,15 @@ mod tests {
                     });
                 }
             });
-            let count = eff
-                .inner
-                .dependencies()
-                .borrow()
-                .iter()
-                .copied()
-                .map(|id| cx.shared().signals.borrow().get(id).is_some())
-                .filter(|x| *x)
-                .count();
+            let count = eff.id.with_context(cx.shared(), |ctx| {
+                ctx.dependencies
+                    .borrow()
+                    .iter()
+                    .copied()
+                    .map(|id| cx.shared().signals.borrow().get(id).is_some())
+                    .filter(|x| *x)
+                    .count()
+            });
             assert_eq!(count, 0);
         });
     }

@@ -1,6 +1,10 @@
-use crate::{context::Contexts, effect::RawEffect, signal::RawSignal};
+use crate::{
+    context::Contexts,
+    effect::{EffectContext, RawEffect},
+    signal::RawSignal,
+};
 use bumpalo::Bump;
-use slotmap::{new_key_type, SlotMap};
+use slotmap::{new_key_type, SecondaryMap, SlotMap};
 use std::{
     cell::{Cell, RefCell},
     fmt,
@@ -90,7 +94,8 @@ new_key_type! {pub(crate) struct ScopeId;}
 pub(crate) struct Shared {
     pub observer: Cell<Option<EffectId>>,
     pub signals: RefCell<SlotMap<SignalId, RawSignal<'static>>>,
-    pub effects: RefCell<SlotMap<EffectId, RawEffect<'static>>>,
+    pub raw_effects: RefCell<SlotMap<EffectId, RawEffect<'static>>>,
+    pub effect_contexts: RefCell<SecondaryMap<EffectId, EffectContext>>,
     // TODO: manage scopes
     // scopes: RefCell<SlotMap<ScopeId, ScopeInner<'static>>>,
 }
@@ -175,7 +180,7 @@ impl Drop for ScopeDisposer<'_> {
                         shared.signals.borrow_mut().remove(id);
                     }
                     Cleanup::Effect(id) => {
-                        shared.effects.borrow_mut().remove(id);
+                        shared.raw_effects.borrow_mut().remove(id);
                     }
                     Cleanup::Variable(ptr) => unsafe {
                         std::ptr::drop_in_place(ptr.0 as *const dyn Empty as *mut dyn Empty);

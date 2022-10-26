@@ -1,4 +1,5 @@
-use super::{RawSignal, Signal};
+use super::Signal;
+use crate::scope::{Shared, SignalId};
 use std::{
     fmt,
     ops::{Deref, DerefMut},
@@ -6,9 +7,10 @@ use std::{
 
 impl<'a, T: 'static> Signal<'a, T> {
     pub fn modify(&self) -> Modify<'a, T> {
+        let Signal { id, shared, .. } = *self;
         Modify {
             value: self.value().borrow_mut(),
-            trigger: ModifyTrigger(self.inner),
+            trigger: ModifyTrigger { id, shared },
         }
     }
 }
@@ -58,10 +60,14 @@ impl<'a, T> DerefMut for Modify<'a, T> {
     }
 }
 
-struct ModifyTrigger<'a>(RawSignal<'a>);
+struct ModifyTrigger<'a> {
+    id: SignalId,
+    shared: &'a Shared,
+}
 
 impl Drop for ModifyTrigger<'_> {
     fn drop(&mut self) {
-        self.0.trigger_subscribers();
+        self.id
+            .with_signal(self.shared, |sig| sig.trigger_subscribers(self.shared));
     }
 }

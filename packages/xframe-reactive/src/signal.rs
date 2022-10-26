@@ -6,7 +6,8 @@ use indexmap::IndexSet;
 use std::{any::Any, cell::RefCell, fmt, marker::PhantomData};
 
 pub struct Signal<'a, T> {
-    inner: RawSignal<'a>,
+    id: SignalId,
+    shared: &'a Shared,
     ty: PhantomData<T>,
 }
 
@@ -28,18 +29,24 @@ impl<T> Copy for Signal<'_, T> {}
 
 impl<'a, T: 'static> Signal<'a, T> {
     fn value(&self) -> &'a RefCell<T> {
-        self.inner
-            .value()
-            .downcast_ref()
-            .unwrap_or_else(|| unreachable!())
+        self.id.with_signal(self.shared, |sig| {
+            sig.value.downcast_ref().unwrap_or_else(|| unreachable!())
+        })
     }
 
     pub fn track(&self) {
-        self.inner.track();
+        if let Some(id) = self.shared.observer.get() {
+            self.shared
+                .effect_contexts
+                .borrow()
+                .get(id)
+                .map(|ctx| ctx.add_dependency(self.id));
+        }
     }
 
     pub fn trigger_subscribers(&self) {
-        self.inner.trigger_subscribers();
+        self.id
+            .with_signal(self.shared, |sig| sig.trigger_subscribers(self.shared));
     }
 
     pub fn get(&self) -> Ref<'a, T> {
@@ -76,71 +83,43 @@ impl<'a, T: 'static> Signal<'a, T> {
     }
 }
 
-pub(crate) type RawSignal<'a> = &'a dyn AnySignal;
-
-pub(crate) trait AnySignal {
-    fn this(&self) -> SignalId;
-    fn shared(&self) -> &Shared;
-    fn value(&self) -> &dyn Any;
-    fn subscribers(&self) -> &RefCell<IndexSet<EffectId>>;
+pub(crate) struct RawSignal<'a> {
+    value: &'a dyn Any,
+    subscribers: RefCell<IndexSet<EffectId>>,
 }
 
-impl<'a> dyn 'a + AnySignal {
+impl<'a> RawSignal<'a> {
     pub fn subscribe(&self, id: EffectId) {
-        self.subscribers().borrow_mut().insert(id);
+        self.subscribers.borrow_mut().insert(id);
     }
 
     pub fn unsubscribe(&self, id: EffectId) {
-        self.subscribers().borrow_mut().remove(&id);
+        self.subscribers.borrow_mut().remove(&id);
     }
 
-    pub fn track(&self) {
-        let shared = self.shared();
-        let this = self.this();
-        if let Some(id) = shared.observer.get() {
-            shared
-                .effects
-                .borrow()
-                .get(id)
-                .map(|eff| eff.add_dependency(this));
-        }
-    }
-
-    pub fn trigger_subscribers(&self) {
-        let shared = self.shared();
-        let subscribers = self.subscribers().take();
+    pub fn trigger_subscribers(&self, shared: &Shared) {
+        let subscribers = self.subscribers.take();
         // Effects attach to subscribers at the end of the effect scope,
         // an effect created inside another scope might send signals to its
         // outer scope, so we should ensure the inner effects re-execute
         // before outer ones to avoid potential double executions.
         for id in subscribers {
-            shared.effects.borrow().get(id).map(|eff| eff.run());
+            shared
+                .raw_effects
+                .borrow()
+                .get(id)
+                .map(|eff| eff.run(id, shared));
         }
     }
 }
 
-pub(crate) struct AnySignalImpl<'a, T> {
-    this: SignalId,
-    shared: &'a Shared,
-    value: RefCell<T>,
-    subscribers: RefCell<IndexSet<EffectId>>,
-}
-
-impl<'a, T: 'static> AnySignal for AnySignalImpl<'a, T> {
-    fn this(&self) -> SignalId {
-        self.this
-    }
-
-    fn shared(&self) -> &Shared {
-        self.shared
-    }
-
-    fn value(&self) -> &dyn Any {
-        &self.value
-    }
-
-    fn subscribers(&self) -> &RefCell<IndexSet<EffectId>> {
-        &self.subscribers
+impl SignalId {
+    pub fn with_signal<'a, T>(self, shared: &'a Shared, f: impl FnOnce(&RawSignal<'a>) -> T) -> T {
+        f(shared
+            .signals
+            .borrow()
+            .get(self)
+            .unwrap_or_else(|| unreachable!()))
     }
 }
 
@@ -170,28 +149,24 @@ impl<'a, T> std::ops::Deref for Ref<'a, T> {
 }
 
 impl<'a> Scope<'a> {
-    fn create_signal_impl<T>(self, signal: &'a dyn AnySignal) -> Signal<'a, T> {
-        self.push_cleanup(Cleanup::Signal(signal.this()));
+    fn create_signal_impl<T>(self, value: &'a dyn Any) -> Signal<'a, T> {
+        let shared = self.shared();
+        let raw = RawSignal {
+            value,
+            subscribers: Default::default(),
+        };
+        let raw = unsafe { std::mem::transmute(raw) };
+        let id = shared.signals.borrow_mut().insert(raw);
+        self.push_cleanup(Cleanup::Signal(id));
         Signal {
-            inner: signal,
+            id,
+            shared,
             ty: PhantomData,
         }
     }
 
     pub fn create_signal<T: 'static>(self, t: T) -> Signal<'a, T> {
-        let shared = self.shared();
-        let mut signal = None;
-        shared.signals.borrow_mut().insert_with_key(|id| {
-            let any_impl = AnySignalImpl {
-                this: id,
-                shared,
-                value: RefCell::new(t),
-                subscribers: Default::default(),
-            };
-            let any = self.create_variable(any_impl) as &dyn AnySignal;
-            signal = Some(any);
-            unsafe { std::mem::transmute(any) }
-        });
-        self.create_signal_impl(signal.unwrap_or_else(|| unreachable!()))
+        let value = self.create_variable(RefCell::new(t));
+        self.create_signal_impl(value)
     }
 }
