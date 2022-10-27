@@ -63,7 +63,7 @@ impl Drop for OwnedScope<'_> {
                 Cleanup::Variable(ptr) => unsafe {
                     std::ptr::drop_in_place(ptr as *const dyn Empty as *mut dyn Empty);
                 },
-                Cleanup::Callback(f) => f(),
+                Cleanup::Callback(f) => unsafe { f.call_once() },
             }
         }
     }
@@ -85,12 +85,22 @@ impl fmt::Debug for ScopeInherited<'_> {
     }
 }
 
+/// Helper trait to invoke [`FnOnce`].
+pub(crate) trait Callback {
+    unsafe fn call_once(&mut self);
+}
+
+impl<F: FnOnce()> Callback for F {
+    unsafe fn call_once(&mut self) {
+        std::ptr::read(self)()
+    }
+}
+
 pub(crate) enum Cleanup<'a> {
     SignalContext(SignalContextRef),
     Effect(EffectRef),
     Variable(&'a (dyn 'a + Empty)),
-    // TODO: can we use a bumpalo::boxed::Box here?
-    Callback(Box<dyn 'a + FnOnce()>),
+    Callback(&'a mut (dyn 'a + Callback)),
 }
 
 impl fmt::Debug for Cleanup<'_> {
@@ -104,7 +114,7 @@ impl fmt::Debug for Cleanup<'_> {
                 .finish(),
             Cleanup::Callback(c) => f
                 .debug_tuple("Callback")
-                .field(&(&*c as *const dyn FnOnce()))
+                .field(&(*c as *const dyn Callback))
                 .finish(),
         }
     }
@@ -222,7 +232,8 @@ impl<'a> OwnedScope<'a> {
     }
 
     pub fn on_cleanup(&'a self, f: impl 'a + FnOnce()) {
-        self.push_cleanup(Cleanup::Callback(Box::new(|| self.untrack(f))));
+        let f = self.variables.alloc(|| self.untrack(f));
+        self.push_cleanup(Cleanup::Callback(f));
     }
 
     pub fn untrack(&self, f: impl FnOnce()) {
