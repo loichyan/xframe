@@ -4,14 +4,20 @@ use crate::{
     store::StoreBuilder,
 };
 use ahash::AHashMap;
-use std::{any::TypeId, cell::RefCell, fmt};
+use std::{any::TypeId, cell::RefCell, fmt, marker::PhantomData};
 
-type ContextsInner<'a> = AHashMap<TypeId, &'a (dyn 'a + Empty)>;
+struct ContextId<T>(PhantomData<T>);
+
+fn context_id<T: 'static>() -> TypeId {
+    TypeId::of::<ContextId<T>>()
+}
 
 #[derive(Default)]
 pub(crate) struct Contexts<'a> {
     inner: RefCell<ContextsInner<'a>>,
 }
+
+type ContextsInner<'a> = AHashMap<TypeId, &'a (dyn 'a + Empty)>;
 
 impl fmt::Debug for Contexts<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -19,24 +25,24 @@ impl fmt::Debug for Contexts<'_> {
     }
 }
 
-fn get_ouput_from<'a, T>(contexts: &ContextsInner<'a>) -> Option<&'a T::Store>
+fn use_context_from<'a, T>(contexts: &ContextsInner<'a>) -> Option<&'a T::Store>
 where
     T: 'static + StoreBuilder<'a>,
 {
     contexts
-        .get(&TypeId::of::<T>())
+        .get(&context_id::<T>())
         .copied()
         // SAFETY: The type is associated with `<T as Store>`, and this context
         // can only accessed from current and child scopes.
         .map(|any| unsafe { &*(any as *const dyn Empty as *const T::Store) })
 }
 
-fn use_context_impl<'a, T>(inherited: &'a ScopeInherited) -> Option<&'a T::Store>
+fn use_context_from_ancestors<'a, T>(inherited: &'a ScopeInherited) -> Option<&'a T::Store>
 where
     T: 'static + StoreBuilder<'a>,
 {
-    get_ouput_from::<T>(&inherited.contexts.inner.borrow())
-        .or_else(|| inherited.parent.and_then(use_context_impl::<T>))
+    use_context_from::<T>(&inherited.contexts.inner.borrow())
+        .or_else(|| inherited.parent.and_then(use_context_from_ancestors::<T>))
 }
 
 impl<'a> OwnedScope<'a> {
@@ -45,12 +51,12 @@ impl<'a> OwnedScope<'a> {
         T: 'static + StoreBuilder<'a>,
     {
         let contexts = &mut self.inherited().contexts.inner.borrow_mut();
-        if let Some(output) = get_ouput_from::<T>(contexts) {
-            Err(output)
+        if let Some(context) = use_context_from::<T>(contexts) {
+            Err(context)
         } else {
-            let output = self.create_store(t);
-            contexts.insert(TypeId::of::<T>(), output as &dyn Empty);
-            Ok(output)
+            let context = self.create_store(t);
+            contexts.insert(context_id::<T>(), context as &dyn Empty);
+            Ok(context)
         }
     }
 
@@ -66,7 +72,7 @@ impl<'a> OwnedScope<'a> {
     where
         T: 'static + StoreBuilder<'a>,
     {
-        use_context_impl::<T>(self.inherited())
+        use_context_from_ancestors::<T>(self.inherited())
     }
 
     pub fn use_context<T>(&'a self) -> &'a T::Store

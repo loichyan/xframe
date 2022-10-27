@@ -149,19 +149,30 @@ impl<'a> OwnedScope<'a> {
         unsafe { ctx.leak_ref() }
     }
 
-    pub fn create_signal<T: 'a>(&'a self, t: T) -> Signal<'a, T> {
-        let context = self.create_signal_context();
-        let owned = OwnedSignal(OwnedReadSignal {
+    pub fn create_owned_read_signal<T: 'a>(&'a self, t: T) -> OwnedReadSignal<'a, T> {
+        OwnedReadSignal {
             value: RefCell::new(t),
-            context,
-        });
-        self.create_variable(owned)
+            context: self.create_signal_context(),
+        }
+    }
+
+    pub fn create_owned_signal<T: 'a>(&'a self, t: T) -> OwnedSignal<'a, T> {
+        OwnedSignal(self.create_owned_read_signal(t))
+    }
+
+    pub fn create_read_signal<T: 'a>(&'a self, t: T) -> ReadSignal<'a, T> {
+        self.create_variable(self.create_owned_read_signal(t))
+    }
+
+    pub fn create_signal<T: 'a>(&'a self, t: T) -> Signal<'a, T> {
+        self.create_variable(self.create_owned_signal(t))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::create_root;
+    use std::cell::Cell;
 
     #[test]
     fn reactive_signal() {
@@ -204,6 +215,66 @@ mod tests {
             assert_eq!(*state2.get().get(), 1);
             state.set(2);
             assert_eq!(*double.get(), 4);
+        });
+    }
+
+    #[test]
+    fn owned_signal_in_child_scope() {
+        create_root(|cx| {
+            let owned = cx.create_owned_signal(1);
+            cx.create_child(|cx| {
+                let state = cx.create_variable(owned);
+                let double = cx.create_memo(|| *state.get() * 2);
+                assert_eq!(*state.get(), 1);
+                assert_eq!(*double.get(), 2);
+                state.set(2);
+                assert_eq!(*state.get(), 2);
+                assert_eq!(*double.get(), 4);
+            });
+        });
+    }
+
+    #[test]
+    fn dispose_owned_signal_in_child_scope() {
+        thread_local! {
+            static COUNTER: Cell<i32> = Cell::new(0);
+        }
+
+        struct DropAndInc;
+        impl Drop for DropAndInc {
+            fn drop(&mut self) {
+                COUNTER.with(|x| x.set(x.get() + 1));
+            }
+        }
+
+        struct DropAndAssert(i32);
+        impl Drop for DropAndAssert {
+            fn drop(&mut self) {
+                assert_eq!(COUNTER.with(Cell::get), self.0);
+            }
+        }
+
+        create_root(|cx| {
+            let owned = cx.create_owned_signal(DropAndInc);
+            cx.create_child(|cx| {
+                cx.create_variable(DropAndAssert(1));
+                cx.create_variable(owned);
+                cx.create_variable(DropAndAssert(0));
+            });
+            cx.create_owned_signal(DropAndInc);
+        });
+        drop(DropAndAssert(2));
+    }
+
+    #[test]
+    fn can_read_signal_context_after_dispose_in_child() {
+        create_root(|cx| {
+            let owned = cx.create_owned_signal(0);
+            let context = owned.context.this;
+            cx.create_child(|cx| {
+                cx.create_variable(owned);
+            });
+            assert!(context.can_upgrade());
         });
     }
 }

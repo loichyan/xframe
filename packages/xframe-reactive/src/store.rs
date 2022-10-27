@@ -1,6 +1,6 @@
 use crate::{
     scope::{OwnedScope, Scope},
-    signal::Signal,
+    OwnedReadSignal, OwnedSignal,
 };
 use std::marker::PhantomData;
 
@@ -40,10 +40,21 @@ impl<'a, T> StoreBuilder<'a> for CreateSelf<T> {
 pub struct CreateSignal<T>(pub T);
 
 impl<'a, T: 'static> StoreBuilder<'a> for CreateSignal<T> {
-    type Store = Signal<'a, T>;
+    type Store = OwnedSignal<'a, T>;
 
     fn build_store(cx: Scope<'a>, this: Self) -> Self::Store {
-        cx.create_signal(this.0)
+        cx.create_owned_signal(this.0)
+    }
+}
+
+#[derive(Default)]
+pub struct CreateReadSignal<T>(pub T);
+
+impl<'a, T: 'static> StoreBuilder<'a> for CreateReadSignal<T> {
+    type Store = OwnedReadSignal<'a, T>;
+
+    fn build_store(cx: Scope<'a>, this: Self) -> Self::Store {
+        cx.create_owned_read_signal(this.0)
     }
 }
 
@@ -68,7 +79,7 @@ mod tests {
     }
 
     struct Store<'a> {
-        state: Signal<'a, i32>,
+        state: OwnedSignal<'a, i32>,
         data: String,
     }
 
@@ -78,7 +89,7 @@ mod tests {
         fn build_store(cx: Scope<'a>, this: Self) -> Self::Store {
             let Builder { state, data } = this;
             Store {
-                state: cx.create_signal(state),
+                state: cx.create_owned_signal(state),
                 data,
             }
         }

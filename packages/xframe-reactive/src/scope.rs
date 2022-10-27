@@ -345,7 +345,7 @@ mod test {
                 cx.create_variable(DropAndAssert(0));
             });
         });
-        assert_eq!(COUNTER.with(Cell::get), 2);
+        drop(DropAndAssert(2));
     }
 
     #[test]
