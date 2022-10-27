@@ -1,5 +1,5 @@
 [workspace]
-members = ["packages/xframe-reactive"]
+members = ["packages/reactive"]
 
 [package]
 name = "xframe"
@@ -7,3 +7,4 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
+xframe-reactive = { path = "packages/reactive" }
