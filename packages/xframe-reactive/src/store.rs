@@ -1,4 +1,7 @@
-use crate::{scope::Scope, signal::Signal};
+use crate::{
+    scope::{OwnedScope, Scope},
+    signal::Signal,
+};
 use std::marker::PhantomData;
 
 pub trait StoreBuilder<'a> {
@@ -44,8 +47,8 @@ impl<'a, T: 'static> StoreBuilder<'a> for CreateSignal<T> {
     }
 }
 
-impl<'a> Scope<'a> {
-    pub fn create_store<T>(self, t: T) -> &'a T::Store
+impl<'a> OwnedScope<'a> {
+    pub fn create_store<T>(&'a self, t: T) -> &'a T::Store
     where
         T: StoreBuilder<'a>,
     {
@@ -56,6 +59,7 @@ impl<'a> Scope<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::create_root;
 
     #[derive(Default)]
     struct Builder {
@@ -82,7 +86,7 @@ mod tests {
 
     #[test]
     fn store_builder() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let buidler = Builder {
                 state: -1,
                 data: String::from("xFrame"),
@@ -95,7 +99,7 @@ mod tests {
 
     #[test]
     fn use_store_as_context() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             cx.provide_context(Builder {
                 state: -1,
                 ..Default::default()

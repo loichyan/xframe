@@ -1,4 +1,8 @@
-use crate::{scope::ScopeInherited, store::StoreBuilder, Empty, Scope};
+use crate::{
+    scope::{OwnedScope, ScopeInherited},
+    shared::Empty,
+    store::StoreBuilder,
+};
 use ahash::AHashMap;
 use std::{any::TypeId, cell::RefCell, fmt};
 
@@ -35,8 +39,8 @@ where
         .or_else(|| inherited.parent.and_then(use_context_impl::<T>))
 }
 
-impl<'a> Scope<'a> {
-    pub fn try_provide_context<T>(self, t: T) -> Result<&'a T::Store, &'a T::Store>
+impl<'a> OwnedScope<'a> {
+    pub fn try_provide_context<T>(&'a self, t: T) -> Result<&'a T::Store, &'a T::Store>
     where
         T: 'static + StoreBuilder<'a>,
     {
@@ -50,7 +54,7 @@ impl<'a> Scope<'a> {
         }
     }
 
-    pub fn provide_context<T>(self, t: T) -> &'a T::Store
+    pub fn provide_context<T>(&'a self, t: T) -> &'a T::Store
     where
         T: 'static + StoreBuilder<'a>,
     {
@@ -58,14 +62,14 @@ impl<'a> Scope<'a> {
             .unwrap_or_else(|_| panic!("context provided in current scope"))
     }
 
-    pub fn try_use_context<T>(self) -> Option<&'a T::Store>
+    pub fn try_use_context<T>(&'a self) -> Option<&'a T::Store>
     where
         T: 'static + StoreBuilder<'a>,
     {
         use_context_impl::<T>(self.inherited())
     }
 
-    pub fn use_context<T>(self) -> &'a T::Store
+    pub fn use_context<T>(&'a self) -> &'a T::Store
     where
         T: 'static + StoreBuilder<'a>,
     {
@@ -75,12 +79,12 @@ impl<'a> Scope<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::create_root;
     use crate::store::*;
 
     #[test]
     fn provide_and_use_context() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             cx.provide_context(CreateSignal(777i32));
             let x = cx.use_context::<CreateSignal<i32>>();
             assert_eq!(*x.get(), 777);
@@ -89,7 +93,7 @@ mod tests {
 
     #[test]
     fn use_context_from_child_scope() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             cx.provide_context(CreateSelf(777i32));
             cx.create_child(|cx| {
                 let x = cx.use_context::<CreateSelf<i32>>();
@@ -100,7 +104,7 @@ mod tests {
 
     #[test]
     fn unique_context_in_same_scope() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             cx.provide_context(CreateSelf(777i32));
             assert!(cx.try_provide_context(CreateSelf(777i32)).is_err());
         });

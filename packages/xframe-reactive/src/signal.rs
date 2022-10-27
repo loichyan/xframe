@@ -1,64 +1,70 @@
 mod modify;
-pub use modify::Modify;
+pub use modify::SignalModify;
 
 use crate::{
-    scope::{Cleanup, EffectRef, Scope, Shared, SignalRef},
-    Empty,
+    scope::{Cleanup, OwnedScope},
+    shared::{EffectRef, Shared, SignalContextRef},
 };
 use indexmap::IndexSet;
-use std::{cell::RefCell, fmt, marker::PhantomData};
+use std::{cell::RefCell, fmt, ops::Deref};
 
-pub struct Signal<'a, T> {
-    inner: &'a RawSignal<'a>,
-    ty: PhantomData<T>,
+pub type Signal<'a, T> = &'a OwnedSignal<'a, T>;
+pub type ReadSignal<'a, T> = &'a OwnedReadSignal<'a, T>;
+
+pub struct OwnedReadSignal<'a, T> {
+    value: RefCell<T>,
+    context: &'a SignalContext,
 }
 
-impl<T: fmt::Debug> fmt::Debug for Signal<'_, T> {
+impl<T: fmt::Debug> fmt::Debug for OwnedReadSignal<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Signal")
-            .field(&self.value().borrow())
-            .finish()
+        f.debug_tuple("Signal").field(&self.value.borrow()).finish()
     }
 }
 
-impl<T> Clone for Signal<'_, T> {
-    fn clone(&self) -> Self {
-        Signal { ..*self }
-    }
-}
-
-impl<T> Copy for Signal<'_, T> {}
-
-impl<'a, T> Signal<'a, T> {
-    fn value(&self) -> &'a RefCell<T> {
-        // SAFETY: the type is guaranteed by self.ty
-        unsafe { &*(self.inner.value as *const dyn Empty as *const RefCell<T>) }
-    }
-
+impl<'a, T> OwnedReadSignal<'a, T> {
     pub fn track(&self) {
-        self.inner.track();
+        self.context.track();
     }
 
     pub fn trigger_subscribers(&self) {
-        self.inner.trigger_subscribers();
+        self.context.trigger_subscribers();
     }
 
-    pub fn get(&self) -> Ref<'a, T> {
+    pub fn get(&self) -> SignalRef<'_, T> {
         self.track();
         self.get_untracked()
     }
 
-    pub fn get_untracked(&self) -> Ref<'a, T> {
-        Ref(self.value().borrow())
+    pub fn get_untracked(&self) -> SignalRef<'_, T> {
+        SignalRef(self.value.borrow())
     }
+}
 
+pub struct OwnedSignal<'a, T>(OwnedReadSignal<'a, T>);
+
+impl<'a, T> Deref for OwnedSignal<'a, T> {
+    type Target = OwnedReadSignal<'a, T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T: fmt::Debug> fmt::Debug for OwnedSignal<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<'a, T> OwnedSignal<'a, T> {
     pub fn set(&self, val: T) {
         self.set_slient(val);
         self.trigger_subscribers();
     }
 
     pub fn set_slient(&self, val: T) {
-        self.value().replace(val);
+        self.value.replace(val);
     }
 
     pub fn update(&self, f: impl FnOnce(&mut T) -> T) {
@@ -67,18 +73,17 @@ impl<'a, T> Signal<'a, T> {
     }
 
     pub fn update_silent(&self, f: impl FnOnce(&mut T) -> T) {
-        self.value().replace_with(f);
+        self.value.replace_with(f);
     }
 }
 
-pub(crate) struct RawSignal<'a> {
-    this: SignalRef,
+pub(crate) struct SignalContext {
+    this: SignalContextRef,
     shared: &'static Shared,
-    value: &'a (dyn 'a + Empty),
     subscribers: RefCell<IndexSet<EffectRef>>,
 }
 
-impl<'a> RawSignal<'a> {
+impl SignalContext {
     pub fn track(&self) {
         if let Some(eff) = self.shared.observer.get() {
             eff.with(|eff| eff.add_dependency(self.this));
@@ -105,21 +110,21 @@ impl<'a> RawSignal<'a> {
     }
 }
 
-pub struct Ref<'a, T: ?Sized>(std::cell::Ref<'a, T>);
+pub struct SignalRef<'a, T: ?Sized>(std::cell::Ref<'a, T>);
 
-impl<T: fmt::Debug> fmt::Debug for Ref<'_, T> {
+impl<T: fmt::Debug> fmt::Debug for SignalRef<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }
 }
 
-impl<'a, T: ?Sized> Ref<'a, T> {
-    pub fn map<U>(orig: Self, f: impl FnOnce(&T) -> &U) -> Ref<'a, U> {
-        Ref(std::cell::Ref::map(orig.0, f))
+impl<'a, T: ?Sized> SignalRef<'a, T> {
+    pub fn map<U>(orig: Self, f: impl FnOnce(&T) -> &U) -> SignalRef<'a, U> {
+        SignalRef(std::cell::Ref::map(orig.0, f))
     }
 }
 
-impl<'a, T> std::ops::Deref for Ref<'a, T> {
+impl<'a, T> Deref for SignalRef<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -127,41 +132,40 @@ impl<'a, T> std::ops::Deref for Ref<'a, T> {
     }
 }
 
-impl<'a> Scope<'a> {
-    fn create_signal_impl<T>(self, value: &'a (dyn 'a + Empty)) -> Signal<'a, T> {
+impl<'a> OwnedScope<'a> {
+    fn create_signal_context(&self) -> &'a SignalContext {
         let shared = self.shared();
-        let raw = shared.signals.alloc_with_weak(|this| {
-            let raw = RawSignal {
+        let ctx = shared
+            .signal_contexts
+            .alloc_with_weak(|this| SignalContext {
                 this,
                 shared,
-                value,
                 subscribers: Default::default(),
-            };
-            // SAFETY: the signal will be freed and no longer accessible for weak
-            // references once current scope is disposed.
-            unsafe { std::mem::transmute(raw) }
-        });
-        let inner = unsafe { raw.leak_ref() };
-        self.push_cleanup(Cleanup::Signal(raw));
-        Signal {
-            inner,
-            ty: PhantomData,
-        }
+            });
+        self.push_cleanup(Cleanup::SignalContext(ctx));
+        // SAFETY: the signal will be freed and no longer accessible for weak
+        // references once current scope is disposed.
+        // unsafe { std::mem::transmute(ctx) }
+        unsafe { ctx.leak_ref() }
     }
 
-    pub fn create_signal<T: 'a>(self, t: T) -> Signal<'a, T> {
-        let value = self.create_variable(RefCell::new(t));
-        self.create_signal_impl(value)
+    pub fn create_signal<T: 'a>(&'a self, t: T) -> Signal<'a, T> {
+        let context = self.create_signal_context();
+        let owned = OwnedSignal(OwnedReadSignal {
+            value: RefCell::new(t),
+            context,
+        });
+        self.create_variable(owned)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::create_root;
 
     #[test]
     fn reactive_signal() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let state = cx.create_signal(0);
             assert_eq!(*state.get(), 0);
             state.set(1);
@@ -171,7 +175,7 @@ mod tests {
 
     #[test]
     fn signal_composition() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let state = cx.create_signal(1);
             let double = || *state.get() * 2;
             assert_eq!(double(), 2);
@@ -182,9 +186,9 @@ mod tests {
 
     #[test]
     fn signal_set_slient() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let state = cx.create_signal(1);
-            let double = cx.create_memo(move || *state.get() * 2);
+            let double = cx.create_memo(|| *state.get() * 2);
             assert_eq!(*double.get(), 2);
             state.set_slient(2);
             assert_eq!(*double.get(), 2);
@@ -193,10 +197,10 @@ mod tests {
 
     #[test]
     fn signal_of_signal() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let state = cx.create_signal(1);
             let state2 = cx.create_signal(state);
-            let double = cx.create_memo(move || *state2.get().get() * 2);
+            let double = cx.create_memo(|| *state2.get().get() * 2);
             assert_eq!(*state2.get().get(), 1);
             state.set(2);
             assert_eq!(*double.get(), 4);

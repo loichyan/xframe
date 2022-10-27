@@ -3,16 +3,11 @@ mod context;
 mod effect;
 mod memo;
 mod scope;
+mod shared;
 mod signal;
 mod store;
 
-type InvariantLifetime<'a> = &'a mut &'a mut ();
-type CovariantLifetime<'a> = &'a ();
-
-trait Empty {}
-impl<T> Empty for T {}
-
-pub use effect::Effect;
-pub use scope::{BoundedScope, Scope, ScopeDisposer};
-pub use signal::{Modify, Ref, Signal};
+pub use effect::{Effect, OwnedEffect};
+pub use scope::{create_root, BoundedOwnedScope, BoundedScope, OwnedScope, Scope, ScopeDisposer};
+pub use signal::{OwnedReadSignal, OwnedSignal, ReadSignal, Signal, SignalModify, SignalRef};
 pub use store::{CreateDefault, CreateSelf, CreateSignal, StoreBuilder};
