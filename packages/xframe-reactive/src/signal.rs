@@ -61,18 +61,12 @@ impl<'a, T> Signal<'a, T> {
         self.value().replace(val);
     }
 
-    pub fn update<F>(&self, f: F)
-    where
-        F: FnOnce(&mut T) -> T,
-    {
+    pub fn update(&self, f: impl FnOnce(&mut T) -> T) {
         self.update_silent(f);
         self.trigger_subscribers();
     }
 
-    pub fn update_silent<F>(&self, f: F)
-    where
-        F: FnOnce(&mut T) -> T,
-    {
+    pub fn update_silent(&self, f: impl FnOnce(&mut T) -> T) {
         self.value().replace_with(f);
     }
 }
@@ -120,10 +114,7 @@ impl<T: fmt::Debug> fmt::Debug for Ref<'_, T> {
 }
 
 impl<'a, T: ?Sized> Ref<'a, T> {
-    pub fn map<U, F>(orig: Self, f: F) -> Ref<'a, U>
-    where
-        F: FnOnce(&T) -> &U,
-    {
+    pub fn map<U>(orig: Self, f: impl FnOnce(&T) -> &U) -> Ref<'a, U> {
         Ref(std::cell::Ref::map(orig.0, f))
     }
 }

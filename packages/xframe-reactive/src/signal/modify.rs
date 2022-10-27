@@ -25,10 +25,7 @@ impl<T: fmt::Debug> fmt::Debug for Modify<'_, T> {
 }
 
 impl<'a, T> Modify<'a, T> {
-    pub fn map<U, F>(this: Self, f: F) -> Modify<'a, U>
-    where
-        F: FnOnce(&mut T) -> &mut U,
-    {
+    pub fn map<U>(this: Self, f: impl FnOnce(&mut T) -> &mut U) -> Modify<'a, U> {
         let Modify { value, trigger } = this;
         Modify {
             value: std::cell::RefMut::map(value, f),
