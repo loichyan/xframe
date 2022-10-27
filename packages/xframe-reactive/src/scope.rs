@@ -49,6 +49,7 @@ pub(crate) enum Cleanup<'a> {
     Signal(SignalRef),
     Effect(EffectRef),
     Variable(&'a (dyn 'a + Empty)),
+    // TODO: can we use a bumpalo::boxed::Box here?
     Callback(Box<dyn 'a + FnOnce()>),
 }
 
@@ -238,8 +239,8 @@ impl<'a> Scope<'a> {
         ptr
     }
 
-    pub fn on_cleanup(&self, f: impl 'a + FnOnce()) {
-        self.push_cleanup(Cleanup::Callback(Box::new(f)));
+    pub fn on_cleanup(self, f: impl 'a + FnOnce()) {
+        self.push_cleanup(Cleanup::Callback(Box::new(move || self.untrack(f))));
     }
 
     pub fn untrack(self, f: impl FnOnce()) {
@@ -247,5 +248,138 @@ impl<'a> Scope<'a> {
         let saved = observer.take();
         f();
         observer.set(saved);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn variables() {
+        let a = Cell::new(-1);
+        Scope::create_root(|cx| {
+            let var = cx.create_variable(1);
+            a.set(*var);
+        });
+        assert_eq!(a.get(), 1);
+    }
+
+    #[test]
+    fn cleanup() {
+        Scope::create_root(|cx| {
+            let called = cx.create_signal(0);
+            cx.create_child(|cx| {
+                cx.on_cleanup(move || {
+                    called.update(|x| *x + 1);
+                });
+            });
+            assert_eq!(*called.get(), 1);
+        });
+    }
+
+    #[test]
+    fn cleanup_in_scoped_effect() {
+        Scope::create_root(|cx| {
+            let trigger = cx.create_signal(());
+            let counter = cx.create_signal(0);
+
+            cx.create_effect_scoped(move |cx| {
+                trigger.track();
+                cx.on_cleanup(move || {
+                    counter.update(|x| *x + 1);
+                });
+            });
+            assert_eq!(*counter.get(), 0);
+
+            trigger.trigger_subscribers();
+            assert_eq!(*counter.get(), 1);
+
+            trigger.trigger_subscribers();
+            assert_eq!(*counter.get(), 2);
+        });
+    }
+
+    #[test]
+    fn cleanup_is_untracked() {
+        Scope::create_root(|cx| {
+            let trigger = cx.create_signal(());
+            let trigger2 = cx.create_signal(());
+            let counter = cx.create_signal(0);
+
+            cx.create_effect_scoped(move |cx| {
+                trigger.track();
+                counter.update(move |x| *x + 1);
+
+                cx.on_cleanup(move || {
+                    trigger2.track();
+                });
+            });
+            assert_eq!(*counter.get(), 1);
+
+            trigger.trigger_subscribers(); // Call the cleanup
+            assert_eq!(*counter.get(), 2);
+
+            trigger2.trigger_subscribers();
+            assert_eq!(*counter.get(), 2);
+        });
+    }
+
+    #[test]
+    fn store_disposer_in_own_signal() {
+        Scope::create_root(|cx| {
+            let state = cx.create_signal(None);
+            let disposer = cx.create_child(|_| ());
+            state.set(Some(disposer));
+        });
+    }
+
+    #[test]
+    fn drop_variables_on_dispose() {
+        thread_local! {
+            static COUNTER: Cell<i32> = Cell::new(0);
+        }
+
+        struct DropAndInc;
+        impl Drop for DropAndInc {
+            fn drop(&mut self) {
+                COUNTER.with(|x| x.set(x.get() + 1));
+            }
+        }
+
+        struct DropAndAssert(i32);
+        impl Drop for DropAndAssert {
+            fn drop(&mut self) {
+                assert_eq!(COUNTER.with(Cell::get), self.0);
+            }
+        }
+
+        Scope::create_root(|cx| {
+            cx.create_variable(DropAndInc);
+            cx.create_child(|cx| {
+                cx.create_variable(DropAndAssert(1));
+                cx.create_variable(DropAndInc);
+                cx.create_variable(DropAndAssert(0));
+            });
+        });
+        assert_eq!(COUNTER.with(Cell::get), 2);
+    }
+
+    #[test]
+    fn access_previous_var_on_drop() {
+        struct AssertVarOnDrop<'a> {
+            var: &'a i32,
+            expect: i32,
+        }
+        impl Drop for AssertVarOnDrop<'_> {
+            fn drop(&mut self) {
+                assert_eq!(*self.var, self.expect);
+            }
+        }
+
+        Scope::create_root(|cx| {
+            let var = cx.create_variable(777);
+            cx.create_variable(AssertVarOnDrop { var, expect: 777 });
+        });
     }
 }
