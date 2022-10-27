@@ -1,37 +1,31 @@
-use crate::scope::{BoundedScope, Cleanup, EffectRef, Scope, Shared, SignalRef};
+use crate::{
+    scope::{BoundedScope, Cleanup, OwnedScope},
+    shared::{EffectRef, Shared, SignalContextRef},
+};
 use ahash::AHashSet;
 use std::{cell::RefCell, fmt};
 
-#[derive(Clone, Copy)]
-pub struct Effect<'a> {
-    inner: &'a RawEffect<'a>,
-}
+pub type Effect<'a> = &'a OwnedEffect<'a>;
 
-impl fmt::Debug for Effect<'_> {
+impl fmt::Debug for OwnedEffect<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Effect").finish_non_exhaustive()
     }
 }
 
-impl<'a> Effect<'a> {
-    pub fn run(&self) {
-        self.inner.run();
-    }
-}
-
-pub(crate) struct RawEffect<'a> {
+pub struct OwnedEffect<'a> {
     this: EffectRef,
     shared: &'static Shared,
     effect: &'a (dyn 'a + AnyEffect),
-    dependencies: RefCell<AHashSet<SignalRef>>,
+    dependencies: RefCell<AHashSet<SignalContextRef>>,
 }
 
-impl<'a> RawEffect<'a> {
-    pub fn add_dependency(&self, signal: SignalRef) {
+impl<'a> OwnedEffect<'a> {
+    pub(crate) fn add_dependency(&self, signal: SignalContextRef) {
         self.dependencies.borrow_mut().insert(signal);
     }
 
-    pub fn clear_dependencies(&self, this: EffectRef) {
+    pub(crate) fn clear_dependencies(&self, this: EffectRef) {
         let mut dependencies = self.dependencies.borrow_mut();
         for sig in dependencies.iter() {
             sig.with(|sig| sig.unsubscribe(this));
@@ -81,11 +75,11 @@ where
     }
 }
 
-impl<'a> Scope<'a> {
-    fn create_effect_impl(self, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
+impl<'a> OwnedScope<'a> {
+    fn create_effect_impl(&self, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
         let shared = self.shared();
-        let raw = shared.effects.alloc_with_weak(|this| {
-            let raw = RawEffect {
+        let owned = shared.effects.alloc_with_weak(|this| {
+            let owned = OwnedEffect {
                 this,
                 effect,
                 shared,
@@ -93,15 +87,15 @@ impl<'a> Scope<'a> {
             };
             // SAFETY: same as what we do on RawSignal, the effect cannot be accessed
             // once this scope is disposed.
-            unsafe { std::mem::transmute(raw) }
+            unsafe { std::mem::transmute(owned) }
         });
-        let inner = unsafe { raw.leak_ref() };
-        self.push_cleanup(Cleanup::Effect(raw));
-        inner.run();
-        Effect { inner }
+        let effect = unsafe { owned.leak_ref() };
+        self.push_cleanup(Cleanup::Effect(owned));
+        effect.run();
+        effect
     }
 
-    pub fn create_effect<T: 'a>(self, f: impl 'a + FnMut(Option<T>) -> T) -> Effect<'a> {
+    pub fn create_effect<T: 'a>(&'a self, f: impl 'a + FnMut(Option<T>) -> T) -> Effect<'a> {
         let effect = self.create_variable(RefCell::new(AnyEffectImpl {
             prev: None,
             func: f,
@@ -110,7 +104,7 @@ impl<'a> Scope<'a> {
     }
 
     pub fn create_effect_scoped(
-        self,
+        &'a self,
         mut f: impl 'a + for<'child> FnMut(BoundedScope<'child, 'a>),
     ) {
         self.create_effect(move |disposer| {
@@ -122,16 +116,16 @@ impl<'a> Scope<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::create_root;
     use std::cell::Cell;
 
     #[test]
     fn reactive_effect() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let state = cx.create_signal(0);
             let double = cx.create_variable(Cell::new(-1));
 
-            cx.create_effect(move |_| {
+            cx.create_effect(|_| {
                 double.set(*state.get() * 2);
             });
             assert_eq!(double.get(), 0);
@@ -146,11 +140,11 @@ mod tests {
 
     #[test]
     fn previous_returned_value_in_effect() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let state = cx.create_signal(0);
             let prev_state = cx.create_signal(-1);
 
-            cx.create_effect(move |prev| {
+            cx.create_effect(|prev| {
                 if let Some(prev) = prev {
                     prev_state.set(prev)
                 }
@@ -168,9 +162,9 @@ mod tests {
 
     #[test]
     fn no_infinite_loop_in_effect() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let state = cx.create_signal(());
-            cx.create_effect(move |_| {
+            cx.create_effect(|_| {
                 state.track();
                 state.trigger_subscribers();
             });
@@ -180,9 +174,9 @@ mod tests {
 
     #[test]
     fn no_infinite_loop_in_nested_effect() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let state = cx.create_signal(());
-            cx.create_effect(move |prev| {
+            cx.create_effect(|prev| {
                 if prev.is_none() {
                     state.track();
                     state.trigger_subscribers();
@@ -194,7 +188,7 @@ mod tests {
 
     #[test]
     fn dynamically_update_effect_dependencies() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let cond = cx.create_signal(true);
 
             let state1 = cx.create_signal(0);
@@ -202,7 +196,7 @@ mod tests {
 
             let counter = cx.create_signal(0);
 
-            cx.create_effect(move |_| {
+            cx.create_effect(|_| {
                 counter.update(|x| *x + 1);
 
                 if *cond.get() {
@@ -232,16 +226,16 @@ mod tests {
 
     #[test]
     fn inner_effect_triggered_first() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let state = cx.create_signal(());
             let inner_counter = cx.create_variable(Cell::new(0));
             let outer_counter = cx.create_variable(Cell::new(0));
 
-            cx.create_effect(move |_| {
+            cx.create_effect(|_| {
                 state.track();
                 if inner_counter.get() < 2 {
-                    cx.create_effect_scoped(move |cx| {
-                        cx.create_effect(move |_| {
+                    cx.create_effect_scoped(|cx| {
+                        cx.create_effect(|_| {
                             state.track();
                             inner_counter.set(inner_counter.get() + 1);
                         });
@@ -264,8 +258,8 @@ mod tests {
 
     #[test]
     fn remove_a_disposed_dependency() {
-        Scope::create_root(|cx| {
-            let eff = cx.create_effect(move |prev| {
+        create_root(|cx| {
+            let eff = cx.create_effect(|prev| {
                 if prev.is_none() {
                     cx.create_child(|cx| {
                         let state = cx.create_signal(0);
@@ -274,7 +268,6 @@ mod tests {
                 }
             });
             let count = eff
-                .inner
                 .dependencies
                 .borrow()
                 .iter()

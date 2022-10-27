@@ -1,12 +1,12 @@
 use crate::{
-    scope::Scope,
-    signal::{Modify, Signal},
+    scope::OwnedScope,
+    signal::{Signal, SignalModify},
 };
 use std::cell::Cell;
 
-impl<'a> Scope<'a> {
+impl<'a> OwnedScope<'a> {
     fn create_memo_impl<T: 'a>(
-        self,
+        &'a self,
         mut f: impl 'a + FnMut() -> T,
         mut update: impl 'a + FnMut(T, Signal<'a, T>),
     ) -> Signal<'a, T> {
@@ -23,11 +23,11 @@ impl<'a> Scope<'a> {
         memo.get().unwrap()
     }
 
-    pub fn create_memo<T: 'a>(self, f: impl 'a + FnMut() -> T) -> Signal<'a, T> {
+    pub fn create_memo<T: 'a>(&'a self, f: impl 'a + FnMut() -> T) -> Signal<'a, T> {
         self.create_memo_impl(f, |new_val, memo| memo.set(new_val))
     }
 
-    pub fn create_seletor<T: 'a>(self, f: impl 'a + FnMut() -> T) -> Signal<'a, T>
+    pub fn create_seletor<T: 'a>(&'a self, f: impl 'a + FnMut() -> T) -> Signal<'a, T>
     where
         T: PartialEq,
     {
@@ -35,7 +35,7 @@ impl<'a> Scope<'a> {
     }
 
     pub fn create_seletor_with<T: 'a>(
-        self,
+        &'a self,
         f: impl 'a + FnMut() -> T,
         mut is_equal: impl 'a + FnMut(&T, &T) -> bool,
     ) -> Signal<'a, T> {
@@ -45,21 +45,21 @@ impl<'a> Scope<'a> {
                 *modify_memo = new_val;
                 return;
             }
-            Modify::drop_silent(modify_memo);
+            SignalModify::drop_silent(modify_memo);
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::create_root;
 
     #[test]
     fn reactive_memo() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let state = cx.create_signal(1);
 
-            let double = cx.create_memo(move || *state.get() * 2);
+            let double = cx.create_memo(|| *state.get() * 2);
             assert_eq!(*double.get(), 2);
 
             state.set(2);
@@ -72,11 +72,11 @@ mod tests {
 
     #[test]
     fn memo_only_run_when_triggered() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let state = cx.create_signal(1);
             let counter = cx.create_signal(0);
 
-            let double = cx.create_memo(move || {
+            let double = cx.create_memo(|| {
                 counter.update(|x| *x + 1);
                 *state.get() * 2
             });
@@ -94,10 +94,10 @@ mod tests {
 
     #[test]
     fn memo_on_memo() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let state = cx.create_signal(1);
-            let double = cx.create_memo(move || *state.get() * 2);
-            let quad = cx.create_memo(move || *double.get() * 2);
+            let double = cx.create_memo(|| *state.get() * 2);
+            let quad = cx.create_memo(|| *double.get() * 2);
 
             assert_eq!(*quad.get(), 4);
             state.set(2);
@@ -107,9 +107,9 @@ mod tests {
 
     #[test]
     fn untracked_memo() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let state = cx.create_signal(1);
-            let double = cx.create_memo(move || *state.get_untracked() * 2);
+            let double = cx.create_memo(|| *state.get_untracked() * 2);
 
             assert_eq!(*double.get(), 2);
             state.set(2);
@@ -119,12 +119,12 @@ mod tests {
 
     #[test]
     fn reactive_selector() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let state = cx.create_signal(1);
-            let double = cx.create_seletor(move || *state.get() * 2);
+            let double = cx.create_seletor(|| *state.get() * 2);
 
             let counter2 = cx.create_signal(0);
-            cx.create_effect(move |_| {
+            cx.create_effect(|_| {
                 double.track();
                 counter2.update(|x| *x + 1);
             });

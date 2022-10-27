@@ -1,82 +1,45 @@
 use crate::{
-    arena::{Arena, WeakRef},
+    arena::WeakRef,
     context::Contexts,
-    effect::RawEffect,
-    signal::RawSignal,
-    CovariantLifetime, Empty, InvariantLifetime,
+    shared::{CovariantLifetime, EffectRef, Empty, InvariantLifetime, Shared, SignalContextRef},
 };
 use bumpalo::Bump;
 use smallvec::SmallVec;
-use std::{
-    cell::{Cell, RefCell},
-    fmt,
-    marker::PhantomData,
-};
+use std::{cell::RefCell, fmt, marker::PhantomData, ops::Deref};
 
 const INITIAL_CLEANUP_SLOTS: usize = 4;
 
-pub type Scope<'a> = BoundedScope<'a, 'a>;
+pub type Scope<'a> = &'a OwnedScope<'a>;
+pub type BoundedScope<'a, 'b> = &'a BoundedOwnedScope<'a, 'b>;
 
-#[derive(Clone, Copy)]
-pub struct BoundedScope<'a, 'b: 'a> {
-    inner: &'a RawScope<'a>,
+pub struct BoundedOwnedScope<'a, 'b: 'a> {
+    scope: OwnedScope<'a>,
     /// The 'b life bounds is requred because we need to tell the compiler
     /// the child scope should never outlives its parent.
     bounds: PhantomData<(InvariantLifetime<'a>, CovariantLifetime<'b>)>,
 }
 
-impl fmt::Debug for Scope<'_> {
+impl<'a> Deref for BoundedOwnedScope<'a, '_> {
+    type Target = OwnedScope<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.scope
+    }
+}
+
+impl fmt::Debug for BoundedOwnedScope<'_, '_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.inner.fmt(f)
+        self.scope.fmt(f)
     }
 }
 
-impl<'a> Scope<'a> {
-    pub(crate) fn inherited(&self) -> &'a ScopeInherited<'a> {
-        &self.inner.inherited
-    }
-
-    pub(crate) fn shared(&self) -> &'static Shared {
-        self.inner.inherited.shared
-    }
-
-    pub(crate) fn push_cleanup(&self, ty: Cleanup<'a>) {
-        self.inner.cleanups.borrow_mut().push(ty);
-    }
-}
-
-pub(crate) enum Cleanup<'a> {
-    Signal(SignalRef),
-    Effect(EffectRef),
-    Variable(&'a (dyn 'a + Empty)),
-    // TODO: can we use a bumpalo::boxed::Box here?
-    Callback(Box<dyn 'a + FnOnce()>),
-}
-
-impl fmt::Debug for Cleanup<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Cleanup::Signal(s) => f.debug_tuple("Signal").field(&s.as_ptr()).finish(),
-            Cleanup::Effect(e) => f.debug_tuple("Effect").field(&e.as_ptr()).finish(),
-            Cleanup::Variable(v) => f
-                .debug_tuple("Variable")
-                .field(&(v as *const dyn Empty))
-                .finish(),
-            Cleanup::Callback(c) => f
-                .debug_tuple("Callback")
-                .field(&(&*c as *const dyn FnOnce()))
-                .finish(),
-        }
-    }
-}
-
-struct RawScope<'a> {
+pub struct OwnedScope<'a> {
     variables: Bump,
     inherited: ScopeInherited<'a>,
     cleanups: RefCell<SmallVec<[Cleanup<'a>; INITIAL_CLEANUP_SLOTS]>>,
 }
 
-impl fmt::Debug for RawScope<'_> {
+impl fmt::Debug for OwnedScope<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Scope")
             .field("inherited", &self.inherited)
@@ -85,14 +48,14 @@ impl fmt::Debug for RawScope<'_> {
     }
 }
 
-impl Drop for RawScope<'_> {
+impl Drop for OwnedScope<'_> {
     fn drop(&mut self) {
         // SAFETY: last alloced variables must be disposed first because signals
         // and effects need to do some cleanup works with its captured references.
         for ty in self.cleanups.take().into_iter().rev() {
             match ty {
-                Cleanup::Signal(sig) => {
-                    self.inherited.shared.signals.free(sig);
+                Cleanup::SignalContext(sig) => {
+                    self.inherited.shared.signal_contexts.free(sig);
                 }
                 Cleanup::Effect(eff) => {
                     self.inherited.shared.effects.free(eff);
@@ -122,27 +85,33 @@ impl fmt::Debug for ScopeInherited<'_> {
     }
 }
 
-pub(crate) type SignalRef = WeakRef<'static, RawSignal<'static>>;
-pub(crate) type EffectRef = WeakRef<'static, RawEffect<'static>>;
-
-#[derive(Default)]
-pub(crate) struct Shared {
-    pub observer: Cell<Option<WeakRef<'static, RawEffect<'static>>>>,
-    pub signals: Arena<RawSignal<'static>>,
-    pub effects: Arena<RawEffect<'static>>,
-    scopes: Arena<RawScope<'static>>,
+pub(crate) enum Cleanup<'a> {
+    SignalContext(SignalContextRef),
+    Effect(EffectRef),
+    Variable(&'a (dyn 'a + Empty)),
+    // TODO: can we use a bumpalo::boxed::Box here?
+    Callback(Box<dyn 'a + FnOnce()>),
 }
 
-impl fmt::Debug for Shared {
+impl fmt::Debug for Cleanup<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Shared")
-            .field("observer", &self.observer.get().map(|x| x.as_ptr()))
-            .finish_non_exhaustive()
+        match self {
+            Cleanup::SignalContext(s) => f.debug_tuple("Signal").field(&s.as_ptr()).finish(),
+            Cleanup::Effect(e) => f.debug_tuple("Effect").field(&e.as_ptr()).finish(),
+            Cleanup::Variable(v) => f
+                .debug_tuple("Variable")
+                .field(&(v as *const dyn Empty))
+                .finish(),
+            Cleanup::Callback(c) => f
+                .debug_tuple("Callback")
+                .field(&(&*c as *const dyn FnOnce()))
+                .finish(),
+        }
     }
 }
 
 pub struct ScopeDisposer<'a> {
-    scope: WeakRef<'static, RawScope<'static>>,
+    scope: WeakRef<'static, BoundedOwnedScope<'static, 'static>>,
     bounds: PhantomData<InvariantLifetime<'a>>,
 }
 
@@ -171,13 +140,17 @@ impl<'a> ScopeDisposer<'a> {
                 }
             });
         let shared = inherited.shared;
-        let raw = RawScope {
+        let scope = OwnedScope {
             variables: Default::default(),
             inherited,
             cleanups: Default::default(),
         };
-        let raw = unsafe { std::mem::transmute(raw) };
-        let scope = shared.scopes.alloc(raw);
+        let bounded = BoundedOwnedScope {
+            scope,
+            bounds: PhantomData,
+        };
+        let bounded = unsafe { std::mem::transmute(bounded) };
+        let scope = shared.scopes.alloc(bounded);
         ScopeDisposer {
             scope,
             bounds: PhantomData,
@@ -199,11 +172,8 @@ impl<'a> ScopeDisposer<'a> {
     ///
     /// This function is unsafe because a scope might be disposed twice, and
     /// there may be references to variables created in the scope.
-    pub unsafe fn leak_scope(&self) -> Scope<'a> {
-        BoundedScope {
-            inner: std::mem::transmute(self.scope.leak_ref()),
-            bounds: PhantomData,
-        }
+    pub unsafe fn leak_scope(&self) -> BoundedScope<'a, 'a> {
+        std::mem::transmute(self.scope.leak_ref())
     }
 }
 
@@ -221,29 +191,41 @@ impl Drop for ScopeDisposer<'_> {
     }
 }
 
-impl<'a> Scope<'a> {
-    pub fn create_root(f: impl for<'b> FnOnce(BoundedScope<'b, 'a>)) -> ScopeDisposer<'a> {
-        ScopeDisposer::new_within(None, f)
+pub fn create_root<'a>(f: impl for<'b> FnOnce(BoundedScope<'b, 'a>)) -> ScopeDisposer<'a> {
+    ScopeDisposer::new_within(None, f)
+}
+
+impl<'a> OwnedScope<'a> {
+    pub(crate) fn inherited(&self) -> &ScopeInherited<'a> {
+        &self.inherited
+    }
+
+    pub(crate) fn shared(&self) -> &'static Shared {
+        self.inherited.shared
+    }
+
+    pub(crate) fn push_cleanup(&self, ty: Cleanup<'a>) {
+        self.cleanups.borrow_mut().push(ty);
     }
 
     pub fn create_child(
-        self,
+        &'a self,
         f: impl for<'child> FnOnce(BoundedScope<'child, 'a>),
     ) -> ScopeDisposer<'a> {
         ScopeDisposer::new_within(Some(&self.inherited()), f)
     }
 
-    pub fn create_variable<T: 'a>(self, t: T) -> &'a T {
-        let ptr = &*self.inner.variables.alloc(t);
+    pub fn create_variable<T: 'a>(&'a self, t: T) -> &'a T {
+        let ptr = &*self.variables.alloc(t);
         self.push_cleanup(Cleanup::Variable(ptr));
         ptr
     }
 
-    pub fn on_cleanup(self, f: impl 'a + FnOnce()) {
-        self.push_cleanup(Cleanup::Callback(Box::new(move || self.untrack(f))));
+    pub fn on_cleanup(&'a self, f: impl 'a + FnOnce()) {
+        self.push_cleanup(Cleanup::Callback(Box::new(|| self.untrack(f))));
     }
 
-    pub fn untrack(self, f: impl FnOnce()) {
+    pub fn untrack(&self, f: impl FnOnce()) {
         let observer = &self.shared().observer;
         let saved = observer.take();
         f();
@@ -253,12 +235,13 @@ impl<'a> Scope<'a> {
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    use super::create_root;
+    use std::cell::Cell;
 
     #[test]
     fn variables() {
         let a = Cell::new(-1);
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let var = cx.create_variable(1);
             a.set(*var);
         });
@@ -267,10 +250,10 @@ mod test {
 
     #[test]
     fn cleanup() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let called = cx.create_signal(0);
             cx.create_child(|cx| {
-                cx.on_cleanup(move || {
+                cx.on_cleanup(|| {
                     called.update(|x| *x + 1);
                 });
             });
@@ -280,13 +263,13 @@ mod test {
 
     #[test]
     fn cleanup_in_scoped_effect() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let trigger = cx.create_signal(());
             let counter = cx.create_signal(0);
 
-            cx.create_effect_scoped(move |cx| {
+            cx.create_effect_scoped(|cx| {
                 trigger.track();
-                cx.on_cleanup(move || {
+                cx.on_cleanup(|| {
                     counter.update(|x| *x + 1);
                 });
             });
@@ -302,16 +285,16 @@ mod test {
 
     #[test]
     fn cleanup_is_untracked() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let trigger = cx.create_signal(());
             let trigger2 = cx.create_signal(());
             let counter = cx.create_signal(0);
 
-            cx.create_effect_scoped(move |cx| {
+            cx.create_effect_scoped(|cx| {
                 trigger.track();
-                counter.update(move |x| *x + 1);
+                counter.update(|x| *x + 1);
 
-                cx.on_cleanup(move || {
+                cx.on_cleanup(|| {
                     trigger2.track();
                 });
             });
@@ -327,7 +310,7 @@ mod test {
 
     #[test]
     fn store_disposer_in_own_signal() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let state = cx.create_signal(None);
             let disposer = cx.create_child(|_| ());
             state.set(Some(disposer));
@@ -354,7 +337,7 @@ mod test {
             }
         }
 
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             cx.create_variable(DropAndInc);
             cx.create_child(|cx| {
                 cx.create_variable(DropAndAssert(1));
@@ -362,7 +345,7 @@ mod test {
                 cx.create_variable(DropAndAssert(0));
             });
         });
-        assert_eq!(COUNTER.with(Cell::get), 2);
+        drop(DropAndAssert(2));
     }
 
     #[test]
@@ -377,7 +360,7 @@ mod test {
             }
         }
 
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let var = cx.create_variable(777);
             cx.create_variable(AssertVarOnDrop { var, expect: 777 });
         });

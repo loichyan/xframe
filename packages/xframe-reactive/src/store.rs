@@ -1,4 +1,7 @@
-use crate::{scope::Scope, signal::Signal};
+use crate::{
+    scope::{OwnedScope, Scope},
+    OwnedReadSignal, OwnedSignal,
+};
 use std::marker::PhantomData;
 
 pub trait StoreBuilder<'a> {
@@ -37,15 +40,26 @@ impl<'a, T> StoreBuilder<'a> for CreateSelf<T> {
 pub struct CreateSignal<T>(pub T);
 
 impl<'a, T: 'static> StoreBuilder<'a> for CreateSignal<T> {
-    type Store = Signal<'a, T>;
+    type Store = OwnedSignal<'a, T>;
 
     fn build_store(cx: Scope<'a>, this: Self) -> Self::Store {
-        cx.create_signal(this.0)
+        cx.create_owned_signal(this.0)
     }
 }
 
-impl<'a> Scope<'a> {
-    pub fn create_store<T>(self, t: T) -> &'a T::Store
+#[derive(Default)]
+pub struct CreateReadSignal<T>(pub T);
+
+impl<'a, T: 'static> StoreBuilder<'a> for CreateReadSignal<T> {
+    type Store = OwnedReadSignal<'a, T>;
+
+    fn build_store(cx: Scope<'a>, this: Self) -> Self::Store {
+        cx.create_owned_read_signal(this.0)
+    }
+}
+
+impl<'a> OwnedScope<'a> {
+    pub fn create_store<T>(&'a self, t: T) -> &'a T::Store
     where
         T: StoreBuilder<'a>,
     {
@@ -56,6 +70,7 @@ impl<'a> Scope<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::create_root;
 
     #[derive(Default)]
     struct Builder {
@@ -64,7 +79,7 @@ mod tests {
     }
 
     struct Store<'a> {
-        state: Signal<'a, i32>,
+        state: OwnedSignal<'a, i32>,
         data: String,
     }
 
@@ -74,7 +89,7 @@ mod tests {
         fn build_store(cx: Scope<'a>, this: Self) -> Self::Store {
             let Builder { state, data } = this;
             Store {
-                state: cx.create_signal(state),
+                state: cx.create_owned_signal(state),
                 data,
             }
         }
@@ -82,7 +97,7 @@ mod tests {
 
     #[test]
     fn store_builder() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             let buidler = Builder {
                 state: -1,
                 data: String::from("xFrame"),
@@ -95,7 +110,7 @@ mod tests {
 
     #[test]
     fn use_store_as_context() {
-        Scope::create_root(|cx| {
+        create_root(|cx| {
             cx.provide_context(Builder {
                 state: -1,
                 ..Default::default()
