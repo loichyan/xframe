@@ -5,6 +5,7 @@ members = ["packages/reactive"]
 name = "xframe"
 version = "0.0.0"
 edition = "2021"
+license = "MIT"
 
 [dependencies]
 xframe-reactive = { path = "packages/reactive" }
