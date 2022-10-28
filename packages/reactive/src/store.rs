@@ -6,16 +6,15 @@ use std::marker::PhantomData;
 
 /// A trait for constructing composite states.
 ///
-///
 /// This is useful when providing a non-`'static` lifetime bound type as a context.
 /// The builder should be a `'static` type to idenfify a context.
-pub trait StoreBuilder<'a> {
+pub trait StoreBuilder<'a>: 'static {
     type Store;
     // TODO: build_store(self, cx: Scope<'a>)
     fn build_store(cx: Scope<'a>, this: Self) -> Self::Store;
 }
 
-pub struct CreateDefault<T>(pub PhantomData<T>);
+pub struct CreateDefault<T: 'static>(pub PhantomData<T>);
 
 impl<T> Default for CreateDefault<T> {
     fn default() -> Self {
@@ -32,7 +31,7 @@ impl<'a, T: Default> StoreBuilder<'a> for CreateDefault<T> {
 }
 
 #[derive(Default)]
-pub struct CreateSelf<T>(pub T);
+pub struct CreateSelf<T: 'static>(pub T);
 
 impl<'a, T> StoreBuilder<'a> for CreateSelf<T> {
     type Store = T;
@@ -43,9 +42,9 @@ impl<'a, T> StoreBuilder<'a> for CreateSelf<T> {
 }
 
 #[derive(Default)]
-pub struct CreateSignal<T>(pub T);
+pub struct CreateSignal<T: 'static>(pub T);
 
-impl<'a, T: 'static> StoreBuilder<'a> for CreateSignal<T> {
+impl<'a, T> StoreBuilder<'a> for CreateSignal<T> {
     type Store = OwnedSignal<'a, T>;
 
     fn build_store(cx: Scope<'a>, this: Self) -> Self::Store {
@@ -54,9 +53,9 @@ impl<'a, T: 'static> StoreBuilder<'a> for CreateSignal<T> {
 }
 
 #[derive(Default)]
-pub struct CreateReadSignal<T>(pub T);
+pub struct CreateReadSignal<T: 'static>(pub T);
 
-impl<'a, T: 'static> StoreBuilder<'a> for CreateReadSignal<T> {
+impl<'a, T> StoreBuilder<'a> for CreateReadSignal<T> {
     type Store = OwnedReadSignal<'a, T>;
 
     fn build_store(cx: Scope<'a>, this: Self) -> Self::Store {
@@ -69,7 +68,7 @@ impl<'a> OwnedScope<'a> {
     where
         T: StoreBuilder<'a>,
     {
-        self.create_variable(T::build_store(self, t))
+        unsafe { self.create_variable_unchecked(T::build_store(self, t)) }
     }
 }
 

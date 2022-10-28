@@ -5,12 +5,13 @@ use crate::{
 use std::cell::Cell;
 
 impl<'a> OwnedScope<'a> {
-    fn create_memo_impl<T: 'a>(
+    fn create_memo_impl<T>(
         &'a self,
         mut f: impl 'a + FnMut() -> T,
         mut update: impl 'a + FnMut(T, Signal<'a, T>),
     ) -> Signal<'a, T> {
-        let memo = self.create_variable(Cell::new(None::<Signal<'a, T>>));
+        // SAFETY: An `Option` will never read it's underlying value when getting dropped.
+        let memo = unsafe { self.create_variable_unchecked(Cell::new(None::<Signal<'a, T>>)) };
         self.create_effect(move |_| {
             let new_val = f();
             if let Some(signal) = memo.get() {
@@ -23,18 +24,18 @@ impl<'a> OwnedScope<'a> {
         memo.get().unwrap()
     }
 
-    pub fn create_memo<T: 'a>(&'a self, f: impl 'a + FnMut() -> T) -> Signal<'a, T> {
+    pub fn create_memo<T>(&'a self, f: impl 'a + FnMut() -> T) -> Signal<'a, T> {
         self.create_memo_impl(f, |new_val, memo| memo.set(new_val))
     }
 
-    pub fn create_seletor<T: 'a>(&'a self, f: impl 'a + FnMut() -> T) -> Signal<'a, T>
+    pub fn create_seletor<T>(&'a self, f: impl 'a + FnMut() -> T) -> Signal<'a, T>
     where
         T: PartialEq,
     {
         self.create_seletor_with(f, T::eq)
     }
 
-    pub fn create_seletor_with<T: 'a>(
+    pub fn create_seletor_with<T>(
         &'a self,
         f: impl 'a + FnMut() -> T,
         mut is_equal: impl 'a + FnMut(&T, &T) -> bool,
