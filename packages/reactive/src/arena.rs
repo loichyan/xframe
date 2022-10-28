@@ -1,3 +1,29 @@
+/*
+  The code is heavily inspired by the [`slotmap`] codebase.
+
+  [`slotmap`]: https://github.com/orlp/slomap
+
+  Copyright (c) 2021 Orson Peters <orsonpeters@gmail.com>
+
+  This software is provided 'as-is', without any express or implied warranty. In
+  no event will the authors be held liable for any damages arising from the use of
+  this software.
+
+  Permission is granted to anyone to use this software for any purpose, including
+  commercial applications, and to alter it and redistribute it freely, subject to
+  the following restrictions:
+
+   1. The origin of this software must not be misrepresented; you must not claim
+      that you wrote the original software. If you use this software in a product,
+      an acknowledgment in the product documentation would be appreciated but is
+      not required.
+
+   2. Altered source versions must be plainly marked as such, and must not be
+      misrepresented as being the original software.
+
+   3. This notice may not be removed or altered from any source distribution.
+*/
+
 use bumpalo::Bump;
 use std::{
     cell::{Cell, RefCell},
@@ -8,9 +34,13 @@ use std::{
 
 type FreeHead<T> = Option<NonNull<Slot<T>>>;
 
-/// Generational bump allocation arena.
+/// A slot-based bump allocation arena.
 ///
-/// Based on <https://github.com/orlp/slotmap>.
+/// This is mainly for:
+///
+/// 1. Allocated objects during the same program phase, used, and then deallocate
+/// them together as a group;
+/// 2. Reuse a free slot to avoid unnecessary memory allocation.
 pub(crate) struct Arena<T> {
     bump: Bump,
     free_head: Cell<FreeHead<T>>,
@@ -30,43 +60,50 @@ impl<T> Arena<T> {
         self.alloc_with_weak(|_| t)
     }
 
+    /// Allocate a value with the reference to be returned (the reference can't
+    /// be upgraded due to mismatched versions). This will first look up for an
+    /// allocated freed slot before allocating a new one.
     pub fn alloc_with_weak<'a>(&'a self, f: impl FnOnce(WeakRef<'a, T>) -> T) -> WeakRef<'a, T> {
         let free_head = self.free_head.get().map(|addr| unsafe { addr.as_ref() });
 
-        // 1) get slot
+        // 1) Get a freed slot.
         let slot = free_head.unwrap_or_else(|| {
-            // create a vacant Slot
+            // Create a vacant Slot
             let version = Cell::new(0);
             let content = RefCell::new(Content { next_free: None });
             self.bump.alloc(Slot { version, content })
         });
 
-        // 2) get value
+        // 2) Get the value.
         let version = slot.version.get() | 1;
         let weak = WeakRef { version, slot };
         let val = f(weak);
 
-        // 2) bump version
+        // 3) Bump version.
         debug_assert_eq!(slot.version.get() + 1, version);
         slot.version.set(version);
 
-        // 3) update free head
+        // 4) Update free head.
         let content = &mut *slot.content.borrow_mut();
         let next_free = unsafe { content.next_free };
         self.free_head.set(next_free);
 
-        // 4) write value
+        // 5) Write value.
         content.value = ManuallyDrop::new(val);
 
-        // 5) return
         weak
     }
 
+    /// # Panic
+    ///
+    /// Panics on a borrowed slot.
     pub fn free(&self, weak: WeakRef<'_, T>) -> bool {
         self.try_free(weak)
             .unwrap_or_else(|_| panic!("free a in using slot"))
     }
 
+    /// Try to free a slot, raise an error if the value is borrowed. It will
+    /// do nothing if the reference is outdate.
     pub fn try_free(&self, weak: WeakRef<'_, T>) -> Result<bool, ()> {
         // Check the ownship.
         if !weak.can_upgrade() {
@@ -75,14 +112,14 @@ impl<T> Arena<T> {
         let slot = weak.slot;
         let content = &mut *slot.content.try_borrow_mut().map_err(|_| ())?;
 
-        // 1) bump version
+        // 1) Bump version.
         debug_assert!(slot.version.get() % 2 > 0);
         slot.version.set(slot.version.get() + 1);
 
-        // 2) call the destructor
+        // 2) Call the destructor.
         unsafe { ManuallyDrop::drop(&mut content.value) };
 
-        // 3) update free head
+        // 3) Update free head.
         content.next_free = self.free_head.get();
         self.free_head.set(Some(NonNull::from(slot)));
 
@@ -100,6 +137,8 @@ union Content<T> {
     value: ManuallyDrop<T>,
 }
 
+/// A weak reference points to a value allocated by the [`Arena`], once the slot
+/// get freed, it can't be upgraded to a normal reference anymore.
 pub(crate) struct WeakRef<'a, T> {
     version: u32,
     slot: &'a Slot<T>,
@@ -152,6 +191,12 @@ impl<'a, T> WeakRef<'a, T> {
         Some(f(val))
     }
 
+    /// Leak the underlying content of the slot which this reference points to.
+    ///
+    /// # Safety
+    ///
+    /// The slot can be freed and allocated for a new value, therefore it's unsafe
+    /// to read the reference.
     pub unsafe fn leak_ref(self) -> &'a T {
         &(*self.slot.content.as_ptr()).value
     }

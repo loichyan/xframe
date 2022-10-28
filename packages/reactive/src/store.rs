@@ -4,8 +4,14 @@ use crate::{
 };
 use std::marker::PhantomData;
 
+/// A trait for constructing composite states.
+///
+///
+/// This is useful when providing a non-`'static` lifetime bound type as a context.
+/// The builder should be a `'static` type to idenfify a context.
 pub trait StoreBuilder<'a> {
     type Store;
+    // TODO: build_store(self, cx: Scope<'a>)
     fn build_store(cx: Scope<'a>, this: Self) -> Self::Store;
 }
 

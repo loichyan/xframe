@@ -50,7 +50,7 @@ impl fmt::Debug for OwnedScope<'_> {
 
 impl Drop for OwnedScope<'_> {
     fn drop(&mut self) {
-        // SAFETY: last alloced variables must be disposed first because signals
+        // SAFETY: last allocated variables must be disposed first because signals
         // and effects need to do some cleanup works with its captured references.
         for ty in self.cleanups.take().into_iter().rev() {
             match ty {
@@ -86,6 +86,8 @@ impl fmt::Debug for ScopeInherited<'_> {
 }
 
 /// Helper trait to invoke [`FnOnce`].
+///
+/// Original post: <https://users.rust-lang.org/t/invoke-mut-dyn-fnonce/59356/4>
 pub(crate) trait Callback {
     unsafe fn call_once(&mut self);
 }
@@ -374,6 +376,38 @@ mod test {
         create_root(|cx| {
             let var = cx.create_variable(777);
             cx.create_variable(AssertVarOnDrop { var, expect: 777 });
+        });
+    }
+
+    #[test]
+    #[ignore = "TODO: fix <https://github.com/loichyan/xframe/issues/1>"]
+    fn read_later_created_variables() {
+        struct DropAndRead<'a> {
+            ref_to: Cell<Option<&'a String>>,
+            expect: String,
+        }
+        impl Drop for DropAndRead<'_> {
+            fn drop(&mut self) {
+                assert_eq!(self.ref_to.get().unwrap(), &self.expect);
+            }
+        }
+
+        struct DropAndClear(String);
+        impl Drop for DropAndClear {
+            fn drop(&mut self) {
+                self.0.clear();
+            }
+        }
+
+        create_root(|cx| {
+            let var1 = cx.create_variable(DropAndRead {
+                ref_to: Default::default(),
+                expect: String::from("Hello"),
+            });
+            let var2 = cx.create_variable(DropAndClear(String::from("Hello")));
+            // Now var1 holds var2 which is created after var1 and will get
+            // disposed before var1.
+            var1.ref_to.set(Some(&var2.0));
         });
     }
 }

@@ -32,8 +32,11 @@ where
     contexts
         .get(&context_id::<T>())
         .copied()
-        // SAFETY: The type is associated with `<T as Store>`, and this context
-        // can only accessed from current and child scopes.
+        // SAFETY: This conversion is safe bacause:
+        // 1. The type is associated with `<T as StoreBuilder>` and saved as the
+        // key in a hashmap;
+        // 2. This context can only be accessed from current and child scopes as
+        // a readonly reference.
         .map(|any| unsafe { &*(any as *const dyn Empty as *const T::Store) })
 }
 
@@ -46,6 +49,10 @@ where
 }
 
 impl<'a> OwnedScope<'a> {
+    /// Provide a context in current scope using [`create_store`](OwnedScope::create_store),
+    /// this context is identified by the [`TypeId`] of given [`StoreBuilder`].
+    /// If the same context has not been provided then return its reference, otherwise
+    /// return the existing one as an error.
     pub fn try_provide_context<T>(&'a self, t: T) -> Result<&'a T::Store, &'a T::Store>
     where
         T: 'static + StoreBuilder<'a>,
@@ -60,6 +67,12 @@ impl<'a> OwnedScope<'a> {
         }
     }
 
+    /// Provide a context in current scope using [`create_store`](OwnedScope::create_store),
+    /// this context is identified by the [`TypeId`] of given [`StoreBuilder`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the same context has already been provided.
     pub fn provide_context<T>(&'a self, t: T) -> &'a T::Store
     where
         T: 'static + StoreBuilder<'a>,
@@ -68,6 +81,8 @@ impl<'a> OwnedScope<'a> {
             .unwrap_or_else(|_| panic!("context provided in current scope"))
     }
 
+    /// Loop up the context in the current and parent scopes accroding to the
+    /// given builder type.
     pub fn try_use_context<T>(&'a self) -> Option<&'a T::Store>
     where
         T: 'static + StoreBuilder<'a>,
@@ -75,6 +90,12 @@ impl<'a> OwnedScope<'a> {
         use_context_from_ancestors::<T>(self.inherited())
     }
 
+    /// Loop up the context in the current and parent scopes accroding to the
+    /// given builder type.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the context is not provided.
     pub fn use_context<T>(&'a self) -> &'a T::Store
     where
         T: 'static + StoreBuilder<'a>,

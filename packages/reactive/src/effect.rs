@@ -13,6 +13,8 @@ impl fmt::Debug for OwnedEffect<'_> {
     }
 }
 
+/// An effect can track signals and automatically execute whenever the captured
+/// signals changed.
 pub struct OwnedEffect<'a> {
     this: EffectRef,
     shared: &'static Shared,
@@ -26,7 +28,7 @@ impl<'a> OwnedEffect<'a> {
     }
 
     pub(crate) fn clear_dependencies(&self, this: EffectRef) {
-        let mut dependencies = self.dependencies.borrow_mut();
+        let dependencies = &mut *self.dependencies.borrow_mut();
         for sig in dependencies.iter() {
             sig.with(|sig| sig.unsubscribe(this));
         }
@@ -35,9 +37,11 @@ impl<'a> OwnedEffect<'a> {
 
     pub fn run(&self) {
         // 1) Clear dependencies.
+        // After each execution a signal may not be tracked by this effect anymore,
+        // so we need to clear dependencies both links and backlinks at first.
         self.clear_dependencies(self.this);
 
-        // 2) Save previous subscriber.
+        // 2) Save previous observer.
         let observer = &self.shared.observer;
         let saved = observer.take();
         observer.set(Some(self.this));
@@ -45,12 +49,14 @@ impl<'a> OwnedEffect<'a> {
         // 3) Call the effect.
         self.effect.run_untracked();
 
-        // 4) Re-calculate dependencies.
+        // 4) Subscribe dependencies.
+        // An effect is appended to the subscriber list of the signals since we
+        // subscribe after running the closure.
         for sig in self.dependencies.borrow().iter() {
             sig.with(|sig| sig.subscribe(self.this));
         }
 
-        // 5) Restore previous subscriber.
+        // 5) Restore previous observer.
         observer.set(saved);
     }
 }
@@ -95,6 +101,8 @@ impl<'a> OwnedScope<'a> {
         effect
     }
 
+    /// Create an effect which accepts its previous returned value as the parameter
+    /// and automatically reruns whenever tracked signals update.
     pub fn create_effect<T: 'a>(&'a self, f: impl 'a + FnMut(Option<T>) -> T) -> Effect<'a> {
         let effect = self.create_variable(RefCell::new(AnyEffectImpl {
             prev: None,
@@ -103,6 +111,8 @@ impl<'a> OwnedScope<'a> {
         self.create_effect_impl(effect)
     }
 
+    /// Create an effect that run with a new child scope each time. The created
+    /// scope will not be disposed until the next run.
     pub fn create_effect_scoped(
         &'a self,
         mut f: impl 'a + for<'child> FnMut(BoundedScope<'child, 'a>),
@@ -267,14 +277,16 @@ mod tests {
                     });
                 }
             });
-            let count = eff
+            let total = eff.dependencies.borrow().len();
+            assert_eq!(total, 1);
+            let active = eff
                 .dependencies
                 .borrow()
                 .iter()
                 .map(|sig| sig.can_upgrade())
                 .filter(|x| *x)
                 .count();
-            assert_eq!(count, 0);
+            assert_eq!(active, 0);
         });
     }
 }

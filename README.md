@@ -1,6 +1,6 @@
-# xFrame
+# 🍃 xFrame
 
-A fine-grained reactive framework.
+A fine-grained reactive GUI framework.
 
 ## ⚖️ License
 
