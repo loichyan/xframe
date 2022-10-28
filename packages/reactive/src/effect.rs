@@ -91,8 +91,8 @@ impl<'a> OwnedScope<'a> {
                 shared,
                 dependencies: Default::default(),
             };
-            // SAFETY: same as what we do on RawSignal, the effect cannot be accessed
-            // once this scope is disposed.
+            // SAFETY: Same as `create_signal_context`, the effect cannot be
+            // accessed once this scope is disposed.
             unsafe { std::mem::transmute(owned) }
         });
         let effect = unsafe { owned.leak_ref() };
@@ -104,10 +104,14 @@ impl<'a> OwnedScope<'a> {
     /// Create an effect which accepts its previous returned value as the parameter
     /// and automatically reruns whenever tracked signals update.
     pub fn create_effect<T: 'a>(&'a self, f: impl 'a + FnMut(Option<T>) -> T) -> Effect<'a> {
-        let effect = self.create_variable(RefCell::new(AnyEffectImpl {
-            prev: None,
-            func: f,
-        }));
+        // SAFETY: An effect itself will never access captured variables while
+        // being disposed.
+        let effect = unsafe {
+            self.create_variable_unchecked(RefCell::new(AnyEffectImpl {
+                prev: None,
+                func: f,
+            }))
+        };
         self.create_effect_impl(effect)
     }
 

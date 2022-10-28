@@ -50,8 +50,7 @@ impl fmt::Debug for OwnedScope<'_> {
 
 impl Drop for OwnedScope<'_> {
     fn drop(&mut self) {
-        // SAFETY: last allocated variables must be disposed first because signals
-        // and effects need to do some cleanup works with its captured references.
+        // Last allocated variables will be disposed first.
         for ty in self.cleanups.take().into_iter().rev() {
             match ty {
                 Cleanup::SignalContext(sig) => {
@@ -89,6 +88,7 @@ impl fmt::Debug for ScopeInherited<'_> {
 ///
 /// Original post: <https://users.rust-lang.org/t/invoke-mut-dyn-fnonce/59356/4>
 pub(crate) trait Callback {
+    /// Please make sure this will only be called once!
     unsafe fn call_once(&mut self);
 }
 
@@ -180,11 +180,19 @@ impl<'a> ScopeDisposer<'a> {
         disposer
     }
 
+    /// Leak a bounded scope reference. Sometimes it's useful to use a scope
+    /// outside a closure.
+    ///
     /// # Safety
     ///
-    /// This function is unsafe because a scope might be disposed twice, and
-    /// there may be references to variables created in the scope.
-    pub unsafe fn leak_scope(&self) -> BoundedScope<'a, 'a> {
+    /// This function is unsafe, because:
+    ///
+    /// 1. There may be references to variables allocated by the returned scope
+    /// when the disposer is dropped, read those references will cause undefined
+    /// behavior;
+    /// 2. If a `Scope<'static>` is leaked from the disposer, use that scope will
+    /// break the safety guarantee of dropping order.
+    pub unsafe fn leak_scope<'b>(&'b self) -> BoundedScope<'b, 'a> {
         std::mem::transmute(self.scope.leak_ref())
     }
 }
@@ -227,10 +235,27 @@ impl<'a> OwnedScope<'a> {
         ScopeDisposer::new_within(Some(&self.inherited()), f)
     }
 
-    pub fn create_variable<T: 'a>(&'a self, t: T) -> &'a T {
+    /// Allocated a new arbitrary value under current scope.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because the given value may hold a reference
+    /// to another variable allocated after it. If the value read that reference
+    /// while being disposed, this will result in an undefined behavior.
+    ///
+    /// For using this function safely, you must ensure the specified value
+    /// will not read any references created after itself.
+    ///
+    /// Check out <https://github.com/loichyan/xframe/issues/1> for more details.
+    pub unsafe fn create_variable_unchecked<T: 'a>(&'a self, t: T) -> &'a T {
         let ptr = &*self.variables.alloc(t);
         self.push_cleanup(Cleanup::Variable(ptr));
         ptr
+    }
+
+    pub fn create_variable<T: 'static>(&'a self, t: T) -> &'a T {
+        // SAFETY: A 'static type can't hold a 'a reference.
+        unsafe { self.create_variable_unchecked(t) }
     }
 
     pub fn on_cleanup(&'a self, f: impl 'a + FnOnce()) {
@@ -322,15 +347,6 @@ mod test {
     }
 
     #[test]
-    fn store_disposer_in_own_signal() {
-        create_root(|cx| {
-            let state = cx.create_signal(None);
-            let disposer = cx.create_child(|_| ());
-            state.set(Some(disposer));
-        });
-    }
-
-    #[test]
     fn drop_variables_on_dispose() {
         thread_local! {
             static COUNTER: Cell<i32> = Cell::new(0);
@@ -375,39 +391,7 @@ mod test {
 
         create_root(|cx| {
             let var = cx.create_variable(777);
-            cx.create_variable(AssertVarOnDrop { var, expect: 777 });
-        });
-    }
-
-    #[test]
-    #[ignore = "TODO: fix <https://github.com/loichyan/xframe/issues/1>"]
-    fn read_later_created_variables() {
-        struct DropAndRead<'a> {
-            ref_to: Cell<Option<&'a String>>,
-            expect: String,
-        }
-        impl Drop for DropAndRead<'_> {
-            fn drop(&mut self) {
-                assert_eq!(self.ref_to.get().unwrap(), &self.expect);
-            }
-        }
-
-        struct DropAndClear(String);
-        impl Drop for DropAndClear {
-            fn drop(&mut self) {
-                self.0.clear();
-            }
-        }
-
-        create_root(|cx| {
-            let var1 = cx.create_variable(DropAndRead {
-                ref_to: Default::default(),
-                expect: String::from("Hello"),
-            });
-            let var2 = cx.create_variable(DropAndClear(String::from("Hello")));
-            // Now var1 holds var2 which is created after var1 and will get
-            // disposed before var1.
-            var1.ref_to.set(Some(&var2.0));
+            unsafe { cx.create_variable_unchecked(AssertVarOnDrop { var, expect: 777 }) };
         });
     }
 }

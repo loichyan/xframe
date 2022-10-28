@@ -27,7 +27,7 @@ impl fmt::Debug for Contexts<'_> {
 
 fn use_context_from<'a, T>(contexts: &ContextsInner<'a>) -> Option<&'a T::Store>
 where
-    T: 'static + StoreBuilder<'a>,
+    T: StoreBuilder<'a>,
 {
     contexts
         .get(&context_id::<T>())
@@ -42,7 +42,7 @@ where
 
 fn use_context_from_ancestors<'a, T>(inherited: &'a ScopeInherited) -> Option<&'a T::Store>
 where
-    T: 'static + StoreBuilder<'a>,
+    T: StoreBuilder<'a>,
 {
     use_context_from::<T>(&inherited.contexts.inner.borrow())
         .or_else(|| inherited.parent.and_then(use_context_from_ancestors::<T>))
@@ -55,7 +55,7 @@ impl<'a> OwnedScope<'a> {
     /// return the existing one as an error.
     pub fn try_provide_context<T>(&'a self, t: T) -> Result<&'a T::Store, &'a T::Store>
     where
-        T: 'static + StoreBuilder<'a>,
+        T: StoreBuilder<'a>,
     {
         let contexts = &mut self.inherited().contexts.inner.borrow_mut();
         if let Some(context) = use_context_from::<T>(contexts) {
@@ -75,7 +75,7 @@ impl<'a> OwnedScope<'a> {
     /// Panics if the same context has already been provided.
     pub fn provide_context<T>(&'a self, t: T) -> &'a T::Store
     where
-        T: 'static + StoreBuilder<'a>,
+        T: StoreBuilder<'a>,
     {
         self.try_provide_context(t)
             .unwrap_or_else(|_| panic!("context provided in current scope"))
@@ -85,7 +85,7 @@ impl<'a> OwnedScope<'a> {
     /// given builder type.
     pub fn try_use_context<T>(&'a self) -> Option<&'a T::Store>
     where
-        T: 'static + StoreBuilder<'a>,
+        T: StoreBuilder<'a>,
     {
         use_context_from_ancestors::<T>(self.inherited())
     }
@@ -98,7 +98,7 @@ impl<'a> OwnedScope<'a> {
     /// Panics if the context is not provided.
     pub fn use_context<T>(&'a self) -> &'a T::Store
     where
-        T: 'static + StoreBuilder<'a>,
+        T: StoreBuilder<'a>,
     {
         self.try_use_context::<T>().expect("context not provided")
     }
