@@ -10,8 +10,7 @@ use std::marker::PhantomData;
 /// The builder should be a `'static` type to idenfify a context.
 pub trait StoreBuilder<'a>: 'static {
     type Store;
-    // TODO: build_store(self, cx: Scope<'a>)
-    fn build_store(cx: Scope<'a>, this: Self) -> Self::Store;
+    fn build_store(self, cx: Scope<'a>) -> Self::Store;
 }
 
 pub struct CreateDefault<T: 'static>(pub PhantomData<T>);
@@ -25,7 +24,7 @@ impl<T> Default for CreateDefault<T> {
 impl<'a, T: Default> StoreBuilder<'a> for CreateDefault<T> {
     type Store = T;
 
-    fn build_store(_cx: Scope<'a>, _this: Self) -> Self::Store {
+    fn build_store(self, _cx: Scope<'a>) -> Self::Store {
         T::default()
     }
 }
@@ -36,8 +35,8 @@ pub struct CreateSelf<T: 'static>(pub T);
 impl<'a, T> StoreBuilder<'a> for CreateSelf<T> {
     type Store = T;
 
-    fn build_store(_cx: Scope<'a>, this: Self) -> Self::Store {
-        this.0
+    fn build_store(self, _cx: Scope<'a>) -> Self::Store {
+        self.0
     }
 }
 
@@ -47,8 +46,8 @@ pub struct CreateSignal<T: 'static>(pub T);
 impl<'a, T> StoreBuilder<'a> for CreateSignal<T> {
     type Store = OwnedSignal<'a, T>;
 
-    fn build_store(cx: Scope<'a>, this: Self) -> Self::Store {
-        cx.create_owned_signal(this.0)
+    fn build_store(self, cx: Scope<'a>) -> Self::Store {
+        cx.create_owned_signal(self.0)
     }
 }
 
@@ -58,8 +57,8 @@ pub struct CreateReadSignal<T: 'static>(pub T);
 impl<'a, T> StoreBuilder<'a> for CreateReadSignal<T> {
     type Store = OwnedReadSignal<'a, T>;
 
-    fn build_store(cx: Scope<'a>, this: Self) -> Self::Store {
-        cx.create_owned_read_signal(this.0)
+    fn build_store(self, cx: Scope<'a>) -> Self::Store {
+        cx.create_owned_read_signal(self.0)
     }
 }
 
@@ -68,7 +67,7 @@ impl<'a> OwnedScope<'a> {
     where
         T: StoreBuilder<'a>,
     {
-        unsafe { self.create_variable_unchecked(T::build_store(self, t)) }
+        unsafe { self.create_variable_unchecked(t.build_store(self)) }
     }
 }
 
@@ -91,8 +90,8 @@ mod tests {
     impl<'a> StoreBuilder<'a> for Builder {
         type Store = Store<'a>;
 
-        fn build_store(cx: Scope<'a>, this: Self) -> Self::Store {
-            let Builder { state, data } = this;
+        fn build_store(self, cx: Scope<'a>) -> Self::Store {
+            let Builder { state, data } = self;
             Store {
                 state: cx.create_owned_signal(state),
                 data,
@@ -124,6 +123,21 @@ mod tests {
                 let store = cx.use_context::<Builder>();
                 assert_eq!(*store.state.get(), -1);
             });
+        });
+    }
+
+    #[test]
+    fn reactive_store() {
+        create_root(|cx| {
+            let builder = Builder {
+                state: -1,
+                data: String::from("xFrame"),
+            };
+            let store = cx.create_store(builder);
+            let double = cx.create_memo(|| *store.state.get() * 2);
+            assert_eq!(*double.get(), -2);
+            store.state.set(1);
+            assert_eq!(*double.get(), 2);
         });
     }
 }

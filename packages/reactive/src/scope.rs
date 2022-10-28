@@ -52,7 +52,7 @@ impl fmt::Debug for OwnedScope<'_> {
 impl Drop for OwnedScope<'_> {
     fn drop(&mut self) {
         // Last allocated variables will be disposed first.
-        for cl in self.cleanups.borrow().iter().copied().rev() {
+        for cl in self.cleanups.take().into_iter().rev() {
             match cl {
                 Cleanup::SignalContext(sig) => {
                     self.inherited.shared.signal_contexts.free(sig);
@@ -103,7 +103,6 @@ impl<F: FnOnce()> Callback for F {
     }
 }
 
-#[derive(Clone, Copy)]
 pub(crate) enum Cleanup<'a> {
     SignalContext(SignalContextRef),
     Effect(EffectRef),
