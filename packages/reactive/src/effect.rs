@@ -1,12 +1,9 @@
 use crate::{
     scope::{BoundedScope, Cleanup, OwnedScope},
-    shared::{EffectRef, Shared, SignalContextRef},
+    shared::{CovariantLifetime, EffectRef, Shared, SignalContextRef},
 };
 use ahash::AHashSet;
-use std::{
-    cell::{Ref, RefCell},
-    fmt,
-};
+use std::{cell::RefCell, fmt, marker::PhantomData};
 
 pub type Effect<'a> = &'a OwnedEffect<'a>;
 
@@ -19,45 +16,45 @@ impl fmt::Debug for OwnedEffect<'_> {
 /// An effect can track signals and automatically execute whenever the captured
 /// signals changed.
 pub struct OwnedEffect<'a> {
-    inner: Ref<'a, RawEffect<'a>>,
+    raw: EffectRef,
+    shared: &'static Shared,
+    bounds: PhantomData<CovariantLifetime<'a>>,
 }
 
 impl<'a> OwnedEffect<'a> {
     pub fn run(&self) {
-        self.inner.run();
+        self.raw.get().run(self.raw, self.shared);
     }
 }
 
 pub(crate) struct RawEffect<'a> {
-    this: EffectRef,
-    shared: &'static Shared,
     effect: &'a (dyn 'a + AnyEffect),
     dependencies: RefCell<AHashSet<SignalContextRef>>,
 }
 
 impl<'a> RawEffect<'a> {
-    pub(crate) fn add_dependency(&self, signal: SignalContextRef) {
+    pub fn add_dependency(&self, signal: SignalContextRef) {
         self.dependencies.borrow_mut().insert(signal);
     }
 
-    pub(crate) fn clear_dependencies(&self, this: EffectRef) {
+    pub fn clear_dependencies(&self, this: EffectRef) {
         let dependencies = &mut *self.dependencies.borrow_mut();
         for sig in dependencies.iter() {
-            sig.get().map(|sig| sig.unsubscribe(this));
+            sig.try_get().map(|sig| sig.unsubscribe(this));
         }
         dependencies.clear();
     }
 
-    pub fn run(&self) {
+    pub fn run(&self, this: EffectRef, shared: &Shared) {
         // 1) Clear dependencies.
         // After each execution a signal may not be tracked by this effect anymore,
         // so we need to clear dependencies both links and backlinks at first.
-        self.clear_dependencies(self.this);
+        self.clear_dependencies(this);
 
         // 2) Save previous observer.
-        let observer = &self.shared.observer;
+        let observer = &shared.observer;
         let saved = observer.take();
-        observer.set(Some(self.this));
+        observer.set(Some(this));
 
         // 3) Call the effect.
         self.effect.run_untracked();
@@ -66,7 +63,7 @@ impl<'a> RawEffect<'a> {
         // An effect is appended to the subscriber list of the signals since we
         // subscribe after running the closure.
         for sig in self.dependencies.borrow().iter() {
-            sig.get().map(|sig| sig.subscribe(self.this));
+            sig.try_get().map(|sig| sig.subscribe(this));
         }
 
         // 5) Restore previous observer.
@@ -95,13 +92,11 @@ where
 }
 
 impl<'a> OwnedScope<'a> {
-    fn create_effect_impl(&'a self, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
+    fn create_owned_effect(&'a self, effect: &'a (dyn 'a + AnyEffect)) -> OwnedEffect<'a> {
         let shared = self.shared();
-        let raw = shared.effects.alloc_with_weak(|this| {
+        let raw = shared.effects.alloc({
             let raw = RawEffect {
-                this,
                 effect,
-                shared,
                 dependencies: Default::default(),
             };
             // SAFETY: Same as `create_signal_context`, the effect cannot be
@@ -109,9 +104,17 @@ impl<'a> OwnedScope<'a> {
             unsafe { std::mem::transmute(raw) }
         });
         self.push_cleanup(Cleanup::Effect(raw));
-        let inner = raw.get().unwrap_or_else(|| unreachable!());
-        inner.run();
-        unsafe { self.create_variable_unchecked(OwnedEffect { inner }) }
+        raw.get().run(raw, shared);
+        OwnedEffect {
+            raw,
+            shared,
+            bounds: PhantomData,
+        }
+    }
+
+    fn create_effect_impl(&'a self, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
+        let owned = self.create_owned_effect(effect);
+        unsafe { self.create_variable_unchecked(owned) }
     }
 
     /// Create an effect which accepts its previous returned value as the parameter
@@ -143,6 +146,7 @@ impl<'a> OwnedScope<'a> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::create_root;
     use std::cell::Cell;
 
@@ -294,10 +298,11 @@ mod tests {
                     });
                 }
             });
-            let total = eff.inner.dependencies.borrow().len();
+            let total = eff.raw.get().dependencies.borrow().len();
             assert_eq!(total, 1);
             let active = eff
-                .inner
+                .raw
+                .get()
                 .dependencies
                 .borrow()
                 .iter()
@@ -305,6 +310,23 @@ mod tests {
                 .filter(|x| *x)
                 .count();
             assert_eq!(active, 0);
+        });
+    }
+
+    #[test]
+    #[should_panic = "get a disposed slot"]
+    fn cannot_read_run_a_disposed_effect() {
+        struct DropAndRead<'a>(Option<Effect<'a>>);
+        impl Drop for DropAndRead<'_> {
+            fn drop(&mut self) {
+                self.0.unwrap().run();
+            }
+        }
+
+        create_root(|cx| {
+            let var = cx.create_variable(DropAndRead(None));
+            let eff = cx.create_effect(|_| ());
+            var.get_mut().0 = Some(eff);
         });
     }
 }

@@ -28,7 +28,7 @@ impl<'a, T> OwnedVariable<'a, T> {
     }
 
     pub fn get(&self) -> VarRef<'_, T> {
-        self.try_get().expect("get a disposed varaible")
+        self.try_get().expect("get a disposed variable")
     }
 
     pub fn try_get(&self) -> Option<VarRef<'_, T>> {
@@ -111,6 +111,8 @@ impl<'a> OwnedScope<'a> {
 
     pub fn create_variable<T>(&'a self, t: T) -> Variable<'a, T> {
         let owned = self.create_owned_variable(t);
+        // SAFETY: `OwnedVariable` provides dynamic dangling reference check,
+        // therefore its safe to save arbitrary value.
         unsafe { self.create_variable_unchecked(owned) }
     }
 }
@@ -122,13 +124,14 @@ mod tests {
     use std::cell::Cell;
 
     #[test]
+    #[should_panic = "get a disposed variable"]
     fn cannot_read_disposed_variable() {
         struct DropAndRead<'a> {
             ref_to: Cell<Option<Variable<'a, String>>>,
         }
         impl Drop for DropAndRead<'_> {
             fn drop(&mut self) {
-                assert!(self.ref_to.get().unwrap().try_get().is_none());
+                self.ref_to.get().unwrap().get();
             }
         }
 

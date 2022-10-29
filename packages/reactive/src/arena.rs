@@ -182,7 +182,11 @@ impl<'a, T> WeakRef<'a, T> {
         self.slot.version.get() == self.version
     }
 
-    pub fn get(&self) -> Option<Ref<'a, T>> {
+    pub fn get(&self) -> Ref<'a, T> {
+        self.try_get().expect("get a disposed slot")
+    }
+
+    pub fn try_get(&self) -> Option<Ref<'a, T>> {
         if !self.can_upgrade() {
             return None;
         }
@@ -238,13 +242,13 @@ mod tests {
         let val1 = arena.alloc(0);
         let addr1 = val1.slot as *const _;
 
-        assert_eq!(*val1.get().unwrap(), 0);
+        assert_eq!(*val1.try_get().unwrap(), 0);
         arena.free(val1);
 
         let val2 = arena.alloc(1);
         let addr2 = val2.slot as *const _;
 
-        assert_eq!(*val2.get().unwrap(), 1);
+        assert_eq!(*val2.try_get().unwrap(), 1);
         assert_eq!(addr1, addr2);
     }
 
@@ -254,7 +258,7 @@ mod tests {
         let arena = Arena::<i32>::default();
         let val = arena.alloc(0);
 
-        val.get().map(|_| {
+        val.try_get().map(|_| {
             arena.free(val);
         });
     }

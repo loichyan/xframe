@@ -2,6 +2,7 @@ use crate::{
     scope::{OwnedScope, ScopeInherited},
     shared::Empty,
     store::StoreBuilder,
+    OwnedVariable, Variable,
 };
 use ahash::AHashMap;
 use std::{any::TypeId, cell::RefCell, fmt, marker::PhantomData};
@@ -25,7 +26,7 @@ impl fmt::Debug for Contexts<'_> {
     }
 }
 
-fn use_context_from<'a, T>(contexts: &ContextsInner<'a>) -> Option<&'a T::Store>
+fn use_context_from<'a, T>(contexts: &ContextsInner<'a>) -> Option<Variable<'a, T::Store>>
 where
     T: StoreBuilder<'a>,
 {
@@ -37,10 +38,12 @@ where
         // key in a hashmap;
         // 2. This context can only be accessed from current and child scopes as
         // a readonly reference.
-        .map(|any| unsafe { &*(any as *const dyn Empty as *const T::Store) })
+        .map(|any| unsafe { &*(any as *const dyn Empty as *const OwnedVariable<'a, T::Store>) })
 }
 
-fn use_context_from_ancestors<'a, T>(inherited: &'a ScopeInherited) -> Option<&'a T::Store>
+fn use_context_from_ancestors<'a, T>(
+    inherited: &'a ScopeInherited,
+) -> Option<Variable<'a, T::Store>>
 where
     T: StoreBuilder<'a>,
 {
@@ -53,7 +56,10 @@ impl<'a> OwnedScope<'a> {
     /// this context is identified by the [`TypeId`] of given [`StoreBuilder`].
     /// If the same context has not been provided then return its reference, otherwise
     /// return the existing one as an error.
-    pub fn try_provide_context<T>(&'a self, t: T) -> Result<&'a T::Store, &'a T::Store>
+    pub fn try_provide_context<T>(
+        &'a self,
+        t: T,
+    ) -> Result<Variable<'a, T::Store>, Variable<'a, T::Store>>
     where
         T: StoreBuilder<'a>,
     {
@@ -73,7 +79,7 @@ impl<'a> OwnedScope<'a> {
     /// # Panics
     ///
     /// Panics if the same context has already been provided.
-    pub fn provide_context<T>(&'a self, t: T) -> &'a T::Store
+    pub fn provide_context<T>(&'a self, t: T) -> Variable<'a, T::Store>
     where
         T: StoreBuilder<'a>,
     {
@@ -83,7 +89,7 @@ impl<'a> OwnedScope<'a> {
 
     /// Loop up the context in the current and parent scopes accroding to the
     /// given builder type.
-    pub fn try_use_context<T>(&'a self) -> Option<&'a T::Store>
+    pub fn try_use_context<T>(&'a self) -> Option<Variable<'a, T::Store>>
     where
         T: StoreBuilder<'a>,
     {
@@ -96,7 +102,7 @@ impl<'a> OwnedScope<'a> {
     /// # Panics
     ///
     /// Panics if the context is not provided.
-    pub fn use_context<T>(&'a self) -> &'a T::Store
+    pub fn use_context<T>(&'a self) -> Variable<'a, T::Store>
     where
         T: StoreBuilder<'a>,
     {
@@ -114,7 +120,7 @@ mod tests {
         create_root(|cx| {
             cx.provide_context(CreateSignal(777i32));
             let x = cx.use_context::<CreateSignal<i32>>();
-            assert_eq!(*x.get(), 777);
+            assert_eq!(*x.get().get(), 777);
         });
     }
 
@@ -124,7 +130,7 @@ mod tests {
             cx.provide_context(CreateSelf(777i32));
             cx.create_child(|cx| {
                 let x = cx.use_context::<CreateSelf<i32>>();
-                assert_eq!(*x, 777);
+                assert_eq!(*x.get(), 777);
             });
         });
     }

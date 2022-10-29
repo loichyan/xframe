@@ -202,7 +202,7 @@ impl Drop for ScopeDisposer<'_> {
     fn drop(&mut self) {
         let (shared, is_root) = self
             .scope
-            .get()
+            .try_get()
             .map(|scope| (scope.inherited.shared, scope.inherited.parent.is_none()))
             .unwrap_or_else(|| unreachable!());
         shared.scopes.free(self.scope);
@@ -246,7 +246,8 @@ impl<'a> OwnedScope<'a> {
     /// while being disposed, this will result in an undefined behavior.
     ///
     /// For using this function safely, you must ensure the specified value
-    /// will not read any references created after itself.
+    /// will not read any references created after itself, and will not be read
+    /// by any references created before itself.
     ///
     /// Check out <https://github.com/loichyan/xframe/issues/1> for more details.
     pub unsafe fn create_variable_unchecked<T>(&'a self, t: T) -> &'a T {
@@ -400,7 +401,7 @@ mod test {
 
         create_root(|cx| {
             let var = cx.create_variable_static(777);
-            unsafe { cx.create_variable_unchecked(AssertVarOnDrop { var, expect: 777 }) };
+            cx.create_variable(AssertVarOnDrop { var, expect: 777 });
         });
     }
 }

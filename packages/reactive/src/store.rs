@@ -1,6 +1,6 @@
 use crate::{
     scope::{OwnedScope, Scope},
-    OwnedReadSignal, OwnedSignal,
+    OwnedReadSignal, OwnedSignal, Variable,
 };
 use std::marker::PhantomData;
 
@@ -63,11 +63,11 @@ impl<'a, T> StoreBuilder<'a> for CreateReadSignal<T> {
 }
 
 impl<'a> OwnedScope<'a> {
-    pub fn create_store<T>(&'a self, t: T) -> &'a T::Store
+    pub fn create_store<T>(&'a self, t: T) -> Variable<'a, T::Store>
     where
         T: StoreBuilder<'a>,
     {
-        unsafe { self.create_variable_unchecked(t.build_store(self)) }
+        self.create_variable(t.build_store(self))
     }
 }
 
@@ -107,8 +107,8 @@ mod tests {
                 data: String::from("xFrame"),
             };
             let store = cx.create_store(buidler);
-            assert_eq!(*store.state.get(), -1);
-            assert_eq!(&store.data, "xFrame");
+            assert_eq!(*store.get().state.get(), -1);
+            assert_eq!(&store.get().data, "xFrame");
         });
     }
 
@@ -121,7 +121,7 @@ mod tests {
             });
             cx.create_child(|cx| {
                 let store = cx.use_context::<Builder>();
-                assert_eq!(*store.state.get(), -1);
+                assert_eq!(*store.get().state.get(), -1);
             });
         });
     }
@@ -134,9 +134,9 @@ mod tests {
                 data: String::from("xFrame"),
             };
             let store = cx.create_store(builder);
-            let double = cx.create_memo(|| *store.state.get() * 2);
+            let double = cx.create_memo(|| *store.get().state.get() * 2);
             assert_eq!(*double.get(), -2);
-            store.state.set(1);
+            store.get().state.set(1);
             assert_eq!(*double.get(), 2);
         });
     }
