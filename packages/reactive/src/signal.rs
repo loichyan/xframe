@@ -11,7 +11,7 @@ use std::{cell::RefCell, fmt, ops::Deref};
 pub type Signal<'a, T> = &'a OwnedSignal<'a, T>;
 pub type ReadSignal<'a, T> = &'a OwnedReadSignal<'a, T>;
 
-pub struct OwnedReadSignal<'a, T: 'static> {
+pub struct OwnedReadSignal<'a, T> {
     value: RefCell<T>,
     context: &'a SignalContext,
 }
@@ -41,7 +41,7 @@ impl<'a, T> OwnedReadSignal<'a, T> {
     }
 }
 
-pub struct OwnedSignal<'a, T: 'static>(OwnedReadSignal<'a, T>);
+pub struct OwnedSignal<'a, T>(OwnedReadSignal<'a, T>);
 
 impl<'a, T> Deref for OwnedSignal<'a, T> {
     type Target = OwnedReadSignal<'a, T>;
@@ -204,6 +204,18 @@ mod tests {
             assert_eq!(*double.get(), 2);
             state.set_slient(2);
             assert_eq!(*double.get(), 2);
+        });
+    }
+
+    #[test]
+    fn signal_of_signal() {
+        create_root(|cx| {
+            let state = cx.create_signal(1);
+            let state2 = cx.create_signal(state);
+            let double = cx.create_memo(|| *state2.get().get() * 2);
+            assert_eq!(*state2.get().get(), 1);
+            state.set(2);
+            assert_eq!(*double.get(), 4);
         });
     }
 
