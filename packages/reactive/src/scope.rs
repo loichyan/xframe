@@ -193,7 +193,7 @@ impl<'a> ScopeDisposer<'a> {
     /// when the disposer is dropped, read those references will cause undefined
     /// behavior;
     /// 2. If a `Scope<'static>` is leaked from the disposer, use that scope will
-    /// break the safety guarantee of [`create_variable`](OwnedScope::create_variable).
+    /// break the safety guarantee of [`create_variable_static`](OwnedScope::create_variable_static).
     pub unsafe fn leak_scope<'b>(&'b self) -> BoundedScope<'b, 'a> {
         std::mem::transmute(self.scope.leak_ref())
     }
@@ -249,13 +249,20 @@ impl<'a> OwnedScope<'a> {
     /// will not read any references created after itself.
     ///
     /// Check out <https://github.com/loichyan/xframe/issues/1> for more details.
-    pub unsafe fn create_variable_unchecked<T: 'a>(&'a self, t: T) -> &'a T {
+    pub unsafe fn create_variable_unchecked<T>(&'a self, t: T) -> &'a T {
         let ptr = &*self.variables.alloc(t);
-        self.push_cleanup(Cleanup::Variable(ptr));
+        if std::mem::needs_drop::<T>() {
+            self.push_cleanup(Cleanup::Variable(ptr));
+        }
         ptr
     }
 
-    pub fn create_variable<T: 'static>(&'a self, t: T) -> &'a T {
+    pub fn create_variable_copied<T: Copy>(&'a self, t: T) -> &'a T {
+        // SAFETY: A `Copy` type can't have a custom destructor.
+        unsafe { self.create_variable_unchecked(t) }
+    }
+
+    pub fn create_variable_static<T: 'static>(&'a self, t: T) -> &'a T {
         // SAFETY: A 'static type can't hold a 'a reference.
         unsafe { self.create_variable_unchecked(t) }
     }
@@ -265,7 +272,7 @@ impl<'a> OwnedScope<'a> {
         self.callbacks.borrow_mut().push(f);
     }
 
-    pub fn untrack(&self, f: impl FnOnce()) {
+    pub fn untrack(&'a self, f: impl FnOnce()) {
         let observer = &self.shared().observer;
         let saved = observer.take();
         f();
@@ -282,7 +289,7 @@ mod test {
     fn variables() {
         let a = Cell::new(-1);
         create_root(|cx| {
-            let var = cx.create_variable(1);
+            let var = cx.create_variable_static(1);
             a.set(*var);
         });
         assert_eq!(a.get(), 1);
@@ -369,11 +376,11 @@ mod test {
         }
 
         create_root(|cx| {
-            cx.create_variable(DropAndInc);
+            cx.create_variable_static(DropAndInc);
             cx.create_child(|cx| {
-                cx.create_variable(DropAndAssert(1));
-                cx.create_variable(DropAndInc);
-                cx.create_variable(DropAndAssert(0));
+                cx.create_variable_static(DropAndAssert(1));
+                cx.create_variable_static(DropAndInc);
+                cx.create_variable_static(DropAndAssert(0));
             });
         });
         drop(DropAndAssert(2));
@@ -392,7 +399,7 @@ mod test {
         }
 
         create_root(|cx| {
-            let var = cx.create_variable(777);
+            let var = cx.create_variable_static(777);
             unsafe { cx.create_variable_unchecked(AssertVarOnDrop { var, expect: 777 }) };
         });
     }

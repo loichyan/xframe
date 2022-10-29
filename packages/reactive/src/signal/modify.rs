@@ -1,5 +1,6 @@
 use super::{OwnedSignal, SignalContext};
 use std::{
+    cell::RefMut,
     fmt,
     ops::{Deref, DerefMut},
 };
@@ -28,7 +29,7 @@ impl<'a, T> SignalModify<'a, T> {
     pub fn map<U>(this: Self, f: impl FnOnce(&mut T) -> &mut U) -> SignalModify<'a, U> {
         let SignalModify { value, trigger } = this;
         SignalModify {
-            value: std::cell::RefMut::map(value, f),
+            value: RefMut::map(value, f),
             trigger,
         }
     }

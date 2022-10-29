@@ -4,6 +4,8 @@ pub use modify::SignalModify;
 use crate::{
     scope::{Cleanup, OwnedScope},
     shared::{EffectRef, Shared, SignalContextRef},
+    variable::VarRef,
+    VarRefMut,
 };
 use indexmap::IndexSet;
 use std::{cell::RefCell, fmt, ops::Deref};
@@ -14,6 +16,14 @@ pub type ReadSignal<'a, T> = &'a OwnedReadSignal<'a, T>;
 pub struct OwnedReadSignal<'a, T> {
     value: RefCell<T>,
     context: &'a SignalContext,
+}
+
+impl<T> Drop for OwnedReadSignal<'_, T> {
+    fn drop(&mut self) {
+        if self.value.try_borrow_mut().is_err() {
+            panic!("dispose a borrowed signal");
+        }
+    }
 }
 
 impl<T: fmt::Debug> fmt::Debug for OwnedReadSignal<'_, T> {
@@ -31,13 +41,13 @@ impl<'a, T> OwnedReadSignal<'a, T> {
         self.context.trigger_subscribers();
     }
 
-    pub fn get(&self) -> SignalRef<'_, T> {
+    pub fn get(&self) -> VarRef<'_, T> {
         self.track();
         self.get_untracked()
     }
 
-    pub fn get_untracked(&self) -> SignalRef<'_, T> {
-        SignalRef(self.value.borrow())
+    pub fn get_untracked(&self) -> VarRef<'_, T> {
+        VarRef::from(&self.value)
     }
 }
 
@@ -58,6 +68,10 @@ impl<T: fmt::Debug> fmt::Debug for OwnedSignal<'_, T> {
 }
 
 impl<'a, T> OwnedSignal<'a, T> {
+    pub fn get_mut(&self) -> VarRefMut<'_, T> {
+        VarRefMut::from(&self.value)
+    }
+
     pub fn set(&self, val: T) {
         self.set_slient(val);
         self.trigger_subscribers();
@@ -110,30 +124,8 @@ impl SignalContext {
     }
 }
 
-pub struct SignalRef<'a, T: ?Sized>(std::cell::Ref<'a, T>);
-
-impl<T: fmt::Debug> fmt::Debug for SignalRef<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl<'a, T: ?Sized> SignalRef<'a, T> {
-    pub fn map<U>(orig: Self, f: impl FnOnce(&T) -> &U) -> SignalRef<'a, U> {
-        SignalRef(std::cell::Ref::map(orig.0, f))
-    }
-}
-
-impl<'a, T> Deref for SignalRef<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &*self.0
-    }
-}
-
 impl<'a> OwnedScope<'a> {
-    fn create_signal_context(&self) -> &'a SignalContext {
+    fn create_signal_context(&'a self) -> &'a SignalContext {
         let shared = self.shared();
         let ctx = shared
             .signal_contexts
@@ -258,9 +250,9 @@ mod tests {
         create_root(|cx| {
             let owned = cx.create_owned_signal(DropAndInc);
             cx.create_child(|cx| {
-                cx.create_variable(DropAndAssert(1));
+                cx.create_variable_static(DropAndAssert(1));
                 unsafe { cx.create_variable_unchecked(owned) };
-                cx.create_variable(DropAndAssert(0));
+                cx.create_variable_static(DropAndAssert(0));
             });
             cx.create_owned_signal(DropAndInc);
         });
@@ -276,6 +268,16 @@ mod tests {
                 unsafe { cx.create_variable_unchecked(owned) };
             });
             assert!(context.can_upgrade());
+        });
+    }
+
+    #[test]
+    #[should_panic = "dispose a borrowed signal"]
+    fn cannot_dispose_borrowed_signal() {
+        create_root(|cx| {
+            let var = cx.create_variable(None);
+            let var2 = cx.create_signal(0);
+            *var.get_mut() = Some(var2.get());
         });
     }
 }

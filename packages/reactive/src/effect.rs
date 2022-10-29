@@ -82,7 +82,7 @@ where
 }
 
 impl<'a> OwnedScope<'a> {
-    fn create_effect_impl(&self, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
+    fn create_effect_impl(&'a self, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
         let shared = self.shared();
         let owned = shared.effects.alloc_with_weak(|this| {
             let owned = OwnedEffect {
@@ -137,7 +137,7 @@ mod tests {
     fn reactive_effect() {
         create_root(|cx| {
             let state = cx.create_signal(0);
-            let double = cx.create_variable(Cell::new(-1));
+            let double = cx.create_variable_static(Cell::new(-1));
 
             cx.create_effect(|_| {
                 double.set(*state.get() * 2);
@@ -242,8 +242,8 @@ mod tests {
     fn inner_effect_triggered_first() {
         create_root(|cx| {
             let state = cx.create_signal(());
-            let inner_counter = cx.create_variable(Cell::new(0));
-            let outer_counter = cx.create_variable(Cell::new(0));
+            let inner_counter = cx.create_variable_static(Cell::new(0));
+            let outer_counter = cx.create_variable_static(Cell::new(0));
 
             cx.create_effect(|_| {
                 state.track();
