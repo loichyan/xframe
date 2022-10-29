@@ -195,7 +195,7 @@ impl<'a> ScopeDisposer<'a> {
     /// 2. If a `Scope<'static>` is leaked from the disposer, use that scope will
     /// break the safety guarantee of [`create_variable_static`](OwnedScope::create_variable_static).
     pub unsafe fn leak_scope<'b>(&'b self) -> BoundedScope<'b, 'a> {
-        std::mem::transmute(self.scope.leak_ref())
+        std::mem::transmute(self.scope.as_ptr())
     }
 }
 
@@ -203,7 +203,8 @@ impl Drop for ScopeDisposer<'_> {
     fn drop(&mut self) {
         let (shared, is_root) = self
             .scope
-            .with(|scope| (scope.inherited.shared, scope.inherited.parent.is_none()))
+            .get()
+            .map(|scope| (scope.inherited.shared, scope.inherited.parent.is_none()))
             .unwrap_or_else(|| unreachable!());
         shared.scopes.free(self.scope);
         if is_root {

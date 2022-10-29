@@ -1,6 +1,6 @@
 use crate::OwnedScope;
 use std::{
-    cell::{Ref, RefCell, RefMut},
+    cell::{Cell, Ref, RefCell, RefMut},
     marker::PhantomData,
     ops::{Deref, DerefMut},
 };
@@ -8,7 +8,7 @@ use std::{
 pub type Variable<'a, T> = &'a OwnedVariable<'a, T>;
 
 pub struct OwnedVariable<'a, T> {
-    disposed: bool,
+    disposed: Cell<bool>,
     value: RefCell<T>,
     bounds: PhantomData<&'a ()>,
 }
@@ -18,17 +18,21 @@ impl<T> Drop for OwnedVariable<'_, T> {
         if self.value.try_borrow_mut().is_err() {
             panic!("dispose a borrowed variable");
         }
-        self.disposed = true;
+        self.disposed.set(true);
     }
 }
 
 impl<'a, T> OwnedVariable<'a, T> {
+    pub fn is_disposed(&self) -> bool {
+        self.disposed.get()
+    }
+
     pub fn get(&self) -> VarRef<'_, T> {
         self.try_get().expect("get a disposed varaible")
     }
 
     pub fn try_get(&self) -> Option<VarRef<'_, T>> {
-        if self.disposed {
+        if self.is_disposed() {
             return None;
         }
         Some(VarRef(self.value.borrow()))
@@ -39,7 +43,7 @@ impl<'a, T> OwnedVariable<'a, T> {
     }
 
     pub fn try_get_mut(&self) -> Option<VarRefMut<'_, T>> {
-        if self.disposed {
+        if self.is_disposed() {
             return None;
         }
         Some(VarRefMut(self.value.borrow_mut()))
@@ -99,7 +103,7 @@ impl<'a, T> VarRefMut<'a, T> {
 impl<'a> OwnedScope<'a> {
     pub fn create_owned_variable<T>(&'a self, t: T) -> OwnedVariable<'a, T> {
         OwnedVariable {
-            disposed: false,
+            disposed: Cell::new(false),
             value: RefCell::new(t),
             bounds: PhantomData,
         }

@@ -8,14 +8,18 @@ use crate::{
     VarRefMut,
 };
 use indexmap::IndexSet;
-use std::{cell::RefCell, fmt, ops::Deref};
+use std::{
+    cell::{Ref, RefCell},
+    fmt,
+    ops::Deref,
+};
 
 pub type Signal<'a, T> = &'a OwnedSignal<'a, T>;
 pub type ReadSignal<'a, T> = &'a OwnedReadSignal<'a, T>;
 
 pub struct OwnedReadSignal<'a, T> {
     value: RefCell<T>,
-    context: &'a SignalContext,
+    context: Ref<'a, SignalContext>,
 }
 
 impl<T> Drop for OwnedReadSignal<'_, T> {
@@ -100,7 +104,7 @@ pub(crate) struct SignalContext {
 impl SignalContext {
     pub fn track(&self) {
         if let Some(eff) = self.shared.observer.get() {
-            eff.with(|eff| eff.add_dependency(self.this));
+            eff.get().map(|eff| eff.add_dependency(self.this));
         }
     }
 
@@ -113,19 +117,21 @@ impl SignalContext {
     }
 
     pub fn trigger_subscribers(&self) {
-        let subscribers = self.subscribers.take();
+        let subscribers = self
+            .subscribers
+            .replace_with(|sub| IndexSet::with_capacity_and_hasher(sub.len(), Default::default()));
         // Effects attach to subscribers at the end of the effect scope,
         // an effect created inside another scope might send signals to its
         // outer scope, so we should ensure the inner effects re-execute
         // before outer ones to avoid potential double executions.
         for eff in subscribers {
-            eff.with(|eff| eff.run());
+            eff.get().map(|eff| eff.run());
         }
     }
 }
 
 impl<'a> OwnedScope<'a> {
-    fn create_signal_context(&'a self) -> &'a SignalContext {
+    fn create_signal_context(&'a self) -> Ref<'a, SignalContext> {
         let shared = self.shared();
         let ctx = shared
             .signal_contexts
@@ -137,7 +143,7 @@ impl<'a> OwnedScope<'a> {
         self.push_cleanup(Cleanup::SignalContext(ctx));
         // SAFETY: the signal will be freed and no longer accessible for weak
         // references once current scope is disposed.
-        unsafe { ctx.leak_ref() }
+        ctx.get().unwrap_or_else(|| unreachable!())
     }
 
     pub fn create_owned_read_signal<T>(&'a self, t: T) -> OwnedReadSignal<'a, T> {

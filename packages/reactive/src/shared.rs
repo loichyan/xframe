@@ -1,6 +1,6 @@
 use crate::{
     arena::{Arena, WeakRef},
-    effect::OwnedEffect,
+    effect::RawEffect,
     scope::BoundedOwnedScope,
     signal::SignalContext,
 };
@@ -10,16 +10,16 @@ pub(crate) type InvariantLifetime<'a> = &'a mut &'a mut ();
 pub(crate) type CovariantLifetime<'a> = &'a ();
 
 pub(crate) type SignalContextRef = WeakRef<'static, SignalContext>;
-pub(crate) type EffectRef = WeakRef<'static, OwnedEffect<'static>>;
+pub(crate) type EffectRef = WeakRef<'static, RawEffect<'static>>;
 
 pub(crate) trait Empty {}
 impl<T> Empty for T {}
 
 #[derive(Default)]
 pub(crate) struct Shared {
-    pub observer: Cell<Option<WeakRef<'static, OwnedEffect<'static>>>>,
+    pub observer: Cell<Option<EffectRef>>,
     pub signal_contexts: Arena<SignalContext>,
-    pub effects: Arena<OwnedEffect<'static>>,
+    pub effects: Arena<RawEffect<'static>>,
     pub scopes: Arena<BoundedOwnedScope<'static, 'static>>,
 }
 
