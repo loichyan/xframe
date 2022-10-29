@@ -1,7 +1,4 @@
-use crate::{
-    scope::OwnedScope,
-    signal::{Signal, SignalModify},
-};
+use crate::{scope::OwnedScope, signal::Signal};
 use std::cell::Cell;
 
 impl<'a> OwnedScope<'a> {
@@ -10,7 +7,8 @@ impl<'a> OwnedScope<'a> {
         mut f: impl 'a + FnMut() -> T,
         mut update: impl 'a + FnMut(T, Signal<'a, T>),
     ) -> Signal<'a, T> {
-        // SAFETY: An `Option` will never read it's underlying value when getting dropped.
+        // SAFETY: An `Cell<Option<T>>` will never read it's underlying value
+        // when getting dropped.
         let memo = unsafe { self.create_variable_unchecked(Cell::new(None::<Signal<'a, T>>)) };
         self.create_effect(move |_| {
             let new_val = f();
@@ -41,12 +39,12 @@ impl<'a> OwnedScope<'a> {
         mut is_equal: impl 'a + FnMut(&T, &T) -> bool,
     ) -> Signal<'a, T> {
         self.create_memo_impl(f, move |new_val, memo| {
-            let mut modify_memo = memo.modify();
+            let mut modify_memo = memo.get_mut();
             if !is_equal(&*modify_memo, &new_val) {
                 *modify_memo = new_val;
+                memo.trigger_subscribers();
                 return;
             }
-            SignalModify::drop_silent(modify_memo);
         })
     }
 }

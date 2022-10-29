@@ -4,16 +4,30 @@ pub use modify::SignalModify;
 use crate::{
     scope::{Cleanup, OwnedScope},
     shared::{EffectRef, Shared, SignalContextRef},
+    variable::VarRef,
+    VarRefMut,
 };
 use indexmap::IndexSet;
-use std::{cell::RefCell, fmt, ops::Deref};
+use std::{
+    cell::{Ref, RefCell},
+    fmt,
+    ops::Deref,
+};
 
 pub type Signal<'a, T> = &'a OwnedSignal<'a, T>;
 pub type ReadSignal<'a, T> = &'a OwnedReadSignal<'a, T>;
 
-pub struct OwnedReadSignal<'a, T: 'static> {
+pub struct OwnedReadSignal<'a, T> {
     value: RefCell<T>,
-    context: &'a SignalContext,
+    context: Ref<'a, SignalContext>,
+}
+
+impl<T> Drop for OwnedReadSignal<'_, T> {
+    fn drop(&mut self) {
+        if self.value.try_borrow_mut().is_err() {
+            panic!("dispose a borrowed signal");
+        }
+    }
 }
 
 impl<T: fmt::Debug> fmt::Debug for OwnedReadSignal<'_, T> {
@@ -31,17 +45,17 @@ impl<'a, T> OwnedReadSignal<'a, T> {
         self.context.trigger_subscribers();
     }
 
-    pub fn get(&self) -> SignalRef<'_, T> {
+    pub fn get(&self) -> VarRef<'_, T> {
         self.track();
         self.get_untracked()
     }
 
-    pub fn get_untracked(&self) -> SignalRef<'_, T> {
-        SignalRef(self.value.borrow())
+    pub fn get_untracked(&self) -> VarRef<'_, T> {
+        VarRef::from(&self.value)
     }
 }
 
-pub struct OwnedSignal<'a, T: 'static>(OwnedReadSignal<'a, T>);
+pub struct OwnedSignal<'a, T>(OwnedReadSignal<'a, T>);
 
 impl<'a, T> Deref for OwnedSignal<'a, T> {
     type Target = OwnedReadSignal<'a, T>;
@@ -58,6 +72,10 @@ impl<T: fmt::Debug> fmt::Debug for OwnedSignal<'_, T> {
 }
 
 impl<'a, T> OwnedSignal<'a, T> {
+    pub fn get_mut(&self) -> VarRefMut<'_, T> {
+        VarRefMut::from(&self.value)
+    }
+
     pub fn set(&self, val: T) {
         self.set_slient(val);
         self.trigger_subscribers();
@@ -86,7 +104,7 @@ pub(crate) struct SignalContext {
 impl SignalContext {
     pub fn track(&self) {
         if let Some(eff) = self.shared.observer.get() {
-            eff.with(|eff| eff.add_dependency(self.this));
+            eff.get().map(|eff| eff.add_dependency(self.this));
         }
     }
 
@@ -99,41 +117,21 @@ impl SignalContext {
     }
 
     pub fn trigger_subscribers(&self) {
-        let subscribers = self.subscribers.take();
+        let subscribers = self
+            .subscribers
+            .replace_with(|sub| IndexSet::with_capacity_and_hasher(sub.len(), Default::default()));
         // Effects attach to subscribers at the end of the effect scope,
         // an effect created inside another scope might send signals to its
         // outer scope, so we should ensure the inner effects re-execute
         // before outer ones to avoid potential double executions.
         for eff in subscribers {
-            eff.with(|eff| eff.run());
+            eff.get().map(|eff| eff.run());
         }
     }
 }
 
-pub struct SignalRef<'a, T: ?Sized>(std::cell::Ref<'a, T>);
-
-impl<T: fmt::Debug> fmt::Debug for SignalRef<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl<'a, T: ?Sized> SignalRef<'a, T> {
-    pub fn map<U>(orig: Self, f: impl FnOnce(&T) -> &U) -> SignalRef<'a, U> {
-        SignalRef(std::cell::Ref::map(orig.0, f))
-    }
-}
-
-impl<'a, T> Deref for SignalRef<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &*self.0
-    }
-}
-
 impl<'a> OwnedScope<'a> {
-    fn create_signal_context(&self) -> &'a SignalContext {
+    fn create_signal_context(&'a self) -> Ref<'a, SignalContext> {
         let shared = self.shared();
         let ctx = shared
             .signal_contexts
@@ -145,7 +143,7 @@ impl<'a> OwnedScope<'a> {
         self.push_cleanup(Cleanup::SignalContext(ctx));
         // SAFETY: the signal will be freed and no longer accessible for weak
         // references once current scope is disposed.
-        unsafe { ctx.leak_ref() }
+        ctx.get().unwrap_or_else(|| unreachable!())
     }
 
     pub fn create_owned_read_signal<T>(&'a self, t: T) -> OwnedReadSignal<'a, T> {
@@ -208,6 +206,18 @@ mod tests {
     }
 
     #[test]
+    fn signal_of_signal() {
+        create_root(|cx| {
+            let state = cx.create_signal(1);
+            let state2 = cx.create_signal(state);
+            let double = cx.create_memo(|| *state2.get().get() * 2);
+            assert_eq!(*state2.get().get(), 1);
+            state.set(2);
+            assert_eq!(*double.get(), 4);
+        });
+    }
+
+    #[test]
     fn owned_signal_in_child_scope() {
         create_root(|cx| {
             let owned = cx.create_owned_signal(1);
@@ -246,9 +256,9 @@ mod tests {
         create_root(|cx| {
             let owned = cx.create_owned_signal(DropAndInc);
             cx.create_child(|cx| {
-                cx.create_variable(DropAndAssert(1));
+                cx.create_variable_static(DropAndAssert(1));
                 unsafe { cx.create_variable_unchecked(owned) };
-                cx.create_variable(DropAndAssert(0));
+                cx.create_variable_static(DropAndAssert(0));
             });
             cx.create_owned_signal(DropAndInc);
         });
@@ -264,6 +274,16 @@ mod tests {
                 unsafe { cx.create_variable_unchecked(owned) };
             });
             assert!(context.can_upgrade());
+        });
+    }
+
+    #[test]
+    #[should_panic = "dispose a borrowed signal"]
+    fn cannot_dispose_borrowed_signal() {
+        create_root(|cx| {
+            let var = cx.create_variable(None);
+            let var2 = cx.create_signal(0);
+            *var.get_mut() = Some(var2.get());
         });
     }
 }

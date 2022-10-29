@@ -26,7 +26,7 @@
 
 use bumpalo::Bump;
 use std::{
-    cell::{Cell, RefCell},
+    cell::{Cell, Ref, RefCell},
     hash::Hash,
     mem::ManuallyDrop,
     ptr::NonNull,
@@ -94,23 +94,22 @@ impl<T> Arena<T> {
         weak
     }
 
+    /// Try to free a slot, raise an error if the value is borrowed. It will
+    /// do nothing if the reference is outdate.
+    ///
     /// # Panic
     ///
     /// Panics on a borrowed slot.
     pub fn free(&self, weak: WeakRef<'_, T>) -> bool {
-        self.try_free(weak)
-            .unwrap_or_else(|_| panic!("free a in using slot"))
-    }
-
-    /// Try to free a slot, raise an error if the value is borrowed. It will
-    /// do nothing if the reference is outdate.
-    pub fn try_free(&self, weak: WeakRef<'_, T>) -> Result<bool, ()> {
         // Check the ownship.
         if !weak.can_upgrade() {
-            return Ok(false);
+            return false;
         }
         let slot = weak.slot;
-        let content = &mut *slot.content.try_borrow_mut().map_err(|_| ())?;
+        let content = &mut *slot
+            .content
+            .try_borrow_mut()
+            .unwrap_or_else(|_| panic!("free a borrowed slot"));
 
         // 1) Bump version.
         debug_assert!(slot.version.get() % 2 > 0);
@@ -123,7 +122,7 @@ impl<T> Arena<T> {
         content.next_free = self.free_head.get();
         self.free_head.set(Some(NonNull::from(slot)));
 
-        Ok(true)
+        true
     }
 }
 
@@ -183,22 +182,14 @@ impl<'a, T> WeakRef<'a, T> {
         self.slot.version.get() == self.version
     }
 
-    pub fn with<U>(&self, f: impl FnOnce(&T) -> U) -> Option<U> {
+    pub fn get(&self) -> Option<Ref<'a, T>> {
         if !self.can_upgrade() {
             return None;
         }
-        let val = unsafe { &self.slot.content.borrow().value };
-        Some(f(val))
-    }
-
-    /// Leak the underlying content of the slot which this reference points to.
-    ///
-    /// # Safety
-    ///
-    /// The slot can be freed and allocated for a new value, therefore it's unsafe
-    /// to read the reference.
-    pub unsafe fn leak_ref(self) -> &'a T {
-        &(*self.slot.content.as_ptr()).value
+        // SAFETY: It's safe to get a `Ref`, since free a borrowed slot will panic.
+        Some(Ref::map(self.slot.content.borrow(), |c| unsafe {
+            &*c.value
+        }))
     }
 }
 
@@ -247,23 +238,24 @@ mod tests {
         let val1 = arena.alloc(0);
         let addr1 = val1.slot as *const _;
 
-        val1.with(|x| assert_eq!(*x, 0));
+        assert_eq!(*val1.get().unwrap(), 0);
         arena.free(val1);
 
         let val2 = arena.alloc(1);
         let addr2 = val2.slot as *const _;
 
-        val2.with(|x| assert_eq!(*x, 1));
+        assert_eq!(*val2.get().unwrap(), 1);
         assert_eq!(addr1, addr2);
     }
 
     #[test]
-    fn cannot_free_a_in_borrowed_weak() {
+    #[should_panic = "free a borrowed slot"]
+    fn cannot_free_a_borrowed_weak() {
         let arena = Arena::<i32>::default();
         let val = arena.alloc(0);
 
-        val.with(|_| {
-            assert!(arena.try_free(val).is_err());
+        val.get().map(|_| {
+            arena.free(val);
         });
     }
 

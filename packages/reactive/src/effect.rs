@@ -3,7 +3,10 @@ use crate::{
     shared::{EffectRef, Shared, SignalContextRef},
 };
 use ahash::AHashSet;
-use std::{cell::RefCell, fmt};
+use std::{
+    cell::{Ref, RefCell},
+    fmt,
+};
 
 pub type Effect<'a> = &'a OwnedEffect<'a>;
 
@@ -16,13 +19,23 @@ impl fmt::Debug for OwnedEffect<'_> {
 /// An effect can track signals and automatically execute whenever the captured
 /// signals changed.
 pub struct OwnedEffect<'a> {
+    inner: Ref<'a, RawEffect<'a>>,
+}
+
+impl<'a> OwnedEffect<'a> {
+    pub fn run(&self) {
+        self.inner.run();
+    }
+}
+
+pub(crate) struct RawEffect<'a> {
     this: EffectRef,
     shared: &'static Shared,
     effect: &'a (dyn 'a + AnyEffect),
     dependencies: RefCell<AHashSet<SignalContextRef>>,
 }
 
-impl<'a> OwnedEffect<'a> {
+impl<'a> RawEffect<'a> {
     pub(crate) fn add_dependency(&self, signal: SignalContextRef) {
         self.dependencies.borrow_mut().insert(signal);
     }
@@ -30,7 +43,7 @@ impl<'a> OwnedEffect<'a> {
     pub(crate) fn clear_dependencies(&self, this: EffectRef) {
         let dependencies = &mut *self.dependencies.borrow_mut();
         for sig in dependencies.iter() {
-            sig.with(|sig| sig.unsubscribe(this));
+            sig.get().map(|sig| sig.unsubscribe(this));
         }
         dependencies.clear();
     }
@@ -53,7 +66,7 @@ impl<'a> OwnedEffect<'a> {
         // An effect is appended to the subscriber list of the signals since we
         // subscribe after running the closure.
         for sig in self.dependencies.borrow().iter() {
-            sig.with(|sig| sig.subscribe(self.this));
+            sig.get().map(|sig| sig.subscribe(self.this));
         }
 
         // 5) Restore previous observer.
@@ -82,10 +95,10 @@ where
 }
 
 impl<'a> OwnedScope<'a> {
-    fn create_effect_impl(&self, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
+    fn create_effect_impl(&'a self, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
         let shared = self.shared();
-        let owned = shared.effects.alloc_with_weak(|this| {
-            let owned = OwnedEffect {
+        let raw = shared.effects.alloc_with_weak(|this| {
+            let raw = RawEffect {
                 this,
                 effect,
                 shared,
@@ -93,12 +106,12 @@ impl<'a> OwnedScope<'a> {
             };
             // SAFETY: Same as `create_signal_context`, the effect cannot be
             // accessed once this scope is disposed.
-            unsafe { std::mem::transmute(owned) }
+            unsafe { std::mem::transmute(raw) }
         });
-        let effect = unsafe { owned.leak_ref() };
-        self.push_cleanup(Cleanup::Effect(owned));
-        effect.run();
-        effect
+        self.push_cleanup(Cleanup::Effect(raw));
+        let inner = raw.get().unwrap_or_else(|| unreachable!());
+        inner.run();
+        unsafe { self.create_variable_unchecked(OwnedEffect { inner }) }
     }
 
     /// Create an effect which accepts its previous returned value as the parameter
@@ -137,7 +150,7 @@ mod tests {
     fn reactive_effect() {
         create_root(|cx| {
             let state = cx.create_signal(0);
-            let double = cx.create_variable(Cell::new(-1));
+            let double = cx.create_variable_static(Cell::new(-1));
 
             cx.create_effect(|_| {
                 double.set(*state.get() * 2);
@@ -242,8 +255,8 @@ mod tests {
     fn inner_effect_triggered_first() {
         create_root(|cx| {
             let state = cx.create_signal(());
-            let inner_counter = cx.create_variable(Cell::new(0));
-            let outer_counter = cx.create_variable(Cell::new(0));
+            let inner_counter = cx.create_variable_static(Cell::new(0));
+            let outer_counter = cx.create_variable_static(Cell::new(0));
 
             cx.create_effect(|_| {
                 state.track();
@@ -281,9 +294,10 @@ mod tests {
                     });
                 }
             });
-            let total = eff.dependencies.borrow().len();
+            let total = eff.inner.dependencies.borrow().len();
             assert_eq!(total, 1);
             let active = eff
+                .inner
                 .dependencies
                 .borrow()
                 .iter()
