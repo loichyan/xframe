@@ -236,9 +236,9 @@ mod tests {
         create_root(|cx| {
             let owned = cx.create_owned_signal(DropAndInc);
             cx.create_child(|cx| {
-                cx.create_variable_static(DropAndAssert(1));
+                cx.create_variable(DropAndAssert(1));
                 cx.create_variable(owned);
-                cx.create_variable_static(DropAndAssert(0));
+                cx.create_variable(DropAndAssert(0));
             });
             cx.create_owned_signal(DropAndInc);
         });

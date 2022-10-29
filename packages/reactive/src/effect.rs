@@ -148,24 +148,23 @@ impl<'a> OwnedScope<'a> {
 mod tests {
     use super::*;
     use crate::create_root;
-    use std::cell::Cell;
 
     #[test]
     fn reactive_effect() {
         create_root(|cx| {
             let state = cx.create_signal(0);
-            let double = cx.create_variable_static(Cell::new(-1));
+            let double = cx.create_variable(-1);
 
             cx.create_effect(|_| {
-                double.set(*state.get() * 2);
+                *double.get_mut() = *state.get() * 2;
             });
-            assert_eq!(double.get(), 0);
+            assert_eq!(*double.get(), 0);
 
             state.set(1);
-            assert_eq!(double.get(), 2);
+            assert_eq!(*double.get(), 2);
 
             state.set(2);
-            assert_eq!(double.get(), 4);
+            assert_eq!(*double.get(), 4);
         });
     }
 
@@ -259,31 +258,31 @@ mod tests {
     fn inner_effect_triggered_first() {
         create_root(|cx| {
             let state = cx.create_signal(());
-            let inner_counter = cx.create_variable_static(Cell::new(0));
-            let outer_counter = cx.create_variable_static(Cell::new(0));
+            let inner_counter = cx.create_variable(0);
+            let outer_counter = cx.create_variable(0);
 
             cx.create_effect(|_| {
                 state.track();
-                if inner_counter.get() < 2 {
+                if *inner_counter.get() < 2 {
                     cx.create_effect_scoped(|cx| {
                         cx.create_effect(|_| {
                             state.track();
-                            inner_counter.set(inner_counter.get() + 1);
+                            *inner_counter.get_mut() += 1;
                         });
                     });
                 }
-                outer_counter.set(outer_counter.get() + 1);
+                *outer_counter.get_mut() += 1;
             });
-            assert_eq!(inner_counter.get(), 1);
-            assert_eq!(outer_counter.get(), 1);
+            assert_eq!(*inner_counter.get(), 1);
+            assert_eq!(*outer_counter.get(), 1);
 
             state.trigger_subscribers();
-            assert_eq!(inner_counter.get(), 2);
-            assert_eq!(outer_counter.get(), 2);
+            assert_eq!(*inner_counter.get(), 2);
+            assert_eq!(*outer_counter.get(), 2);
 
             state.trigger_subscribers();
-            assert_eq!(inner_counter.get(), 3);
-            assert_eq!(outer_counter.get(), 3);
+            assert_eq!(*inner_counter.get(), 3);
+            assert_eq!(*outer_counter.get(), 3);
         });
     }
 

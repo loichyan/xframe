@@ -37,7 +37,6 @@ pub struct OwnedScope<'a> {
     variables: Bump,
     inherited: ScopeInherited<'a>,
     cleanups: RefCell<SmallVec<[Cleanup<'a>; INITIAL_CLEANUP_SLOTS]>>,
-    callbacks: RefCell<Vec<&'a mut (dyn 'a + Callback)>>,
 }
 
 impl fmt::Debug for OwnedScope<'_> {
@@ -46,30 +45,6 @@ impl fmt::Debug for OwnedScope<'_> {
             .field("inherited", &self.inherited)
             .field("cleanups", &*self.cleanups.borrow() as _)
             .finish_non_exhaustive()
-    }
-}
-
-impl Drop for OwnedScope<'_> {
-    fn drop(&mut self) {
-        // Last allocated variables will be disposed first.
-        for cl in self.cleanups.take().into_iter().rev() {
-            match cl {
-                Cleanup::SignalContext(sig) => {
-                    self.inherited.shared.signal_contexts.free(sig);
-                }
-                Cleanup::Effect(eff) => {
-                    self.inherited.shared.effects.free(eff);
-                }
-                Cleanup::Variable(ptr) => unsafe {
-                    std::ptr::drop_in_place(ptr as *const dyn Empty as *mut dyn Empty);
-                },
-            }
-        }
-        // Callbacks should be invoked at last, since they can read a variable
-        // allocated after themselves.
-        for cb in self.callbacks.take().into_iter().rev() {
-            unsafe { cb.call_once() };
-        }
     }
 }
 
@@ -107,6 +82,7 @@ pub(crate) enum Cleanup<'a> {
     SignalContext(SignalContextRef),
     Effect(EffectRef),
     Variable(&'a (dyn 'a + Empty)),
+    Callback(&'a mut (dyn 'a + Callback)),
 }
 
 impl fmt::Debug for Cleanup<'_> {
@@ -117,6 +93,10 @@ impl fmt::Debug for Cleanup<'_> {
             Cleanup::Variable(v) => f
                 .debug_tuple("Variable")
                 .field(&(v as *const dyn Empty))
+                .finish(),
+            Cleanup::Callback(c) => f
+                .debug_tuple("Callback")
+                .field(&(*c as *const dyn Callback))
                 .finish(),
         }
     }
@@ -156,7 +136,6 @@ impl<'a> ScopeDisposer<'a> {
             variables: Default::default(),
             inherited,
             cleanups: Default::default(),
-            callbacks: Default::default(),
         };
         let bounded = BoundedOwnedScope {
             scope,
@@ -186,13 +165,9 @@ impl<'a> ScopeDisposer<'a> {
     ///
     /// # Safety
     ///
-    /// This function is unsafe, because:
-    ///
-    /// 1. There may be references to variables allocated by the returned scope
-    /// when the disposer is dropped, read those references will cause undefined
-    /// behavior;
-    /// 2. If a `Scope<'static>` is leaked from the disposer, use that scope will
-    /// break the safety guarantee of [`create_variable_static`](OwnedScope::create_variable_static).
+    /// This function is unsafe, because there may be references to variables
+    /// allocated by the returned scope when the disposer is dropped, read those
+    /// references will cause undefined behavior.
     pub unsafe fn leak_scope<'b>(&'b self) -> BoundedScope<'b, 'a> {
         std::mem::transmute(self.scope.as_ptr())
     }
@@ -203,8 +178,27 @@ impl Drop for ScopeDisposer<'_> {
         let (shared, is_root) = self
             .scope
             .try_get()
-            .map(|scope| (scope.inherited.shared, scope.inherited.parent.is_none()))
+            .map(|scope| {
+                let shared = scope.shared();
+                // Last allocated variables will be disposed first.
+                for cl in scope.cleanups.take().into_iter().rev() {
+                    match cl {
+                        Cleanup::SignalContext(sig) => {
+                            shared.signal_contexts.free(sig);
+                        }
+                        Cleanup::Effect(eff) => {
+                            shared.effects.free(eff);
+                        }
+                        Cleanup::Variable(ptr) => unsafe {
+                            std::ptr::drop_in_place(ptr as *const dyn Empty as *mut dyn Empty);
+                        },
+                        Cleanup::Callback(f) => unsafe { f.call_once() },
+                    }
+                }
+                (shared, scope.inherited.parent.is_none())
+            })
             .unwrap_or_else(|| unreachable!());
+
         shared.scopes.free(self.scope);
         if is_root {
             let shared = unsafe { Box::from_raw(shared as *const Shared as *mut Shared) };
@@ -258,19 +252,9 @@ impl<'a> OwnedScope<'a> {
         ptr
     }
 
-    pub fn create_variable_copied<T: Copy>(&'a self, t: T) -> &'a T {
-        // SAFETY: A `Copy` type can't have a custom destructor.
-        unsafe { self.create_variable_unchecked(t) }
-    }
-
-    pub fn create_variable_static<T: 'static>(&'a self, t: T) -> &'a T {
-        // SAFETY: A 'static type can't hold a 'a reference.
-        unsafe { self.create_variable_unchecked(t) }
-    }
-
     pub fn on_cleanup(&'a self, f: impl 'a + FnOnce()) {
         let f = self.variables.alloc(|| self.untrack(f));
-        self.callbacks.borrow_mut().push(f);
+        self.push_cleanup(Cleanup::Callback(f));
     }
 
     pub fn untrack(&'a self, f: impl FnOnce()) {
@@ -284,17 +268,6 @@ impl<'a> OwnedScope<'a> {
 #[cfg(test)]
 mod test {
     use super::create_root;
-    use std::cell::Cell;
-
-    #[test]
-    fn variables() {
-        let a = Cell::new(-1);
-        create_root(|cx| {
-            let var = cx.create_variable_static(1);
-            a.set(*var);
-        });
-        assert_eq!(a.get(), 1);
-    }
 
     #[test]
     fn cleanup() {
@@ -353,55 +326,6 @@ mod test {
 
             trigger2.trigger_subscribers();
             assert_eq!(*counter.get(), 2);
-        });
-    }
-
-    #[test]
-    fn drop_variables_on_dispose() {
-        thread_local! {
-            static COUNTER: Cell<i32> = Cell::new(0);
-        }
-
-        struct DropAndInc;
-        impl Drop for DropAndInc {
-            fn drop(&mut self) {
-                COUNTER.with(|x| x.set(x.get() + 1));
-            }
-        }
-
-        struct DropAndAssert(i32);
-        impl Drop for DropAndAssert {
-            fn drop(&mut self) {
-                assert_eq!(COUNTER.with(Cell::get), self.0);
-            }
-        }
-
-        create_root(|cx| {
-            cx.create_variable_static(DropAndInc);
-            cx.create_child(|cx| {
-                cx.create_variable_static(DropAndAssert(1));
-                cx.create_variable_static(DropAndInc);
-                cx.create_variable_static(DropAndAssert(0));
-            });
-        });
-        drop(DropAndAssert(2));
-    }
-
-    #[test]
-    fn access_previous_var_on_drop() {
-        struct AssertVarOnDrop<'a> {
-            var: &'a i32,
-            expect: i32,
-        }
-        impl Drop for AssertVarOnDrop<'_> {
-            fn drop(&mut self) {
-                assert_eq!(*self.var, self.expect);
-            }
-        }
-
-        create_root(|cx| {
-            let var = cx.create_variable_static(777);
-            cx.create_variable(AssertVarOnDrop { var, expect: 777 });
         });
     }
 }

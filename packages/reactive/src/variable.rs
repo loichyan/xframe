@@ -153,4 +153,63 @@ mod tests {
             *var.get_mut() = Some(var2.get());
         });
     }
+
+    #[test]
+    fn variables() {
+        let a = Cell::new(-1);
+        create_root(|cx| {
+            let var = cx.create_variable(1);
+            a.set(*var.get());
+        });
+        assert_eq!(a.get(), 1);
+    }
+
+    #[test]
+    fn drop_variables_on_dispose() {
+        thread_local! {
+            static COUNTER: Cell<i32> = Cell::new(0);
+        }
+
+        struct DropAndInc;
+        impl Drop for DropAndInc {
+            fn drop(&mut self) {
+                COUNTER.with(|x| x.set(x.get() + 1));
+            }
+        }
+
+        struct DropAndAssert(i32);
+        impl Drop for DropAndAssert {
+            fn drop(&mut self) {
+                assert_eq!(COUNTER.with(Cell::get), self.0);
+            }
+        }
+
+        create_root(|cx| {
+            cx.create_variable(DropAndInc);
+            cx.create_child(|cx| {
+                cx.create_variable(DropAndAssert(1));
+                cx.create_variable(DropAndInc);
+                cx.create_variable(DropAndAssert(0));
+            });
+        });
+        drop(DropAndAssert(2));
+    }
+
+    #[test]
+    fn access_previous_var_on_drop() {
+        struct AssertVarOnDrop<'a> {
+            var: Variable<'a, i32>,
+            expect: i32,
+        }
+        impl Drop for AssertVarOnDrop<'_> {
+            fn drop(&mut self) {
+                assert_eq!(*self.var.get(), self.expect);
+            }
+        }
+
+        create_root(|cx| {
+            let var = cx.create_variable(777);
+            cx.create_variable(AssertVarOnDrop { var, expect: 777 });
+        });
+    }
 }
