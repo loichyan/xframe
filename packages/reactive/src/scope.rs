@@ -37,6 +37,7 @@ pub struct OwnedScope<'a> {
     variables: Bump,
     inherited: ScopeInherited<'a>,
     cleanups: RefCell<SmallVec<[Cleanup<'a>; INITIAL_CLEANUP_SLOTS]>>,
+    callbacks: RefCell<Vec<&'a mut (dyn 'a + Callback)>>,
 }
 
 impl fmt::Debug for OwnedScope<'_> {
@@ -51,8 +52,8 @@ impl fmt::Debug for OwnedScope<'_> {
 impl Drop for OwnedScope<'_> {
     fn drop(&mut self) {
         // Last allocated variables will be disposed first.
-        for ty in self.cleanups.take().into_iter().rev() {
-            match ty {
+        for cl in self.cleanups.borrow().iter().copied().rev() {
+            match cl {
                 Cleanup::SignalContext(sig) => {
                     self.inherited.shared.signal_contexts.free(sig);
                 }
@@ -62,8 +63,12 @@ impl Drop for OwnedScope<'_> {
                 Cleanup::Variable(ptr) => unsafe {
                     std::ptr::drop_in_place(ptr as *const dyn Empty as *mut dyn Empty);
                 },
-                Cleanup::Callback(f) => unsafe { f.call_once() },
             }
+        }
+        // Callbacks should be invoked at last, since they can read a variable
+        // allocated after themselves.
+        for cb in self.callbacks.take().into_iter().rev() {
+            unsafe { cb.call_once() };
         }
     }
 }
@@ -98,11 +103,11 @@ impl<F: FnOnce()> Callback for F {
     }
 }
 
+#[derive(Clone, Copy)]
 pub(crate) enum Cleanup<'a> {
     SignalContext(SignalContextRef),
     Effect(EffectRef),
     Variable(&'a (dyn 'a + Empty)),
-    Callback(&'a mut (dyn 'a + Callback)),
 }
 
 impl fmt::Debug for Cleanup<'_> {
@@ -113,10 +118,6 @@ impl fmt::Debug for Cleanup<'_> {
             Cleanup::Variable(v) => f
                 .debug_tuple("Variable")
                 .field(&(v as *const dyn Empty))
-                .finish(),
-            Cleanup::Callback(c) => f
-                .debug_tuple("Callback")
-                .field(&(*c as *const dyn Callback))
                 .finish(),
         }
     }
@@ -156,6 +157,7 @@ impl<'a> ScopeDisposer<'a> {
             variables: Default::default(),
             inherited,
             cleanups: Default::default(),
+            callbacks: Default::default(),
         };
         let bounded = BoundedOwnedScope {
             scope,
@@ -191,7 +193,7 @@ impl<'a> ScopeDisposer<'a> {
     /// when the disposer is dropped, read those references will cause undefined
     /// behavior;
     /// 2. If a `Scope<'static>` is leaked from the disposer, use that scope will
-    /// break the safety guarantee of dropping order.
+    /// break the safety guarantee of [`create_variable`](OwnedScope::create_variable).
     pub unsafe fn leak_scope<'b>(&'b self) -> BoundedScope<'b, 'a> {
         std::mem::transmute(self.scope.leak_ref())
     }
@@ -260,7 +262,7 @@ impl<'a> OwnedScope<'a> {
 
     pub fn on_cleanup(&'a self, f: impl 'a + FnOnce()) {
         let f = self.variables.alloc(|| self.untrack(f));
-        self.push_cleanup(Cleanup::Callback(f));
+        self.callbacks.borrow_mut().push(f);
     }
 
     pub fn untrack(&self, f: impl FnOnce()) {
