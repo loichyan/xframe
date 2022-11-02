@@ -1,18 +1,20 @@
-use crate::{arena::WeakRef, shared::Shared, VarRefMut};
-
-use super::{OwnedSignal, SignalContext};
+use super::Signal;
+use crate::{
+    shared::{Shared, SignalId},
+    variable::VarRefMut,
+};
 use std::{
     fmt,
     ops::{Deref, DerefMut},
 };
 
-impl<'a, T> OwnedSignal<'a, T> {
+impl<'a, T> Signal<'a, T> {
     pub fn modify(&self) -> SignalModify<'_, T> {
         SignalModify {
-            value: self.value.get_mut(),
+            value: self.get_mut(),
             trigger: ModifyTrigger {
+                id: self.id,
                 shared: self.shared,
-                context: self.context,
             },
         }
     }
@@ -54,13 +56,13 @@ impl<'a, T> DerefMut for SignalModify<'a, T> {
 }
 
 struct ModifyTrigger<'a> {
-    shared: &'static Shared,
-    context: WeakRef<'a, SignalContext>,
+    id: SignalId,
+    shared: &'a Shared,
 }
 
 impl Drop for ModifyTrigger<'_> {
     fn drop(&mut self) {
-        self.context.get().trigger_subscribers(self.shared);
+        self.id.trigger(self.shared);
     }
 }
 
@@ -73,7 +75,7 @@ mod tests {
         create_root(|cx| {
             let state = cx.create_signal(String::from("Hello, "));
             let counter = cx.create_signal(0);
-            cx.create_effect(|_| {
+            cx.create_effect(move |_| {
                 state.track();
                 counter.update(|x| *x + 1);
             });

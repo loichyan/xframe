@@ -1,77 +1,40 @@
 use crate::{
-    scope::{BoundedScope, Cleanup, OwnedScope},
-    shared::{CovariantLifetime, EffectRef, Shared, SignalContextRef},
+    scope::{Cleanup, RawScope, Scope},
+    shared::{EffectId, Shared, SignalId},
+    variable::VarSlot,
+    BoundedScope,
 };
 use ahash::AHashSet;
-use std::{cell::RefCell, fmt, marker::PhantomData};
-
-pub type Effect<'a> = &'a OwnedEffect<'a>;
-
-impl fmt::Debug for OwnedEffect<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Effect").finish_non_exhaustive()
-    }
-}
+use std::ptr::NonNull;
 
 /// An effect can track signals and automatically execute whenever the captured
-/// signals changed.
-pub struct OwnedEffect<'a> {
-    raw: EffectRef,
-    shared: &'static Shared,
-    bounds: PhantomData<CovariantLifetime<'a>>,
+/// [`Signal`](crate::signal::Signal)s changed.
+#[derive(Clone, Copy)]
+pub struct Effect<'a> {
+    id: EffectId,
+    shared: &'a Shared,
 }
 
-impl<'a> OwnedEffect<'a> {
+impl<'a> Effect<'a> {
     pub fn run(&self) {
-        self.raw.get().run(self.raw, self.shared);
+        self.id
+            .run(self.shared)
+            .unwrap_or_else(|| panic!("tried to access a disposed effect"));
     }
 }
 
-pub(crate) struct RawEffect<'a> {
-    effect: &'a (dyn 'a + AnyEffect),
-    dependencies: RefCell<AHashSet<SignalContextRef>>,
+#[derive(Default)]
+pub(crate) struct EffectContext {
+    dependencies: AHashSet<SignalId>,
 }
 
-impl<'a> RawEffect<'a> {
-    pub fn add_dependency(&self, signal: SignalContextRef) {
-        self.dependencies.borrow_mut().insert(signal);
-    }
-
-    pub fn clear_dependencies(&self, this: EffectRef) {
-        let dependencies = &mut *self.dependencies.borrow_mut();
-        for sig in dependencies.iter() {
-            sig.try_get().map(|sig| sig.unsubscribe(this));
-        }
-        dependencies.clear();
-    }
-
-    pub fn run(&self, this: EffectRef, shared: &Shared) {
-        // 1) Clear dependencies.
-        // After each execution a signal may not be tracked by this effect anymore,
-        // so we need to clear dependencies both links and backlinks at first.
-        self.clear_dependencies(this);
-
-        // 2) Save previous observer.
-        let observer = &shared.observer;
-        let saved = observer.take();
-        observer.set(Some(this));
-
-        // 3) Call the effect.
-        self.effect.run_untracked();
-
-        // 4) Subscribe dependencies.
-        // An effect is appended to the subscriber list of the signals since we
-        // subscribe after running the closure.
-        for sig in self.dependencies.borrow().iter() {
-            sig.try_get().map(|sig| sig.subscribe(this));
-        }
-
-        // 5) Restore previous observer.
-        observer.set(saved);
+impl EffectContext {
+    pub fn add_dependency(&mut self, id: SignalId) {
+        self.dependencies.insert(id);
     }
 }
 
-trait AnyEffect {
+pub(crate) trait AnyEffect {
     fn run_untracked(&self);
 }
 
@@ -80,61 +43,112 @@ struct AnyEffectImpl<T, F> {
     func: F,
 }
 
-impl<T, F> AnyEffect for RefCell<AnyEffectImpl<T, F>>
+impl<T, F> AnyEffect for VarSlot<AnyEffectImpl<T, F>>
 where
     F: FnMut(Option<T>) -> T,
 {
     fn run_untracked(&self) {
-        let effect = &mut *self.borrow_mut();
-        let prev = effect.prev.take();
-        effect.prev = Some((effect.func)(prev));
+        let this = &mut *self.get_mut();
+        this.prev = Some((this.func)(this.prev.take()));
     }
 }
 
-impl<'a> OwnedScope<'a> {
-    fn create_owned_effect(&'a self, effect: &'a (dyn 'a + AnyEffect)) -> OwnedEffect<'a> {
-        let shared = self.shared();
-        let raw = shared.effects.alloc({
-            let raw = RawEffect {
-                effect,
-                dependencies: Default::default(),
-            };
-            // SAFETY: Same as `create_signal_context`, the effect cannot be
-            // accessed once this scope is disposed.
-            unsafe { std::mem::transmute(raw) }
-        });
-        self.push_cleanup(Cleanup::Effect(raw));
-        raw.get().run(raw, shared);
-        OwnedEffect {
-            raw,
-            shared,
-            bounds: PhantomData,
-        }
+impl EffectId {
+    pub fn with_context<T>(
+        &self,
+        shared: &Shared,
+        f: impl FnOnce(&mut EffectContext) -> T,
+    ) -> Option<T> {
+        shared.effect_contexts.borrow_mut().get_mut(*self).map(f)
     }
 
-    fn create_effect_impl(&'a self, effect: &'a (dyn 'a + AnyEffect)) -> Effect<'a> {
-        let owned = self.create_owned_effect(effect);
-        unsafe { self.create_variable_unchecked(owned) }
+    pub fn run(&self, shared: &Shared) -> Option<()> {
+        let effect = shared.effects.borrow().get(*self).copied();
+        effect.map(|effect| {
+            // 1) Clear dependencies.
+            // After each execution a signal may not be tracked by this effect anymore,
+            // so we need to clear dependencies both links and backlinks at first.
+            self.with_context(shared, |ctx| {
+                let dependencies = &mut ctx.dependencies;
+                for id in dependencies.iter() {
+                    id.with_context(shared, |ctx| {
+                        ctx.unsubscribe(*self);
+                    });
+                }
+                dependencies.clear();
+            })
+            .unwrap_or_else(|| unreachable!());
+
+            // 2) Save observer and change it to this effect.
+            let prev = shared.observer.take();
+            shared.observer.set(Some(*self));
+
+            // 3) Call the effect.
+            unsafe { effect.as_ref().run_untracked() };
+
+            // 4) Subscribe dependencies.
+            // An effect is appended to the subscriber list of the signals since we
+            // subscribe after running the closure.
+            self.with_context(shared, |ctx| {
+                for id in ctx.dependencies.iter() {
+                    id.with_context(shared, |ctx| ctx.subscribe(*self));
+                }
+            })
+            .unwrap_or_else(|| unreachable!());
+
+            // 5) Restore previous observer.
+            shared.observer.set(prev);
+        })
+    }
+}
+
+impl RawScope {
+    fn create_effect_dyn<'a>(
+        &mut self,
+        shared: &'a Shared,
+        effect: NonNull<dyn AnyEffect>,
+    ) -> Effect<'a> {
+        let id = shared.effects.borrow_mut().insert(effect);
+        shared
+            .effect_contexts
+            .borrow_mut()
+            .insert(id, <_>::default());
+        self.add_cleanup(Cleanup::Effect(id));
+        Effect { id, shared }
     }
 
-    /// Create an effect which accepts its previous returned value as the parameter
-    /// and automatically reruns whenever tracked signals update.
-    pub fn create_effect<T: 'a>(&'a self, f: impl 'a + FnMut(Option<T>) -> T) -> Effect<'a> {
-        // SAFETY: An effect itself will never access captured variables while
-        // being disposed.
+    fn create_effect<'a, T: 'a>(
+        &mut self,
+        shared: &'a Shared,
+        f: impl 'a + FnMut(Option<T>) -> T,
+    ) -> Effect<'a> {
+        // SAFETY: Same as variables.
         let effect = unsafe {
-            self.create_variable_unchecked(RefCell::new(AnyEffectImpl {
+            let ptr = self.alloc_var(AnyEffectImpl {
                 prev: None,
                 func: f,
-            }))
+            });
+            std::mem::transmute(NonNull::from(ptr as &dyn AnyEffect))
         };
-        self.create_effect_impl(effect)
+        self.create_effect_dyn(shared, effect)
+    }
+}
+
+impl<'a> Scope<'a> {
+    /// Constructs an [`Effect`] which accepts its previous returned value as
+    /// the parameter and automatically reruns whenever tracked signals update.
+    pub fn create_effect<T: 'a>(self, f: impl 'a + FnMut(Option<T>) -> T) -> Effect<'a> {
+        let effect = self
+            .id
+            .with(self.shared, |cx| cx.create_effect(self.shared, f));
+        effect.run();
+        effect
     }
 
-    /// Create an effect that run with a new child scope each time. The created
-    /// scope will not be disposed until the next run.
+    /// Constructs an [`Effect`] that run with a new child scope each time. The
+    /// created [`Scope`] will not be disposed until the next run.
     pub fn create_effect_scoped(
-        &'a self,
+        self,
         mut f: impl 'a + for<'child> FnMut(BoundedScope<'child, 'a>),
     ) {
         self.create_effect(move |disposer| {
@@ -150,12 +164,12 @@ mod tests {
     use crate::create_root;
 
     #[test]
-    fn reactive_effect() {
+    fn effect() {
         create_root(|cx| {
             let state = cx.create_signal(0);
             let double = cx.create_variable(-1);
 
-            cx.create_effect(|_| {
+            cx.create_effect(move |_| {
                 *double.get_mut() = *state.get() * 2;
             });
             assert_eq!(*double.get(), 0);
@@ -174,7 +188,7 @@ mod tests {
             let state = cx.create_signal(0);
             let prev_state = cx.create_signal(-1);
 
-            cx.create_effect(|prev| {
+            cx.create_effect(move |prev| {
                 if let Some(prev) = prev {
                     prev_state.set(prev)
                 }
@@ -194,11 +208,11 @@ mod tests {
     fn no_infinite_loop_in_effect() {
         create_root(|cx| {
             let state = cx.create_signal(());
-            cx.create_effect(|_| {
+            cx.create_effect(move |_| {
                 state.track();
-                state.trigger_subscribers();
+                state.trigger();
             });
-            state.trigger_subscribers();
+            state.trigger();
         });
     }
 
@@ -206,13 +220,13 @@ mod tests {
     fn no_infinite_loop_in_nested_effect() {
         create_root(|cx| {
             let state = cx.create_signal(());
-            cx.create_effect(|prev| {
+            cx.create_effect(move |prev| {
                 if prev.is_none() {
                     state.track();
-                    state.trigger_subscribers();
+                    state.trigger();
                 }
             });
-            state.trigger_subscribers();
+            state.trigger();
         });
     }
 
@@ -220,13 +234,11 @@ mod tests {
     fn dynamically_update_effect_dependencies() {
         create_root(|cx| {
             let cond = cx.create_signal(true);
-
             let state1 = cx.create_signal(0);
             let state2 = cx.create_signal(0);
-
             let counter = cx.create_signal(0);
 
-            cx.create_effect(|_| {
+            cx.create_effect(move |_| {
                 counter.update(|x| *x + 1);
 
                 if *cond.get() {
@@ -240,9 +252,11 @@ mod tests {
             state1.set(1);
             assert_eq!(*counter.get(), 2);
 
+            // `state2` is not tracked.
             state2.set(1);
             assert_eq!(*counter.get(), 2);
 
+            // `state1` is untracked and `state2` is tracked
             cond.set(false);
             assert_eq!(*counter.get(), 3);
 
@@ -261,11 +275,11 @@ mod tests {
             let inner_counter = cx.create_variable(0);
             let outer_counter = cx.create_variable(0);
 
-            cx.create_effect(|_| {
+            cx.create_effect(move |_| {
                 state.track();
                 if *inner_counter.get() < 2 {
-                    cx.create_effect_scoped(|cx| {
-                        cx.create_effect(|_| {
+                    cx.create_effect_scoped(move |cx| {
+                        cx.create_effect(move |_| {
                             state.track();
                             *inner_counter.get_mut() += 1;
                         });
@@ -276,20 +290,22 @@ mod tests {
             assert_eq!(*inner_counter.get(), 1);
             assert_eq!(*outer_counter.get(), 1);
 
-            state.trigger_subscribers();
+            // If the outer effect is triggered first, new effects will be created
+            // and increase the counters.
+            state.trigger();
             assert_eq!(*inner_counter.get(), 2);
             assert_eq!(*outer_counter.get(), 2);
 
-            state.trigger_subscribers();
+            state.trigger();
             assert_eq!(*inner_counter.get(), 3);
             assert_eq!(*outer_counter.get(), 3);
         });
     }
 
     #[test]
-    fn remove_a_disposed_dependency() {
+    fn cannot_access_disposed_dependencies() {
         create_root(|cx| {
-            let eff = cx.create_effect(|prev| {
+            let eff = cx.create_effect(move |prev| {
                 if prev.is_none() {
                     cx.create_child(|cx| {
                         let state = cx.create_signal(0);
@@ -297,23 +313,28 @@ mod tests {
                     });
                 }
             });
-            let total = eff.raw.get().dependencies.borrow().len();
+            let (total, active) = eff
+                .id
+                .with_context(cx.shared, |ctx| {
+                    (
+                        ctx.dependencies.len(),
+                        ctx.dependencies
+                            .iter()
+                            // The `Signal` should be removed after the scope is
+                            // disposed.
+                            .map(|id| id.with_context(cx.shared, |_| ()).is_some())
+                            .filter(|x| *x)
+                            .count(),
+                    )
+                })
+                .unwrap();
             assert_eq!(total, 1);
-            let active = eff
-                .raw
-                .get()
-                .dependencies
-                .borrow()
-                .iter()
-                .map(|sig| sig.can_upgrade())
-                .filter(|x| *x)
-                .count();
             assert_eq!(active, 0);
         });
     }
 
     #[test]
-    #[should_panic = "get a disposed slot"]
+    #[should_panic = "tried to access a disposed effect"]
     fn cannot_read_run_a_disposed_effect() {
         struct DropAndRead<'a>(Option<Effect<'a>>);
         impl Drop for DropAndRead<'_> {
@@ -324,6 +345,7 @@ mod tests {
 
         create_root(|cx| {
             let var = cx.create_variable(DropAndRead(None));
+            // Last creadted drop first.
             let eff = cx.create_effect(|_| ());
             var.get_mut().0 = Some(eff);
         });

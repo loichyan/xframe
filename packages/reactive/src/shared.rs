@@ -1,32 +1,34 @@
 use crate::{
-    arena::{Arena, WeakRef},
-    effect::RawEffect,
-    scope::BoundedOwnedScope,
+    context::ScopeContexts,
+    effect::{AnyEffect, EffectContext},
+    scope::RawScope,
     signal::SignalContext,
+    Empty,
 };
-use std::{cell::Cell, fmt};
+use slotmap::{new_key_type, SecondaryMap, SlotMap, SparseSecondaryMap};
+use std::{
+    cell::{Cell, RefCell},
+    ptr::NonNull,
+};
 
-pub(crate) type InvariantLifetime<'a> = &'a mut &'a mut ();
-pub(crate) type CovariantLifetime<'a> = &'a ();
+new_key_type! {
+    pub(crate) struct ScopeId;
+    pub(crate) struct SignalId;
+    pub(crate) struct EffectId;
+    pub(crate) struct VariableId;
+}
 
-pub(crate) type SignalContextRef = WeakRef<'static, SignalContext>;
-pub(crate) type EffectRef = WeakRef<'static, RawEffect<'static>>;
-
-pub(crate) trait Empty {}
-impl<T> Empty for T {}
+type ASparseSecondaryMap<K, V> = SparseSecondaryMap<K, V, ahash::RandomState>;
 
 #[derive(Default)]
 pub(crate) struct Shared {
-    pub observer: Cell<Option<EffectRef>>,
-    pub signal_contexts: Arena<SignalContext>,
-    pub effects: Arena<RawEffect<'static>>,
-    pub scopes: Arena<BoundedOwnedScope<'static, 'static>>,
-}
-
-impl fmt::Debug for Shared {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Shared")
-            .field("observer", &self.observer.get().map(|x| x.as_ptr()))
-            .finish_non_exhaustive()
-    }
+    pub observer: Cell<Option<EffectId>>,
+    pub scopes: RefCell<SlotMap<ScopeId, RawScope>>,
+    pub scope_parents: RefCell<SecondaryMap<ScopeId, ScopeId>>,
+    pub scope_contexts: RefCell<ASparseSecondaryMap<ScopeId, ScopeContexts>>,
+    pub signals: RefCell<SlotMap<SignalId, NonNull<dyn Empty>>>,
+    pub signal_contexts: RefCell<SecondaryMap<SignalId, SignalContext>>,
+    pub effects: RefCell<SlotMap<EffectId, NonNull<dyn AnyEffect>>>,
+    pub effect_contexts: RefCell<SecondaryMap<EffectId, EffectContext>>,
+    pub variables: RefCell<SlotMap<VariableId, NonNull<dyn Empty>>>,
 }

@@ -1,16 +1,13 @@
-use crate::{
-    scope::{OwnedScope, Scope},
-    OwnedReadSignal, OwnedSignal, Variable,
-};
+use crate::{scope::Scope, signal::Signal, variable::Variable};
 use std::marker::PhantomData;
 
 /// A trait for constructing composite states.
 ///
 /// This is useful when providing a non-`'static` lifetime bound type as a context.
 /// The builder should be a `'static` type to idenfify a context.
-pub trait StoreBuilder<'a>: 'static {
-    type Store;
-    fn build_store(self, cx: Scope<'a>) -> Self::Store;
+pub trait StoreBuilder: 'static {
+    type Store<'a>;
+    fn build_store(self, cx: Scope<'_>) -> Self::Store<'_>;
 }
 
 pub struct CreateDefault<T: 'static>(pub PhantomData<T>);
@@ -21,10 +18,10 @@ impl<T> Default for CreateDefault<T> {
     }
 }
 
-impl<'a, T: Default> StoreBuilder<'a> for CreateDefault<T> {
-    type Store = T;
+impl<T: Default> StoreBuilder for CreateDefault<T> {
+    type Store<'a> = T;
 
-    fn build_store(self, _cx: Scope<'a>) -> Self::Store {
+    fn build_store(self, _cx: Scope<'_>) -> Self::Store<'_> {
         T::default()
     }
 }
@@ -32,10 +29,10 @@ impl<'a, T: Default> StoreBuilder<'a> for CreateDefault<T> {
 #[derive(Default)]
 pub struct CreateSelf<T: 'static>(pub T);
 
-impl<'a, T> StoreBuilder<'a> for CreateSelf<T> {
-    type Store = T;
+impl<T> StoreBuilder for CreateSelf<T> {
+    type Store<'a> = T;
 
-    fn build_store(self, _cx: Scope<'a>) -> Self::Store {
+    fn build_store(self, _cx: Scope<'_>) -> Self::Store<'_> {
         self.0
     }
 }
@@ -43,29 +40,18 @@ impl<'a, T> StoreBuilder<'a> for CreateSelf<T> {
 #[derive(Default)]
 pub struct CreateSignal<T: 'static>(pub T);
 
-impl<'a, T> StoreBuilder<'a> for CreateSignal<T> {
-    type Store = OwnedSignal<'a, T>;
+impl<T> StoreBuilder for CreateSignal<T> {
+    type Store<'a> = Signal<'a, T>;
 
-    fn build_store(self, cx: Scope<'a>) -> Self::Store {
-        cx.create_owned_signal(self.0)
+    fn build_store(self, cx: Scope<'_>) -> Self::Store<'_> {
+        cx.create_signal(self.0)
     }
 }
 
-#[derive(Default)]
-pub struct CreateReadSignal<T: 'static>(pub T);
-
-impl<'a, T> StoreBuilder<'a> for CreateReadSignal<T> {
-    type Store = OwnedReadSignal<'a, T>;
-
-    fn build_store(self, cx: Scope<'a>) -> Self::Store {
-        cx.create_owned_read_signal(self.0)
-    }
-}
-
-impl<'a> OwnedScope<'a> {
-    pub fn create_store<T>(&'a self, t: T) -> Variable<'a, T::Store>
+impl<'a> Scope<'a> {
+    pub fn create_store<T>(self, t: T) -> Variable<'a, T::Store<'a>>
     where
-        T: StoreBuilder<'a>,
+        T: StoreBuilder,
     {
         self.create_variable(t.build_store(self))
     }
@@ -83,17 +69,17 @@ mod tests {
     }
 
     struct Store<'a> {
-        state: OwnedSignal<'a, i32>,
+        state: Signal<'a, i32>,
         data: String,
     }
 
-    impl<'a> StoreBuilder<'a> for Builder {
-        type Store = Store<'a>;
+    impl StoreBuilder for Builder {
+        type Store<'a> = Store<'a>;
 
-        fn build_store(self, cx: Scope<'a>) -> Self::Store {
+        fn build_store(self, cx: Scope<'_>) -> Self::Store<'_> {
             let Builder { state, data } = self;
             Store {
-                state: cx.create_owned_signal(state),
+                state: cx.create_signal(state),
                 data,
             }
         }
@@ -127,14 +113,14 @@ mod tests {
     }
 
     #[test]
-    fn reactive_store() {
+    fn signal_in_store() {
         create_root(|cx| {
             let builder = Builder {
                 state: -1,
                 data: String::from("xFrame"),
             };
             let store = cx.create_store(builder);
-            let double = cx.create_memo(|| *store.get().state.get() * 2);
+            let double = cx.create_memo(move || *store.get().state.get() * 2);
             assert_eq!(*double.get(), -2);
             store.get().state.set(1);
             assert_eq!(*double.get(), 2);

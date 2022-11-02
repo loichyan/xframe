@@ -1,11 +1,16 @@
 use crate::{
-    scope::{OwnedScope, ScopeInherited},
-    shared::Empty,
+    scope::Scope,
+    shared::{ScopeId, Shared, VariableId},
     store::StoreBuilder,
-    OwnedVariable, Variable,
+    variable::Variable,
 };
 use ahash::AHashMap;
-use std::{any::TypeId, cell::RefCell, fmt, marker::PhantomData};
+use std::{any::TypeId, marker::PhantomData};
+
+#[derive(Default)]
+pub(crate) struct ScopeContexts {
+    content: AHashMap<TypeId, VariableId>,
+}
 
 struct ContextId<T>(PhantomData<T>);
 
@@ -13,87 +18,84 @@ fn context_id<T: 'static>() -> TypeId {
     TypeId::of::<ContextId<T>>()
 }
 
-#[derive(Default)]
-pub(crate) struct Contexts<'a> {
-    inner: RefCell<ContextsInner<'a>>,
-}
-
-type ContextsInner<'a> = AHashMap<TypeId, &'a (dyn 'a + Empty)>;
-
-impl fmt::Debug for Contexts<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_set().entries(self.inner.borrow().keys()).finish()
-    }
-}
-
-fn use_context_from<'a, T>(contexts: &ContextsInner<'a>) -> Option<Variable<'a, T::Store>>
-where
-    T: StoreBuilder<'a>,
-{
-    contexts
-        .get(&context_id::<T>())
-        .copied()
-        // SAFETY: This conversion is safe bacause:
-        // 1. The type is associated with `<T as StoreBuilder>` and saved as the
-        // key in a hashmap;
-        // 2. This context can only be accessed from current and child scopes as
-        // a readonly reference.
-        .map(|any| unsafe { &*(any as *const dyn Empty as *const OwnedVariable<'a, T::Store>) })
-}
-
-fn use_context_from_ancestors<'a, T>(
-    inherited: &'a ScopeInherited,
-) -> Option<Variable<'a, T::Store>>
-where
-    T: StoreBuilder<'a>,
-{
-    use_context_from::<T>(&inherited.contexts.inner.borrow())
-        .or_else(|| inherited.parent.and_then(use_context_from_ancestors::<T>))
-}
-
-impl<'a> OwnedScope<'a> {
-    /// Provide a context in current scope using [`create_store`](OwnedScope::create_store),
-    /// this context is identified by the [`TypeId`] of given [`StoreBuilder`].
-    /// If the same context has not been provided then return its reference, otherwise
-    /// return the existing one as an error.
-    pub fn try_provide_context<T>(
-        &'a self,
-        t: T,
-    ) -> Result<Variable<'a, T::Store>, Variable<'a, T::Store>>
+impl ScopeId {
+    fn find_context<'a, T>(&self, shared: &'a Shared) -> Option<Variable<'a, T::Store<'a>>>
     where
-        T: StoreBuilder<'a>,
+        T: StoreBuilder,
     {
-        let contexts = &mut self.inherited().contexts.inner.borrow_mut();
-        if let Some(context) = use_context_from::<T>(contexts) {
-            Err(context)
-        } else {
-            let context = self.create_store(t);
-            contexts.insert(context_id::<T>(), context as &dyn Empty);
-            Ok(context)
-        }
+        shared
+            .scope_contexts
+            .borrow()
+            .get(*self)
+            .and_then(|contexts| {
+                contexts
+                    .content
+                    .get(&context_id::<T>())
+                    // SAFETY: This conversion is safe bacause:
+                    // 1. The type is associated with `<T as StoreBuilder>` and
+                    // stored as the key in a hashmap;
+                    // 2. This context can only be accessed from current and child
+                    // scopes as a `Variable` which is safe to use.
+                    .map(|id| unsafe { id.create_variable(shared) })
+            })
     }
 
-    /// Provide a context in current scope using [`create_store`](OwnedScope::create_store),
-    /// this context is identified by the [`TypeId`] of given [`StoreBuilder`].
+    fn find_context_recursive<'a, T>(
+        &self,
+        shared: &'a Shared,
+    ) -> Option<Variable<'a, T::Store<'a>>>
+    where
+        T: StoreBuilder,
+    {
+        self.find_context::<T>(shared).or_else(|| {
+            shared
+                .scope_parents
+                .borrow()
+                .get(*self)
+                .and_then(|parent| parent.find_context_recursive::<T>(shared))
+        })
+    }
+}
+
+impl<'a> Scope<'a> {
+    /// Provide a context in current scope which is identified by the [`TypeId`]
+    /// of given [`StoreBuilder`].
     ///
     /// # Panics
     ///
     /// Panics if the same context has already been provided.
-    pub fn provide_context<T>(&'a self, t: T) -> Variable<'a, T::Store>
+    pub fn provide_context<T>(self, t: T) -> Variable<'a, T::Store<'a>>
     where
-        T: StoreBuilder<'a>,
+        T: StoreBuilder,
     {
         self.try_provide_context(t)
-            .unwrap_or_else(|_| panic!("context provided in current scope"))
+            .unwrap_or_else(|_| panic!("tried to provide a duplicated context in the same scope"))
     }
 
-    /// Loop up the context in the current and parent scopes accroding to the
-    /// given builder type.
-    pub fn try_use_context<T>(&'a self) -> Option<Variable<'a, T::Store>>
+    /// Provide a context in current scope which is identified by the [`TypeId`]
+    /// of given [`StoreBuilder`]. If the same context has not been provided
+    /// then return its reference, otherwise return the existing one as an error.
+    pub fn try_provide_context<T>(
+        self,
+        t: T,
+    ) -> Result<Variable<'a, T::Store<'a>>, Variable<'a, T::Store<'a>>>
     where
-        T: StoreBuilder<'a>,
+        T: StoreBuilder,
     {
-        use_context_from_ancestors::<T>(self.inherited())
+        if let Some(context) = self.id.find_context::<T>(self.shared) {
+            Err(context)
+        } else {
+            let variable = self.create_store(t);
+            self.shared
+                .scope_contexts
+                .borrow_mut()
+                .entry(self.id)
+                .unwrap_or_else(|| unreachable!())
+                .or_default()
+                .content
+                .insert(context_id::<T>(), variable.id);
+            Ok(variable)
+        }
     }
 
     /// Loop up the context in the current and parent scopes accroding to the
@@ -102,11 +104,21 @@ impl<'a> OwnedScope<'a> {
     /// # Panics
     ///
     /// Panics if the context is not provided.
-    pub fn use_context<T>(&'a self) -> Variable<'a, T::Store>
+    pub fn use_context<T>(self) -> Variable<'a, T::Store<'a>>
     where
-        T: StoreBuilder<'a>,
+        T: StoreBuilder,
     {
-        self.try_use_context::<T>().expect("context not provided")
+        self.try_use_context::<T>()
+            .unwrap_or_else(|| panic!("tried to use a nonexistent context"))
+    }
+
+    /// Loop up the context in the current and parent scopes accroding to the
+    /// given builder type.
+    pub fn try_use_context<T>(self) -> Option<Variable<'a, T::Store<'a>>>
+    where
+        T: StoreBuilder,
+    {
+        self.id.find_context_recursive::<T>(self.shared)
     }
 }
 

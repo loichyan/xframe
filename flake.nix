@@ -23,7 +23,8 @@
       {
         devShells.default = mkShell (with pkgs; {
           nativeBuildInputs = [
-            (rust-bin.stable.latest.default.override {
+            # TODO: switch back to stable channel when 1.65 is released
+            (rust-bin.nightly.latest.default.override {
               extensions = [ "rust-src" ];
             })
             llvmPkgs.bintools

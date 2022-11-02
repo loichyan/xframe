@@ -2,38 +2,50 @@ mod modify;
 pub use modify::SignalModify;
 
 use crate::{
-    scope::{Cleanup, OwnedScope},
-    shared::{EffectRef, Shared, SignalContextRef},
-    variable::VarRef,
-    OwnedVariable, VarRefMut,
+    scope::{Cleanup, Scope},
+    shared::{EffectId, Shared, SignalId},
+    variable::{VarRef, VarRefMut, VarSlot},
+    Empty,
 };
 use indexmap::IndexSet;
-use std::{cell::RefCell, fmt, ops::Deref};
+use std::{marker::PhantomData, ptr::NonNull};
 
-pub type Signal<'a, T> = &'a OwnedSignal<'a, T>;
-pub type ReadSignal<'a, T> = &'a OwnedReadSignal<'a, T>;
-
-pub struct OwnedReadSignal<'a, T> {
-    value: OwnedVariable<'a, T>,
-    shared: &'static Shared,
-    context: SignalContextRef,
+pub struct Signal<'a, T> {
+    id: SignalId,
+    shared: &'a Shared,
+    ty: PhantomData<T>,
 }
 
-impl<T: fmt::Debug> fmt::Debug for OwnedReadSignal<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Signal").field(&*self.value.get()).finish()
+impl<T> Clone for Signal<'_, T> {
+    fn clone(&self) -> Self {
+        Self { ..*self }
     }
 }
 
-impl<'a, T> OwnedReadSignal<'a, T> {
+impl<T> Copy for Signal<'_, T> {}
+
+impl<'a, T> Signal<'a, T> {
+    fn value(&self) -> &'a VarSlot<T> {
+        let ptr = self
+            .shared
+            .signals
+            .borrow()
+            .get(self.id)
+            .copied()
+            .unwrap_or_else(|| panic!("tried to access a disposed signal"));
+        // SAFETY: The type is assumed by the `ty` marker.
+        unsafe { ptr.cast().as_ref() }
+    }
+
     pub fn track(&self) {
-        if let Some(eff) = self.shared.observer.get() {
-            eff.try_get().map(|eff| eff.add_dependency(self.context));
+        if let Some(id) = self.shared.observer.get() {
+            id.with_context(self.shared, |ctx| ctx.add_dependency(self.id))
+                .unwrap_or_else(|| unreachable!());
         }
     }
 
-    pub fn trigger_subscribers(&self) {
-        self.context.get().trigger_subscribers(self.shared);
+    pub fn trigger(&self) {
+        self.id.trigger(self.shared);
     }
 
     pub fn get(&self) -> VarRef<'_, T> {
@@ -42,108 +54,96 @@ impl<'a, T> OwnedReadSignal<'a, T> {
     }
 
     pub fn get_untracked(&self) -> VarRef<'_, T> {
-        self.value.get()
+        self.value().get()
     }
-}
 
-pub struct OwnedSignal<'a, T>(OwnedReadSignal<'a, T>);
-
-impl<'a, T> Deref for OwnedSignal<'a, T> {
-    type Target = OwnedReadSignal<'a, T>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T: fmt::Debug> fmt::Debug for OwnedSignal<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl<'a, T> OwnedSignal<'a, T> {
     pub fn get_mut(&self) -> VarRefMut<'_, T> {
-        self.value.get_mut()
+        self.value().get_mut()
     }
 
     pub fn set(&self, val: T) {
         self.set_slient(val);
-        self.trigger_subscribers();
+        self.trigger();
     }
 
     pub fn set_slient(&self, val: T) {
-        *self.value.get_mut() = val;
+        *self.value().get_mut() = val;
     }
 
     pub fn update(&self, f: impl FnOnce(&mut T) -> T) {
-        self.update_silent(f);
-        self.trigger_subscribers();
+        self.update_slient(f);
+        self.trigger();
     }
 
-    pub fn update_silent(&self, f: impl FnOnce(&mut T) -> T) {
-        let val = &mut *self.value.get_mut();
-        *val = f(val);
+    pub fn update_slient(&self, f: impl FnOnce(&mut T) -> T) {
+        let mut mut_borrow = self.value().get_mut();
+        *mut_borrow = f(&mut *mut_borrow);
     }
 }
 
+#[derive(Default)]
 pub(crate) struct SignalContext {
-    subscribers: RefCell<IndexSet<EffectRef>>,
+    subscribers: IndexSet<EffectId, ahash::RandomState>,
 }
 
 impl SignalContext {
-    pub fn subscribe(&self, effect: EffectRef) {
-        self.subscribers.borrow_mut().insert(effect);
+    pub fn subscribe(&mut self, id: EffectId) {
+        self.subscribers.insert(id);
     }
 
-    pub fn unsubscribe(&self, effect: EffectRef) {
-        self.subscribers.borrow_mut().remove(&effect);
+    pub fn unsubscribe(&mut self, id: EffectId) {
+        self.subscribers.remove(&id);
+    }
+}
+
+impl SignalId {
+    pub fn with_context<T>(
+        &self,
+        shared: &Shared,
+        f: impl FnOnce(&mut SignalContext) -> T,
+    ) -> Option<T> {
+        shared.signal_contexts.borrow_mut().get_mut(*self).map(f)
     }
 
-    pub fn trigger_subscribers(&self, shared: &Shared) {
+    pub fn trigger(&self, shared: &Shared) {
         let subscribers = self
-            .subscribers
-            .replace_with(|sub| IndexSet::with_capacity_and_hasher(sub.len(), Default::default()));
-        // Effects attach to subscribers at the end of the effect scope,
-        // an effect created inside another scope might send signals to its
-        // outer scope, so we should ensure the inner effects re-execute
-        // before outer ones to avoid potential double executions.
-        for eff in subscribers {
-            eff.try_get().map(|raw| raw.run(eff, shared));
+            .with_context(shared, |ctx| {
+                let new = IndexSet::with_capacity_and_hasher(ctx.subscribers.len(), <_>::default());
+                std::mem::replace(&mut ctx.subscribers, new)
+            })
+            .unwrap_or_else(|| panic!("tried to access a disposed signal"));
+        // Effects attach to subscribers at the end of the effect scope, an effect
+        // created inside another scope might send signals to its outer scope,
+        // so we should ensure the inner effects re-execute before outer ones to
+        // avoid potential double executions.
+        for id in subscribers {
+            id.run(shared);
         }
     }
 }
 
-impl<'a> OwnedScope<'a> {
-    fn create_signal_context(&'a self) -> SignalContextRef {
-        let shared = self.shared();
-        let ctx = shared.signal_contexts.alloc(SignalContext {
-            subscribers: Default::default(),
-        });
-        self.push_cleanup(Cleanup::SignalContext(ctx));
-        ctx
-    }
-
-    pub fn create_owned_read_signal<T>(&'a self, t: T) -> OwnedReadSignal<'a, T> {
-        OwnedReadSignal {
-            shared: self.shared(),
-            value: self.create_owned_variable(t),
-            context: self.create_signal_context(),
-        }
-    }
-
-    pub fn create_owned_signal<T>(&'a self, t: T) -> OwnedSignal<'a, T> {
-        OwnedSignal(self.create_owned_read_signal(t))
-    }
-
-    pub fn create_read_signal<T>(&'a self, t: T) -> ReadSignal<'a, T> {
-        // SAFETY: The `ReadSignal` itself will not access its underlying value.
-        unsafe { self.create_variable_unchecked(self.create_owned_read_signal(t)) }
-    }
-
-    pub fn create_signal<T>(&'a self, t: T) -> Signal<'a, T> {
-        // SAFETY: Same as `create_read_signal`.
-        unsafe { self.create_variable_unchecked(self.create_owned_signal(t)) }
+impl<'a> Scope<'a> {
+    pub fn create_signal<T: 'a>(self, t: T) -> Signal<'a, T> {
+        self.id.with(self.shared, |cx| {
+            let value = {
+                // SAFETY: Same as variables.
+                unsafe {
+                    let ptr = cx.alloc_var(t);
+                    std::mem::transmute(NonNull::from(ptr as &dyn Empty))
+                }
+            };
+            let id = self.shared.signals.borrow_mut().insert(value);
+            self.shared
+                .signal_contexts
+                .borrow_mut()
+                .insert(id, <_>::default());
+            cx.add_cleanup(Cleanup::Signal(id));
+            Signal {
+                id,
+                shared: self.shared,
+                ty: PhantomData,
+            }
+        })
     }
 }
 
@@ -151,10 +151,9 @@ impl<'a> OwnedScope<'a> {
 mod tests {
     use super::*;
     use crate::create_root;
-    use std::cell::Cell;
 
     #[test]
-    fn reactive_signal() {
+    fn signal() {
         create_root(|cx| {
             let state = cx.create_signal(0);
             assert_eq!(*state.get(), 0);
@@ -178,7 +177,7 @@ mod tests {
     fn signal_set_slient() {
         create_root(|cx| {
             let state = cx.create_signal(1);
-            let double = cx.create_memo(|| *state.get() * 2);
+            let double = cx.create_memo(move || *state.get() * 2);
             assert_eq!(*double.get(), 2);
             state.set_slient(2);
             assert_eq!(*double.get(), 2);
@@ -190,7 +189,7 @@ mod tests {
         create_root(|cx| {
             let state = cx.create_signal(1);
             let state2 = cx.create_signal(state);
-            let double = cx.create_memo(|| *state2.get().get() * 2);
+            let double = cx.create_memo(move || *state2.get().get() * 2);
             assert_eq!(*state2.get().get(), 1);
             state.set(2);
             assert_eq!(*double.get(), 4);
@@ -198,67 +197,7 @@ mod tests {
     }
 
     #[test]
-    fn owned_signal_in_child_scope() {
-        create_root(|cx| {
-            let owned = cx.create_owned_signal(1);
-            cx.create_child(|cx| {
-                let state = cx.create_variable(owned);
-                let double = cx.create_memo(|| *state.get().get() * 2);
-                assert_eq!(*state.get().get(), 1);
-                assert_eq!(*double.get(), 2);
-                state.get().set(2);
-                assert_eq!(*state.get().get(), 2);
-                assert_eq!(*double.get(), 4);
-            });
-        });
-    }
-
-    #[test]
-    fn dispose_owned_signal_in_child_scope() {
-        thread_local! {
-            static COUNTER: Cell<i32> = Cell::new(0);
-        }
-
-        struct DropAndInc;
-        impl Drop for DropAndInc {
-            fn drop(&mut self) {
-                COUNTER.with(|x| x.set(x.get() + 1));
-            }
-        }
-
-        struct DropAndAssert(i32);
-        impl Drop for DropAndAssert {
-            fn drop(&mut self) {
-                assert_eq!(COUNTER.with(Cell::get), self.0);
-            }
-        }
-
-        create_root(|cx| {
-            let owned = cx.create_owned_signal(DropAndInc);
-            cx.create_child(|cx| {
-                cx.create_variable(DropAndAssert(1));
-                cx.create_variable(owned);
-                cx.create_variable(DropAndAssert(0));
-            });
-            cx.create_owned_signal(DropAndInc);
-        });
-        drop(DropAndAssert(2));
-    }
-
-    #[test]
-    fn can_read_signal_context_after_dispose_in_child() {
-        create_root(|cx| {
-            let owned = cx.create_owned_signal(0);
-            let context = owned.context;
-            cx.create_child(|cx| {
-                cx.create_variable(owned);
-            });
-            assert!(context.can_upgrade());
-        });
-    }
-
-    #[test]
-    #[should_panic = "get a disposed variable"]
+    #[should_panic = "tried to access a disposed signal"]
     fn cannot_read_a_disposed_signal_value() {
         struct DropAndRead<'a>(Option<Signal<'a, String>>);
         impl Drop for DropAndRead<'_> {
@@ -275,12 +214,12 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "get a disposed slot"]
+    #[should_panic = "tried to access a disposed signal"]
     fn cannot_read_a_disposed_signal_context() {
         struct DropAndRead<'a>(Option<Signal<'a, String>>);
         impl Drop for DropAndRead<'_> {
             fn drop(&mut self) {
-                self.0.unwrap().trigger_subscribers();
+                self.0.unwrap().trigger();
             }
         }
 

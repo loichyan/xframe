@@ -1,15 +1,12 @@
-use crate::{scope::OwnedScope, signal::Signal};
-use std::cell::Cell;
+use crate::{scope::Scope, signal::Signal};
 
-impl<'a> OwnedScope<'a> {
-    fn create_memo_impl<T>(
-        &'a self,
+impl<'a> Scope<'a> {
+    fn create_memo_impl<T: 'a>(
+        self,
         mut f: impl 'a + FnMut() -> T,
         mut update: impl 'a + FnMut(T, Signal<'a, T>),
     ) -> Signal<'a, T> {
-        // SAFETY: An `Cell<Option<T>>` will never read it's underlying value
-        // when getting dropped.
-        let memo = unsafe { self.create_variable_unchecked(Cell::new(None::<Signal<'a, T>>)) };
+        let memo = self.create_cell(None::<Signal<'a, T>>);
         self.create_effect(move |_| {
             let new_val = f();
             if let Some(signal) = memo.get() {
@@ -22,27 +19,27 @@ impl<'a> OwnedScope<'a> {
         memo.get().unwrap()
     }
 
-    pub fn create_memo<T>(&'a self, f: impl 'a + FnMut() -> T) -> Signal<'a, T> {
+    pub fn create_memo<T: 'a>(self, f: impl 'a + FnMut() -> T) -> Signal<'a, T> {
         self.create_memo_impl(f, |new_val, memo| memo.set(new_val))
     }
 
-    pub fn create_seletor<T>(&'a self, f: impl 'a + FnMut() -> T) -> Signal<'a, T>
+    pub fn create_seletor<T: 'a>(self, f: impl 'a + FnMut() -> T) -> Signal<'a, T>
     where
         T: PartialEq,
     {
         self.create_seletor_with(f, T::eq)
     }
 
-    pub fn create_seletor_with<T>(
-        &'a self,
+    pub fn create_seletor_with<T: 'a>(
+        self,
         f: impl 'a + FnMut() -> T,
         mut is_equal: impl 'a + FnMut(&T, &T) -> bool,
     ) -> Signal<'a, T> {
         self.create_memo_impl(f, move |new_val, memo| {
-            let mut modify_memo = memo.get_mut();
-            if !is_equal(&*modify_memo, &new_val) {
+            let modify_memo = &mut *memo.get_mut();
+            if !is_equal(modify_memo, &new_val) {
                 *modify_memo = new_val;
-                memo.trigger_subscribers();
+                memo.trigger();
                 return;
             }
         })
@@ -54,11 +51,11 @@ mod tests {
     use crate::create_root;
 
     #[test]
-    fn reactive_memo() {
+    fn memo() {
         create_root(|cx| {
             let state = cx.create_signal(1);
 
-            let double = cx.create_memo(|| *state.get() * 2);
+            let double = cx.create_memo(move || *state.get() * 2);
             assert_eq!(*double.get(), 2);
 
             state.set(2);
@@ -75,7 +72,7 @@ mod tests {
             let state = cx.create_signal(1);
             let counter = cx.create_signal(0);
 
-            let double = cx.create_memo(|| {
+            let double = cx.create_memo(move || {
                 counter.update(|x| *x + 1);
                 *state.get() * 2
             });
@@ -95,8 +92,8 @@ mod tests {
     fn memo_on_memo() {
         create_root(|cx| {
             let state = cx.create_signal(1);
-            let double = cx.create_memo(|| *state.get() * 2);
-            let quad = cx.create_memo(|| *double.get() * 2);
+            let double = cx.create_memo(move || *state.get() * 2);
+            let quad = cx.create_memo(move || *double.get() * 2);
 
             assert_eq!(*quad.get(), 4);
             state.set(2);
@@ -108,7 +105,7 @@ mod tests {
     fn untracked_memo() {
         create_root(|cx| {
             let state = cx.create_signal(1);
-            let double = cx.create_memo(|| *state.get_untracked() * 2);
+            let double = cx.create_memo(move || *state.get_untracked() * 2);
 
             assert_eq!(*double.get(), 2);
             state.set(2);
@@ -117,13 +114,13 @@ mod tests {
     }
 
     #[test]
-    fn reactive_selector() {
+    fn selector() {
         create_root(|cx| {
             let state = cx.create_signal(1);
-            let double = cx.create_seletor(|| *state.get() * 2);
+            let double = cx.create_seletor(move || *state.get() * 2);
 
             let counter2 = cx.create_signal(0);
-            cx.create_effect(|_| {
+            cx.create_effect(move |_| {
                 double.track();
                 counter2.update(|x| *x + 1);
             });
@@ -134,6 +131,7 @@ mod tests {
             assert_eq!(*counter2.get(), 2);
             assert_eq!(*double.get(), 4);
 
+            // Equal updates should be ignored.
             state.set(2);
             assert_eq!(*counter2.get(), 2);
             assert_eq!(*double.get(), 4);
