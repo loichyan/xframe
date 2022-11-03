@@ -1,4 +1,3 @@
-mod arena;
 mod context;
 mod effect;
 mod memo;
@@ -8,8 +7,14 @@ mod signal;
 mod store;
 mod variable;
 
-pub use effect::{Effect, OwnedEffect};
-pub use scope::{create_root, BoundedOwnedScope, BoundedScope, OwnedScope, Scope, ScopeDisposer};
-pub use signal::{OwnedReadSignal, OwnedSignal, ReadSignal, Signal, SignalModify};
+type InvariantLifetime<'a> = &'a mut &'a mut ();
+type CovariantLifetime<'a> = &'a mut ();
+
+trait Empty {}
+impl<T> Empty for T {}
+
+pub use effect::Effect;
+pub use scope::{create_root, BoundedScope, Scope, ScopeDisposer};
+pub use signal::Signal;
 pub use store::{CreateDefault, CreateSelf, CreateSignal, StoreBuilder};
-pub use variable::{OwnedVariable, VarRef, VarRefMut, Variable};
+pub use variable::{VarRef, VarRefMut, Variable};
