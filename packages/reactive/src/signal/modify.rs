@@ -45,13 +45,13 @@ impl<'a, T> Deref for SignalModify<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &*self.value
+        &self.value
     }
 }
 
 impl<'a, T> DerefMut for SignalModify<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut *self.value
+        &mut self.value
     }
 }
 

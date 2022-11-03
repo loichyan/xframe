@@ -40,7 +40,6 @@ impl<'a> Scope<'a> {
             if !is_equal(modify_memo, &new_val) {
                 *modify_memo = new_val;
                 memo.trigger();
-                return;
             }
         })
     }

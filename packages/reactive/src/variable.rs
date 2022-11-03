@@ -52,7 +52,7 @@ pub(crate) struct VarSlot<T>(RefCell<T>);
 impl<T> Drop for VarSlot<T> {
     fn drop(&mut self) {
         if self.0.try_borrow_mut().is_err() {
-            panic!("tried to dispose a borrowed variable")
+            panic!("tried to dispose a borrowed value")
         }
     }
 }
@@ -168,7 +168,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "tried to dispose a borrowed variable"]
+    #[should_panic = "tried to dispose a borrowed value"]
     fn cannot_dispose_borrowed_varialbes() {
         create_root(|cx| {
             let trigger = cx.create_signal(());
