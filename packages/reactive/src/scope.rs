@@ -94,9 +94,13 @@ unsafe fn free<T: ?Sized>(mut ptr: NonNull<T>) {
 impl Drop for ScopeDisposer<'_> {
     fn drop(&mut self) {
         let Scope { id, shared, .. } = self.0;
-        // 1) Cleanup `Scope` resources.
+        // 1) Cleanup resources created inside this `Scope`.
         let cleanups = id.with(shared, |cx| std::mem::take(&mut cx.cleanups));
         for cl in cleanups.into_iter().rev() {
+            // SAFETY: It's safe to destroy allocated values because `Signal`s
+            // `Effect`s and `Variable`s need to their IDs to request the `Shared`
+            // object and check the accessibility of owned resources and once these
+            // allocated resources are disposed their IDs are no longer available.
             match cl {
                 Cleanup::Signal(id) => unsafe {
                     let ptr = shared.signals.borrow_mut().remove(id).unwrap();
@@ -118,14 +122,16 @@ impl Drop for ScopeDisposer<'_> {
                 },
             }
         }
-        // 2) Cleanup `Shared` for root `Scope` or remove for child scopes.
-        if shared.scope_parents.borrow().get(id).is_none() {
+        // 2) Cleanup resources onwed by this `Scope`.
+        shared.scopes.borrow_mut().remove(id);
+        shared.scope_contexts.borrow_mut().remove(id);
+        let is_root = shared.scope_parents.borrow_mut().remove(id).is_none();
+        // 3) Dispose the `Share` object in the root scope.
+        if is_root {
+            // SAFETY: It should be impossible to read the `Shared` object once
+            // the root `Scope` is dropped.
             let shared = unsafe { Box::from_raw(shared as *const Shared as *mut Shared) };
             drop(shared);
-        } else {
-            shared.scopes.borrow_mut().remove(id);
-            shared.scope_parents.borrow_mut().remove(id);
-            shared.scope_contexts.borrow_mut().remove(id);
         }
     }
 }
@@ -214,7 +220,7 @@ impl<'a> Scope<'a> {
 
     pub fn on_cleanup(self, f: impl FnOnce()) {
         self.id.with(self.shared, |cx| {
-            // SAFETY: Same as variables.
+            // SAFETY: Same as creating variables.
             let cb = unsafe {
                 let ptr = cx.alloc(|| self.shared.untrack(f));
                 std::mem::transmute(NonNull::from(ptr as &dyn Callback))

@@ -33,7 +33,8 @@ impl<'a, T> Signal<'a, T> {
             .get(self.id)
             .copied()
             .unwrap_or_else(|| panic!("tried to access a disposed signal"));
-        // SAFETY: The type is assumed by the `ty` marker.
+        // SAFETY: The type is assumed by the `ty` marker and the value lives
+        // as long as current `Scope`.
         unsafe { ptr.cast().as_ref() }
     }
 
@@ -126,7 +127,7 @@ impl<'a> Scope<'a> {
     pub fn create_signal<T: 'a>(self, t: T) -> Signal<'a, T> {
         self.id.with(self.shared, |cx| {
             let value = {
-                // SAFETY: Same as variables.
+                // SAFETY: Same as creating variables.
                 unsafe {
                     let ptr = cx.alloc_var(t);
                     std::mem::transmute(NonNull::from(ptr as &dyn Empty))
@@ -196,16 +197,16 @@ mod tests {
         });
     }
 
+    struct DropAndRead<'a>(Option<Signal<'a, String>>);
+    impl Drop for DropAndRead<'_> {
+        fn drop(&mut self) {
+            self.0.unwrap().trigger();
+        }
+    }
+
     #[test]
     #[should_panic = "tried to access a disposed signal"]
     fn cannot_read_a_disposed_signal_value() {
-        struct DropAndRead<'a>(Option<Signal<'a, String>>);
-        impl Drop for DropAndRead<'_> {
-            fn drop(&mut self) {
-                self.0.unwrap().get();
-            }
-        }
-
         create_root(|cx| {
             let var = cx.create_variable(DropAndRead(None));
             let signal = cx.create_signal(String::from("Hello, xFrame!"));
@@ -216,13 +217,6 @@ mod tests {
     #[test]
     #[should_panic = "tried to access a disposed signal"]
     fn cannot_read_a_disposed_signal_context() {
-        struct DropAndRead<'a>(Option<Signal<'a, String>>);
-        impl Drop for DropAndRead<'_> {
-            fn drop(&mut self) {
-                self.0.unwrap().trigger();
-            }
-        }
-
         create_root(|cx| {
             let var = cx.create_variable(DropAndRead(None));
             let signal = cx.create_signal(String::from("Hello, xFrame!"));

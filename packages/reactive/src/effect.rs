@@ -84,6 +84,7 @@ impl EffectId {
             shared.observer.set(Some(*self));
 
             // 3) Call the effect.
+            // SAFETY: The closure lives as long as current `Scope`.
             unsafe { effect.as_ref().run_untracked() };
 
             // 4) Subscribe dependencies.
@@ -122,7 +123,7 @@ impl RawScope {
         shared: &'a Shared,
         f: impl 'a + FnMut(Option<T>) -> T,
     ) -> Effect<'a> {
-        // SAFETY: Same as variables.
+        // SAFETY: Same as creating variables.
         let effect = unsafe {
             let ptr = self.alloc_var(AnyEffectImpl {
                 prev: None,

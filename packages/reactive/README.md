@@ -11,7 +11,7 @@ use xframe_reactive::*;
 create_root(|cx| {
     let state = cx.create_signal(1);
 
-    let double = cx.create_memo(|| *state.get() * 2);
+    let double = cx.create_memo(move || *state.get() * 2);
     assert_eq!(*double.get(), 2);
 
     state.set(2);

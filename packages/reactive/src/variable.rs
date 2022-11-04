@@ -33,6 +33,8 @@ impl<'a, T> Variable<'a, T> {
             .get(self.id)
             .copied()
             .unwrap_or_else(|| panic!("tried to access a disposed variable"));
+        // SAFETY: The type is assumed by the marker `ty` and the allocated variable
+        // lives as long as current `Scope`.
         unsafe { ptr.cast().as_ref() }
     }
 
@@ -45,8 +47,8 @@ impl<'a, T> Variable<'a, T> {
     }
 }
 
-/// A wrapper should be used in all allocated values which will panic while
-/// being disposed if there're borrowed references.
+/// A wrapper ensures borrowed variables cannot be disposed. Most values allocated
+/// in the arena of `Scope`s should use this to avoid undefined behaviors.
 pub(crate) struct VarSlot<T>(RefCell<T>);
 
 impl<T> Drop for VarSlot<T> {
@@ -123,6 +125,7 @@ impl RawScope {
     pub fn create_variable<'a, T>(&mut self, shared: &'a Shared, t: T) -> Variable<'a, T> {
         let value = {
             // SAFETY: This pointer cannot be accessed once this scope is disposed.
+            // Check out the comment where we dispose `Scope` for more details.
             unsafe {
                 let ptr = self.alloc_var(t);
                 std::mem::transmute(NonNull::from(ptr as &dyn Empty))
