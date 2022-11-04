@@ -1,6 +1,4 @@
 {
-  description = "A simple rust project.";
-
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
@@ -23,8 +21,7 @@
       {
         devShells.default = mkShell (with pkgs; {
           nativeBuildInputs = [
-            # TODO: switch back to stable channel when 1.65 is released
-            (rust-bin.nightly.latest.default.override {
+            (rust-bin.stable.latest.default.override {
               extensions = [ "rust-src" ];
             })
             llvmPkgs.bintools
