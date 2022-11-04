@@ -138,7 +138,7 @@ impl RawScope {
 impl<'a> Scope<'a> {
     /// Constructs an [`Effect`] which accepts its previous returned value as
     /// the parameter and automatically reruns whenever tracked signals update.
-    pub fn create_effect<T: 'a>(self, f: impl 'a + FnMut(Option<T>) -> T) -> Effect<'a> {
+    pub fn create_effect<T: 'a>(&self, f: impl 'a + FnMut(Option<T>) -> T) -> Effect<'a> {
         let effect = self
             .id
             .with(self.shared, |cx| cx.create_effect(self.shared, f));
@@ -149,12 +149,13 @@ impl<'a> Scope<'a> {
     /// Constructs an [`Effect`] that run with a new child scope each time. The
     /// created [`Scope`] will not be disposed until the next run.
     pub fn create_effect_scoped(
-        self,
+        &self,
         mut f: impl 'a + for<'child> FnMut(BoundedScope<'child, 'a>),
     ) {
+        let cx = *self;
         self.create_effect(move |disposer| {
             drop(disposer);
-            self.create_child(|cx| f(cx))
+            cx.create_child(|cx| f(cx))
         });
     }
 }

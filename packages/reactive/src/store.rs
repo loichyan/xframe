@@ -49,11 +49,11 @@ impl<T> StoreBuilder for CreateSignal<T> {
 }
 
 impl<'a> Scope<'a> {
-    pub fn create_store<T>(self, t: T) -> Variable<'a, T::Store<'a>>
+    pub fn create_store<T>(&self, t: T) -> Variable<'a, T::Store<'a>>
     where
         T: StoreBuilder,
     {
-        self.create_variable(t.build_store(self))
+        self.create_variable(t.build_store(*self))
     }
 }
 

@@ -142,7 +142,7 @@ impl RawScope {
 }
 
 impl<'a> Scope<'a> {
-    pub fn create_variable<T: 'a>(self, t: T) -> Variable<'a, T> {
+    pub fn create_variable<T: 'a>(&self, t: T) -> Variable<'a, T> {
         self.id
             .with(self.shared, |cx| cx.create_variable(self.shared, t))
     }

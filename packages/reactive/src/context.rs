@@ -64,7 +64,7 @@ impl<'a> Scope<'a> {
     /// # Panics
     ///
     /// Panics if the same context has already been provided.
-    pub fn provide_context<T>(self, t: T) -> Variable<'a, T::Store<'a>>
+    pub fn provide_context<T>(&self, t: T) -> Variable<'a, T::Store<'a>>
     where
         T: StoreBuilder,
     {
@@ -76,7 +76,7 @@ impl<'a> Scope<'a> {
     /// of given [`StoreBuilder`]. If the same context has not been provided
     /// then return its reference, otherwise return the existing one as an error.
     pub fn try_provide_context<T>(
-        self,
+        &self,
         t: T,
     ) -> Result<Variable<'a, T::Store<'a>>, Variable<'a, T::Store<'a>>>
     where
@@ -104,7 +104,7 @@ impl<'a> Scope<'a> {
     /// # Panics
     ///
     /// Panics if the context is not provided.
-    pub fn use_context<T>(self) -> Variable<'a, T::Store<'a>>
+    pub fn use_context<T>(&self) -> Variable<'a, T::Store<'a>>
     where
         T: StoreBuilder,
     {
@@ -114,7 +114,7 @@ impl<'a> Scope<'a> {
 
     /// Loop up the context in the current and parent scopes accroding to the
     /// given builder type.
-    pub fn try_use_context<T>(self) -> Option<Variable<'a, T::Store<'a>>>
+    pub fn try_use_context<T>(&self) -> Option<Variable<'a, T::Store<'a>>>
     where
         T: StoreBuilder,
     {

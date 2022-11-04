@@ -2,28 +2,29 @@ use crate::{scope::Scope, signal::Signal};
 
 impl<'a> Scope<'a> {
     fn create_memo_impl<T: 'a>(
-        self,
+        &self,
         mut f: impl 'a + FnMut() -> T,
         mut update: impl 'a + FnMut(T, Signal<'a, T>),
     ) -> Signal<'a, T> {
         let memo = self.create_cell(None::<Signal<'a, T>>);
+        let cx = *self;
         self.create_effect(move |_| {
             let new_val = f();
             if let Some(signal) = memo.get() {
                 update(new_val, signal);
             } else {
-                let signal = self.create_signal(new_val);
+                let signal = cx.create_signal(new_val);
                 memo.set(Some(signal));
             }
         });
         memo.get().unwrap()
     }
 
-    pub fn create_memo<T: 'a>(self, f: impl 'a + FnMut() -> T) -> Signal<'a, T> {
+    pub fn create_memo<T: 'a>(&self, f: impl 'a + FnMut() -> T) -> Signal<'a, T> {
         self.create_memo_impl(f, |new_val, memo| memo.set(new_val))
     }
 
-    pub fn create_seletor<T: 'a>(self, f: impl 'a + FnMut() -> T) -> Signal<'a, T>
+    pub fn create_seletor<T: 'a>(&self, f: impl 'a + FnMut() -> T) -> Signal<'a, T>
     where
         T: PartialEq,
     {
@@ -31,7 +32,7 @@ impl<'a> Scope<'a> {
     }
 
     pub fn create_seletor_with<T: 'a>(
-        self,
+        &self,
         f: impl 'a + FnMut() -> T,
         mut is_equal: impl 'a + FnMut(&T, &T) -> bool,
     ) -> Signal<'a, T> {

@@ -179,7 +179,7 @@ pub fn create_root<'disposer>(
 
 impl<'a> Scope<'a> {
     pub fn create_child(
-        self,
+        &self,
         f: impl for<'child> FnOnce(BoundedScope<'child, 'a>),
     ) -> ScopeDisposer<'a> {
         let disposer = ScopeDisposer::new(Some((self.shared, self.id)));
@@ -198,7 +198,7 @@ impl<'a> Scope<'a> {
     /// For using this function safely, you must assume the specified value
     /// will not read any references created after itself, and will not be read
     /// by any references created before itself.
-    pub unsafe fn alloc<T: 'a>(self, t: T) -> &'a T {
+    pub unsafe fn alloc<T: 'a>(&self, t: T) -> &'a T {
         self.id.with(self.shared, |cx| {
             let ptr = cx.alloc(t);
             let any_ptr = std::mem::transmute(NonNull::from(ptr as &dyn Empty));
@@ -208,17 +208,17 @@ impl<'a> Scope<'a> {
         })
     }
 
-    pub fn create_cell<T: 'a + Copy>(self, t: T) -> &'a Cell<T> {
+    pub fn create_cell<T: 'a + Copy>(&self, t: T) -> &'a Cell<T> {
         // SAFETY: A `Copy` type can't impelemt `Drop`, therefore the underlying
         // value can't be read during disposal.
         unsafe { self.alloc(Cell::new(t)) }
     }
 
-    pub fn untrack(self, f: impl FnOnce()) {
+    pub fn untrack(&self, f: impl FnOnce()) {
         self.shared.untrack(f);
     }
 
-    pub fn on_cleanup(self, f: impl FnOnce()) {
+    pub fn on_cleanup(&self, f: impl FnOnce()) {
         self.id.with(self.shared, |cx| {
             // SAFETY: Same as creating variables.
             let cb = unsafe {

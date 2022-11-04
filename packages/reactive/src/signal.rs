@@ -124,7 +124,7 @@ impl SignalId {
 }
 
 impl<'a> Scope<'a> {
-    pub fn create_signal<T: 'a>(self, t: T) -> Signal<'a, T> {
+    pub fn create_signal<T: 'a>(&self, t: T) -> Signal<'a, T> {
         self.id.with(self.shared, |cx| {
             let value = {
                 // SAFETY: Same as creating variables.
