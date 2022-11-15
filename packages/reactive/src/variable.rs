@@ -163,7 +163,7 @@ mod tests {
         create_root(|cx| {
             let var1 = cx.create_variable(DropAndRead(None));
             let var2 = cx.create_variable(0);
-            (&mut *var1.get_mut()).0 = Some(var2);
+            (*var1.get_mut()).0 = Some(var2);
         });
     }
 

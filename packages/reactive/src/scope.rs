@@ -96,21 +96,22 @@ impl Drop for ScopeDisposer<'_> {
                 // `Effect`s and `Variable`s need to their IDs to request the `Shared`
                 // object and check the accessibility of owned resources and once these
                 // allocated resources are disposed their IDs are no longer available.
+                #[allow(clippy::undocumented_unsafe_blocks)]
                 match cl {
-                    Cleanup::Signal(id) => unsafe {
+                    Cleanup::Signal(id) => {
                         let ptr = shared.signals.borrow_mut().remove(id).unwrap();
-                        free(ptr);
+                        unsafe { free(ptr) };
                         shared.signal_contexts.borrow_mut().remove(id);
-                    },
-                    Cleanup::Effect(id) => unsafe {
+                    }
+                    Cleanup::Effect(id) => {
                         let ptr = shared.effects.borrow_mut().remove(id).unwrap();
-                        free(ptr);
+                        unsafe { free(ptr) };
                         shared.effect_contexts.borrow_mut().remove(id);
-                    },
-                    Cleanup::Variable(id) => unsafe {
+                    }
+                    Cleanup::Variable(id) => {
                         let ptr = shared.variables.borrow_mut().remove(id).unwrap();
-                        free(ptr);
-                    },
+                        unsafe { free(ptr) };
+                    }
                     Cleanup::Callback(mut cb) => unsafe {
                         cb.as_mut().call_once(shared);
                         free(cb);
@@ -130,11 +131,11 @@ impl RawScope {
         std::mem::transmute(self.arena.alloc(t))
     }
 
-    pub(crate) unsafe fn alloc_var<'a, T: 'a>(&self, t: T) -> &'a VarSlot<T> {
+    pub unsafe fn alloc_var<'a, T: 'a>(&self, t: T) -> &'a VarSlot<T> {
         self.alloc(VarSlot::new(t))
     }
 
-    pub(crate) fn add_cleanup(&mut self, cl: Cleanup) {
+    pub fn add_cleanup(&mut self, cl: Cleanup) {
         self.cleanups.push(cl);
     }
 }
@@ -168,6 +169,7 @@ pub fn create_root<'disposer>(
 
 impl<'a> Scope<'a> {
     pub(crate) fn with_shared<T>(&self, f: impl FnOnce(&'a Shared) -> T) -> T {
+        // SAFETY: This is safe because the reference can't escape from the closure.
         SHARED.with(|shared| f(unsafe { std::mem::transmute(shared) }))
     }
 
@@ -176,6 +178,8 @@ impl<'a> Scope<'a> {
         f: impl for<'child> FnOnce(BoundedScope<'child, 'a>),
     ) -> ScopeDisposer<'a> {
         let disposer = ScopeDisposer::new(Some(self.id));
+        // SAFETY: Since the 'child lifetime is shorter than 'a and child scope
+        // can't escape from the closure, we can safely transmute the lifetime.
         f(unsafe { std::mem::transmute(disposer.0) });
         disposer
     }
