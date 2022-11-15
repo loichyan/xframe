@@ -1,7 +1,7 @@
 use crate::{
     scope::{Cleanup, RawScope, Scope},
-    shared::{Shared, VariableId},
-    Empty,
+    shared::{Shared, VariableId, SHARED},
+    CovariantLifetime, Empty,
 };
 use std::{
     cell::{Ref, RefCell, RefMut},
@@ -12,8 +12,7 @@ use std::{
 
 pub struct Variable<'a, T> {
     pub(crate) id: VariableId,
-    pub(crate) shared: &'a Shared,
-    ty: PhantomData<T>,
+    marker: PhantomData<(T, CovariantLifetime<'a>)>,
 }
 
 impl<T> Clone for Variable<'_, T> {
@@ -26,16 +25,17 @@ impl<T> Copy for Variable<'_, T> {}
 
 impl<'a, T> Variable<'a, T> {
     fn value(&self) -> &'a VarSlot<T> {
-        let ptr = self
-            .shared
-            .variables
-            .borrow()
-            .get(self.id)
-            .copied()
-            .unwrap_or_else(|| panic!("tried to access a disposed variable"));
-        // SAFETY: The type is assumed by the marker `ty` and the allocated variable
-        // lives as long as current `Scope`.
-        unsafe { ptr.cast().as_ref() }
+        SHARED.with(|shared| {
+            let ptr = shared
+                .variables
+                .borrow()
+                .get(self.id)
+                .copied()
+                .unwrap_or_else(|| panic!("tried to access a disposed variable"));
+            // SAFETY: The type is assumed by the marker `ty` and the allocated variable
+            // lives as long as current `Scope`.
+            unsafe { ptr.cast().as_ref() }
+        })
     }
 
     pub fn get(&self) -> VarRef<'_, T> {
@@ -112,11 +112,10 @@ impl<T> DerefMut for VarRefMut<'_, T> {
 }
 
 impl VariableId {
-    pub(crate) unsafe fn create_variable<'a, T>(&self, shared: &'a Shared) -> Variable<'a, T> {
+    pub(crate) unsafe fn create_variable<'a, T>(&self) -> Variable<'a, T> {
         Variable {
             id: *self,
-            shared,
-            ty: PhantomData,
+            marker: PhantomData,
         }
     }
 }
@@ -135,16 +134,14 @@ impl RawScope {
         self.add_cleanup(Cleanup::Variable(id));
         Variable {
             id,
-            shared,
-            ty: PhantomData,
+            marker: PhantomData,
         }
     }
 }
 
 impl<'a> Scope<'a> {
     pub fn create_variable<T: 'a>(&self, t: T) -> Variable<'a, T> {
-        self.id
-            .with(self.shared, |cx| cx.create_variable(self.shared, t))
+        self.with_shared(|shared| self.id.with(shared, |cx| cx.create_variable(shared, t)))
     }
 }
 
@@ -166,7 +163,7 @@ mod tests {
         create_root(|cx| {
             let var1 = cx.create_variable(DropAndRead(None));
             let var2 = cx.create_variable(0);
-            (&mut *var1.get_mut()).0 = Some(var2);
+            (*var1.get_mut()).0 = Some(var2);
         });
     }
 

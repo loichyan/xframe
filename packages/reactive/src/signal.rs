@@ -3,17 +3,16 @@ pub use modify::SignalModify;
 
 use crate::{
     scope::{Cleanup, Scope},
-    shared::{EffectId, Shared, SignalId},
+    shared::{EffectId, Shared, SignalId, SHARED},
     variable::{VarRef, VarRefMut, VarSlot},
-    Empty,
+    CovariantLifetime, Empty,
 };
 use indexmap::IndexSet;
 use std::{marker::PhantomData, ptr::NonNull};
 
 pub struct Signal<'a, T> {
     id: SignalId,
-    shared: &'a Shared,
-    ty: PhantomData<T>,
+    marker: PhantomData<(T, CovariantLifetime<'a>)>,
 }
 
 impl<T> Clone for Signal<'_, T> {
@@ -26,27 +25,30 @@ impl<T> Copy for Signal<'_, T> {}
 
 impl<'a, T> Signal<'a, T> {
     fn value(&self) -> &'a VarSlot<T> {
-        let ptr = self
-            .shared
-            .signals
-            .borrow()
-            .get(self.id)
-            .copied()
-            .unwrap_or_else(|| panic!("tried to access a disposed signal"));
-        // SAFETY: The type is assumed by the `ty` marker and the value lives
-        // as long as current `Scope`.
-        unsafe { ptr.cast().as_ref() }
+        SHARED.with(|shared| {
+            let ptr = shared
+                .signals
+                .borrow()
+                .get(self.id)
+                .copied()
+                .unwrap_or_else(|| panic!("tried to access a disposed signal"));
+            // SAFETY: The type is assumed by the `ty` marker and the value lives
+            // as long as current `Scope`.
+            unsafe { ptr.cast().as_ref() }
+        })
     }
 
     pub fn track(&self) {
-        if let Some(id) = self.shared.observer.get() {
-            id.with_context(self.shared, |ctx| ctx.add_dependency(self.id))
-                .unwrap_or_else(|| unreachable!());
-        }
+        SHARED.with(|shared| {
+            if let Some(id) = shared.observer.get() {
+                id.with_context(shared, |ctx| ctx.add_dependency(self.id))
+                    .unwrap_or_else(|| unreachable!());
+            }
+        });
     }
 
     pub fn trigger(&self) {
-        self.id.trigger(self.shared);
+        SHARED.with(|shared| self.id.trigger(shared));
     }
 
     pub fn get(&self) -> VarRef<'_, T> {
@@ -125,25 +127,26 @@ impl SignalId {
 
 impl<'a> Scope<'a> {
     pub fn create_signal<T: 'a>(&self, t: T) -> Signal<'a, T> {
-        self.id.with(self.shared, |cx| {
-            let value = {
-                // SAFETY: Same as creating variables.
-                unsafe {
-                    let ptr = cx.alloc_var(t);
-                    std::mem::transmute(NonNull::from(ptr as &dyn Empty))
+        self.with_shared(|shared| {
+            self.id.with(shared, |cx| {
+                let value = {
+                    // SAFETY: Same as creating variables.
+                    unsafe {
+                        let ptr = cx.alloc_var(t);
+                        std::mem::transmute(NonNull::from(ptr as &dyn Empty))
+                    }
+                };
+                let id = shared.signals.borrow_mut().insert(value);
+                shared
+                    .signal_contexts
+                    .borrow_mut()
+                    .insert(id, <_>::default());
+                cx.add_cleanup(Cleanup::Signal(id));
+                Signal {
+                    id,
+                    marker: PhantomData,
                 }
-            };
-            let id = self.shared.signals.borrow_mut().insert(value);
-            self.shared
-                .signal_contexts
-                .borrow_mut()
-                .insert(id, <_>::default());
-            cx.add_cleanup(Cleanup::Signal(id));
-            Signal {
-                id,
-                shared: self.shared,
-                ty: PhantomData,
-            }
+            })
         })
     }
 }
