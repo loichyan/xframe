@@ -1,25 +1,27 @@
 use crate::{
     scope::{Cleanup, RawScope, Scope},
-    shared::{EffectId, Shared, SignalId},
+    shared::{EffectId, Shared, SignalId, SHARED},
     variable::VarSlot,
-    BoundedScope,
+    BoundedScope, CovariantLifetime,
 };
 use ahash::AHashSet;
-use std::ptr::NonNull;
+use std::{marker::PhantomData, ptr::NonNull};
 
 /// An effect can track signals and automatically execute whenever the captured
 /// [`Signal`](crate::signal::Signal)s changed.
 #[derive(Clone, Copy)]
 pub struct Effect<'a> {
     id: EffectId,
-    shared: &'a Shared,
+    marker: PhantomData<CovariantLifetime<'a>>,
 }
 
 impl<'a> Effect<'a> {
     pub fn run(&self) {
-        self.id
-            .run(self.shared)
-            .unwrap_or_else(|| panic!("tried to access a disposed effect"));
+        SHARED.with(|shared| {
+            self.id
+                .run(shared)
+                .unwrap_or_else(|| panic!("tried to access a disposed effect"));
+        })
     }
 }
 
@@ -115,7 +117,10 @@ impl RawScope {
             .borrow_mut()
             .insert(id, <_>::default());
         self.add_cleanup(Cleanup::Effect(id));
-        Effect { id, shared }
+        Effect {
+            id,
+            marker: PhantomData,
+        }
     }
 
     fn create_effect<'a, T: 'a>(
@@ -139,11 +144,11 @@ impl<'a> Scope<'a> {
     /// Constructs an [`Effect`] which accepts its previous returned value as
     /// the parameter and automatically reruns whenever tracked signals update.
     pub fn create_effect<T: 'a>(&self, f: impl 'a + FnMut(Option<T>) -> T) -> Effect<'a> {
-        let effect = self
-            .id
-            .with(self.shared, |cx| cx.create_effect(self.shared, f));
-        effect.run();
-        effect
+        self.with_shared(|shared| {
+            let effect = self.id.with(shared, |cx| cx.create_effect(shared, f));
+            effect.run();
+            effect
+        })
     }
 
     /// Constructs an [`Effect`] that run with a new child scope each time. The
@@ -315,21 +320,22 @@ mod tests {
                     });
                 }
             });
-            let (total, active) = eff
-                .id
-                .with_context(cx.shared, |ctx| {
-                    (
-                        ctx.dependencies.len(),
-                        ctx.dependencies
-                            .iter()
-                            // The `Signal` should be removed after the scope is
-                            // disposed.
-                            .map(|id| id.with_context(cx.shared, |_| ()).is_some())
-                            .filter(|x| *x)
-                            .count(),
-                    )
-                })
-                .unwrap();
+            let (total, active) = SHARED.with(|shared| {
+                eff.id
+                    .with_context(shared, |ctx| {
+                        (
+                            ctx.dependencies.len(),
+                            ctx.dependencies
+                                .iter()
+                                // The `Signal` should be removed after the scope is
+                                // disposed.
+                                .map(|id| id.with_context(shared, |_| ()).is_some())
+                                .filter(|x| *x)
+                                .count(),
+                        )
+                    })
+                    .unwrap()
+            });
             assert_eq!(total, 1);
             assert_eq!(active, 0);
         });

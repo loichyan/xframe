@@ -36,7 +36,7 @@ impl ScopeId {
                     // stored as the key in a hashmap;
                     // 2. This context can only be accessed from current and child
                     // scopes as a `Variable` which is safe to use.
-                    .map(|id| unsafe { id.create_variable(shared) })
+                    .map(|id| unsafe { id.create_variable() })
             })
     }
 
@@ -82,20 +82,22 @@ impl<'a> Scope<'a> {
     where
         T: StoreBuilder,
     {
-        if let Some(context) = self.id.find_context::<T>(self.shared) {
-            Err(context)
-        } else {
-            let variable = self.create_store(t);
-            self.shared
-                .scope_contexts
-                .borrow_mut()
-                .entry(self.id)
-                .unwrap_or_else(|| unreachable!())
-                .or_default()
-                .content
-                .insert(context_id::<T>(), variable.id);
-            Ok(variable)
-        }
+        self.with_shared(|shared| {
+            if let Some(context) = self.id.find_context::<T>(shared) {
+                Err(context)
+            } else {
+                let variable = self.create_store(t);
+                shared
+                    .scope_contexts
+                    .borrow_mut()
+                    .entry(self.id)
+                    .unwrap_or_else(|| unreachable!())
+                    .or_default()
+                    .content
+                    .insert(context_id::<T>(), variable.id);
+                Ok(variable)
+            }
+        })
     }
 
     /// Loop up the context in the current and parent scopes accroding to the
@@ -118,7 +120,7 @@ impl<'a> Scope<'a> {
     where
         T: StoreBuilder,
     {
-        self.id.find_context_recursive::<T>(self.shared)
+        self.with_shared(|shared| self.id.find_context_recursive::<T>(shared))
     }
 }
 

@@ -7,8 +7,8 @@ mod signal;
 mod store;
 mod variable;
 
-type InvariantLifetime<'a> = &'a mut &'a mut ();
-type CovariantLifetime<'a> = &'a mut ();
+type InvariantLifetime<'a> = *mut &'a ();
+type CovariantLifetime<'a> = *const &'a ();
 
 trait Empty {}
 impl<T> Empty for T {}

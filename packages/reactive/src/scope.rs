@@ -1,5 +1,5 @@
 use crate::{
-    shared::{EffectId, ScopeId, Shared, SignalId, VariableId},
+    shared::{EffectId, ScopeId, Shared, SignalId, VariableId, SHARED},
     variable::VarSlot,
     CovariantLifetime, Empty, InvariantLifetime,
 };
@@ -14,7 +14,6 @@ pub type Scope<'a> = BoundedScope<'a, 'a>;
 #[derive(Clone, Copy)]
 pub struct BoundedScope<'a, 'b: 'a> {
     pub(crate) id: ScopeId,
-    pub(crate) shared: &'a Shared,
     marker: PhantomData<(InvariantLifetime<'a>, CovariantLifetime<'b>)>,
 }
 
@@ -37,35 +36,30 @@ pub(crate) enum Cleanup {
 /// Original post: <https://users.rust-lang.org/t/invoke-mut-dyn-fnonce/59356/4>
 pub(crate) trait Callback {
     /// Please make sure this will only be called once!
-    unsafe fn call_once(&mut self);
+    unsafe fn call_once(&mut self, shared: &Shared);
 }
 
 impl<F: FnOnce()> Callback for F {
-    unsafe fn call_once(&mut self) {
-        std::ptr::read(self)()
+    unsafe fn call_once(&mut self, shared: &Shared) {
+        shared.untrack(|| std::ptr::read(self)())
     }
 }
 
 pub struct ScopeDisposer<'a>(Scope<'a>);
 
 impl<'a> ScopeDisposer<'a> {
-    fn new(inherited: Option<(&'a Shared, ScopeId)>) -> Self {
-        let (shared, parent) = inherited
-            .map(|(shared, parnet)| (shared, Some(parnet)))
-            .unwrap_or_else(|| {
-                let boxed = Box::<Shared>::default();
-                (Box::leak(boxed), None)
-            });
-        let id = shared.scopes.borrow_mut().insert(<_>::default());
-        if let Some(parent) = parent {
-            shared.scope_parents.borrow_mut().insert(id, parent);
-        }
-        let scope = Scope {
-            id,
-            shared,
-            marker: PhantomData,
-        };
-        Self(scope)
+    fn new(parent: Option<ScopeId>) -> Self {
+        SHARED.with(|shared| {
+            let id = shared.scopes.borrow_mut().insert(<_>::default());
+            if let Some(parent) = parent {
+                shared.scope_parents.borrow_mut().insert(id, parent);
+            }
+            let scope = Scope {
+                id,
+                marker: PhantomData,
+            };
+            Self(scope)
+        })
     }
 
     /// Consumes and leaks the [`ScopeDisposer`], returning a [`Scope`] with
@@ -93,46 +87,41 @@ unsafe fn free<T: ?Sized>(mut ptr: NonNull<T>) {
 
 impl Drop for ScopeDisposer<'_> {
     fn drop(&mut self) {
-        let Scope { id, shared, .. } = self.0;
-        // 1) Cleanup resources created inside this `Scope`.
-        let cleanups = id.with(shared, |cx| std::mem::take(&mut cx.cleanups));
-        for cl in cleanups.into_iter().rev() {
-            // SAFETY: It's safe to destroy allocated values because `Signal`s
-            // `Effect`s and `Variable`s need to their IDs to request the `Shared`
-            // object and check the accessibility of owned resources and once these
-            // allocated resources are disposed their IDs are no longer available.
-            match cl {
-                Cleanup::Signal(id) => unsafe {
-                    let ptr = shared.signals.borrow_mut().remove(id).unwrap();
-                    free(ptr);
-                    shared.signal_contexts.borrow_mut().remove(id);
-                },
-                Cleanup::Effect(id) => unsafe {
-                    let ptr = shared.effects.borrow_mut().remove(id).unwrap();
-                    free(ptr);
-                    shared.effect_contexts.borrow_mut().remove(id);
-                },
-                Cleanup::Variable(id) => unsafe {
-                    let ptr = shared.variables.borrow_mut().remove(id).unwrap();
-                    free(ptr);
-                },
-                Cleanup::Callback(mut cb) => unsafe {
-                    cb.as_mut().call_once();
-                    free(cb);
-                },
+        SHARED.with(|shared| {
+            let Scope { id, .. } = self.0;
+            // 1) Cleanup resources created inside this `Scope`.
+            let cleanups = id.with(shared, |cx| std::mem::take(&mut cx.cleanups));
+            for cl in cleanups.into_iter().rev() {
+                // SAFETY: It's safe to destroy allocated values because `Signal`s
+                // `Effect`s and `Variable`s need to their IDs to request the `Shared`
+                // object and check the accessibility of owned resources and once these
+                // allocated resources are disposed their IDs are no longer available.
+                match cl {
+                    Cleanup::Signal(id) => unsafe {
+                        let ptr = shared.signals.borrow_mut().remove(id).unwrap();
+                        free(ptr);
+                        shared.signal_contexts.borrow_mut().remove(id);
+                    },
+                    Cleanup::Effect(id) => unsafe {
+                        let ptr = shared.effects.borrow_mut().remove(id).unwrap();
+                        free(ptr);
+                        shared.effect_contexts.borrow_mut().remove(id);
+                    },
+                    Cleanup::Variable(id) => unsafe {
+                        let ptr = shared.variables.borrow_mut().remove(id).unwrap();
+                        free(ptr);
+                    },
+                    Cleanup::Callback(mut cb) => unsafe {
+                        cb.as_mut().call_once(shared);
+                        free(cb);
+                    },
+                }
             }
-        }
-        // 2) Cleanup resources onwed by this `Scope`.
-        shared.scopes.borrow_mut().remove(id);
-        shared.scope_contexts.borrow_mut().remove(id);
-        let is_root = shared.scope_parents.borrow_mut().remove(id).is_none();
-        // 3) Dispose the `Share` object in the root scope.
-        if is_root {
-            // SAFETY: It should be impossible to read the `Shared` object once
-            // the root `Scope` is dropped.
-            let shared = unsafe { Box::from_raw(shared as *const Shared as *mut Shared) };
-            drop(shared);
-        }
+            // 2) Cleanup resources onwed by this `Scope`.
+            shared.scopes.borrow_mut().remove(id);
+            shared.scope_contexts.borrow_mut().remove(id);
+            shared.scope_parents.borrow_mut().remove(id);
+        });
     }
 }
 
@@ -178,11 +167,15 @@ pub fn create_root<'disposer>(
 }
 
 impl<'a> Scope<'a> {
+    pub(crate) fn with_shared<T>(&self, f: impl FnOnce(&'a Shared) -> T) -> T {
+        SHARED.with(|shared| f(unsafe { std::mem::transmute(shared) }))
+    }
+
     pub fn create_child(
         &self,
         f: impl for<'child> FnOnce(BoundedScope<'child, 'a>),
     ) -> ScopeDisposer<'a> {
-        let disposer = ScopeDisposer::new(Some((self.shared, self.id)));
+        let disposer = ScopeDisposer::new(Some(self.id));
         f(unsafe { std::mem::transmute(disposer.0) });
         disposer
     }
@@ -199,12 +192,14 @@ impl<'a> Scope<'a> {
     /// will not read any references created after itself, and will not be read
     /// by any references created before itself.
     pub unsafe fn alloc<T: 'a>(&self, t: T) -> &'a T {
-        self.id.with(self.shared, |cx| {
-            let ptr = cx.alloc(t);
-            let any_ptr = std::mem::transmute(NonNull::from(ptr as &dyn Empty));
-            let id = self.shared.variables.borrow_mut().insert(any_ptr);
-            cx.add_cleanup(Cleanup::Variable(id));
-            ptr
+        self.with_shared(|shared| {
+            self.id.with(shared, |cx| {
+                let ptr = cx.alloc(t);
+                let any_ptr = std::mem::transmute(NonNull::from(ptr as &dyn Empty));
+                let id = shared.variables.borrow_mut().insert(any_ptr);
+                cx.add_cleanup(Cleanup::Variable(id));
+                ptr
+            })
         })
     }
 
@@ -215,17 +210,19 @@ impl<'a> Scope<'a> {
     }
 
     pub fn untrack(&self, f: impl FnOnce()) {
-        self.shared.untrack(f);
+        self.with_shared(|shared| shared.untrack(f));
     }
 
     pub fn on_cleanup(&self, f: impl FnOnce()) {
-        self.id.with(self.shared, |cx| {
-            // SAFETY: Same as creating variables.
-            let cb = unsafe {
-                let ptr = cx.alloc(|| self.shared.untrack(f));
-                std::mem::transmute(NonNull::from(ptr as &dyn Callback))
-            };
-            cx.add_cleanup(Cleanup::Callback(cb));
+        self.with_shared(|shared| {
+            self.id.with(shared, |cx| {
+                // SAFETY: Same as creating variables.
+                let cb = unsafe {
+                    let ptr = cx.alloc(f);
+                    std::mem::transmute(NonNull::from(ptr as &dyn Callback))
+                };
+                cx.add_cleanup(Cleanup::Callback(cb));
+            })
         })
     }
 }

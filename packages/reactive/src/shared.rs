@@ -11,6 +11,10 @@ use std::{
     ptr::NonNull,
 };
 
+thread_local! {
+    pub(crate) static SHARED: Shared = <_>::default();
+}
+
 new_key_type! {
     pub(crate) struct ScopeId;
     pub(crate) struct SignalId;

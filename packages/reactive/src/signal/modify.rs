@@ -1,10 +1,12 @@
 use super::Signal;
 use crate::{
-    shared::{Shared, SignalId},
+    shared::{SignalId, SHARED},
     variable::VarRefMut,
+    CovariantLifetime,
 };
 use std::{
     fmt,
+    marker::PhantomData,
     ops::{Deref, DerefMut},
 };
 
@@ -14,7 +16,7 @@ impl<'a, T> Signal<'a, T> {
             value: self.get_mut(),
             trigger: ModifyTrigger {
                 id: self.id,
-                shared: self.shared,
+                marker: PhantomData,
             },
         }
     }
@@ -57,12 +59,12 @@ impl<'a, T> DerefMut for SignalModify<'a, T> {
 
 struct ModifyTrigger<'a> {
     id: SignalId,
-    shared: &'a Shared,
+    marker: PhantomData<CovariantLifetime<'a>>,
 }
 
 impl Drop for ModifyTrigger<'_> {
     fn drop(&mut self) {
-        self.id.trigger(self.shared);
+        SHARED.with(|shared| self.id.trigger(shared));
     }
 }
 
