@@ -8,22 +8,40 @@ use crate::{
     CovariantLifetime, Empty,
 };
 use indexmap::IndexSet;
-use std::{marker::PhantomData, ptr::NonNull};
+use std::{marker::PhantomData, ops::Deref, ptr::NonNull};
 
-pub struct Signal<'a, T> {
+pub struct ReadSignal<'a, T> {
     id: SignalId,
     marker: PhantomData<(T, CovariantLifetime<'a>)>,
 }
 
-impl<T> Clone for Signal<'_, T> {
+impl<T> Clone for ReadSignal<'_, T> {
     fn clone(&self) -> Self {
         Self { ..*self }
     }
 }
 
+impl<T> Copy for ReadSignal<'_, T> {}
+
+pub struct Signal<'a, T>(ReadSignal<'a, T>);
+
+impl<'a, T> Deref for Signal<'a, T> {
+    type Target = ReadSignal<'a, T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> Clone for Signal<'_, T> {
+    fn clone(&self) -> Self {
+        Self(self.0)
+    }
+}
+
 impl<T> Copy for Signal<'_, T> {}
 
-impl<'a, T> Signal<'a, T> {
+impl<'a, T> ReadSignal<'a, T> {
     fn value(&self) -> &'a VarSlot<T> {
         SHARED.with(|shared| {
             let ptr = shared
@@ -47,10 +65,6 @@ impl<'a, T> Signal<'a, T> {
         });
     }
 
-    pub fn trigger(&self) {
-        SHARED.with(|shared| self.id.trigger(shared));
-    }
-
     pub fn get(&self) -> VarRef<'_, T> {
         self.track();
         self.get_untracked()
@@ -58,6 +72,12 @@ impl<'a, T> Signal<'a, T> {
 
     pub fn get_untracked(&self) -> VarRef<'_, T> {
         self.value().get()
+    }
+}
+
+impl<'a, T> Signal<'a, T> {
+    pub fn trigger(&self) {
+        SHARED.with(|shared| self.id.trigger(shared));
     }
 
     pub fn get_mut(&self) -> VarRefMut<'_, T> {
@@ -142,10 +162,10 @@ impl<'a> Scope<'a> {
                     .borrow_mut()
                     .insert(id, <_>::default());
                 cx.add_cleanup(Cleanup::Signal(id));
-                Signal {
+                Signal(ReadSignal {
                     id,
                     marker: PhantomData,
-                }
+                })
             })
         })
     }

@@ -1,11 +1,14 @@
-use crate::{scope::Scope, signal::Signal};
+use crate::{
+    scope::Scope,
+    signal::{ReadSignal, Signal},
+};
 
 impl<'a> Scope<'a> {
     fn create_memo_impl<T: 'a>(
         &self,
         mut f: impl 'a + FnMut() -> T,
         mut update: impl 'a + FnMut(T, Signal<'a, T>),
-    ) -> Signal<'a, T> {
+    ) -> ReadSignal<'a, T> {
         let memo = self.create_cell(None::<Signal<'a, T>>);
         let cx = *self;
         self.create_effect(move |_| {
@@ -17,14 +20,14 @@ impl<'a> Scope<'a> {
                 memo.set(Some(signal));
             }
         });
-        memo.get().unwrap_or_else(|| unreachable!())
+        *memo.get().unwrap_or_else(|| unreachable!())
     }
 
-    pub fn create_memo<T: 'a>(&self, f: impl 'a + FnMut() -> T) -> Signal<'a, T> {
+    pub fn create_memo<T: 'a>(&self, f: impl 'a + FnMut() -> T) -> ReadSignal<'a, T> {
         self.create_memo_impl(f, |new_val, memo| memo.set(new_val))
     }
 
-    pub fn create_seletor<T: 'a>(&self, f: impl 'a + FnMut() -> T) -> Signal<'a, T>
+    pub fn create_seletor<T: 'a>(&self, f: impl 'a + FnMut() -> T) -> ReadSignal<'a, T>
     where
         T: PartialEq,
     {
@@ -35,7 +38,7 @@ impl<'a> Scope<'a> {
         &self,
         f: impl 'a + FnMut() -> T,
         mut is_equal: impl 'a + FnMut(&T, &T) -> bool,
-    ) -> Signal<'a, T> {
+    ) -> ReadSignal<'a, T> {
         self.create_memo_impl(f, move |new_val, memo| {
             let modify_memo = &mut *memo.get_mut();
             if !is_equal(modify_memo, &new_val) {

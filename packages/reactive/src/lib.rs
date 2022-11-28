@@ -17,6 +17,6 @@ impl<T> Empty for T {}
 
 pub use effect::Effect;
 pub use scope::{create_root, BoundedScope, Scope, ScopeDisposer};
-pub use signal::{Signal, SignalModify};
+pub use signal::{ReadSignal, Signal, SignalModify};
 pub use store::{CreateDefault, CreateSelf, CreateSignal, StoreBuilder};
 pub use variable::{VarRef, VarRefMut, Variable};
