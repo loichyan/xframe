@@ -5,7 +5,6 @@ use crate::{
     CovariantLifetime,
 };
 use std::{
-    fmt,
     marker::PhantomData,
     ops::{Deref, DerefMut},
 };
@@ -25,12 +24,6 @@ impl<'a, T> Signal<'a, T> {
 pub struct SignalModify<'a, T> {
     value: VarRefMut<'a, T>,
     trigger: ModifyTrigger<'a>,
-}
-
-impl<T: fmt::Debug> fmt::Debug for SignalModify<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Modify").field(&*self.value).finish()
-    }
 }
 
 impl<'a, T> SignalModify<'a, T> {
@@ -70,6 +63,7 @@ impl Drop for ModifyTrigger<'_> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::create_root;
 
     #[test]
@@ -85,6 +79,17 @@ mod tests {
             *state.modify() += "xFrame!";
             assert_eq!(*state.get(), "Hello, xFrame!");
             assert_eq!(*counter.get(), 2);
+        });
+    }
+
+    #[test]
+    fn map_modify() {
+        create_root(|cx| {
+            let state = cx.create_signal((1, 2, 3));
+            let modify = state.modify();
+            assert_eq!(&*modify, &(1, 2, 3));
+            let field1 = SignalModify::map(modify, |(f1, _, _)| f1);
+            assert_eq!(*field1, 1);
         });
     }
 }

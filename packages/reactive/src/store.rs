@@ -62,6 +62,44 @@ mod tests {
     use super::*;
     use crate::create_root;
 
+    #[test]
+    fn create_default() {
+        struct Hello(String);
+        impl Default for Hello {
+            fn default() -> Self {
+                Self(String::from("Hello, world!"))
+            }
+        }
+
+        create_root(|cx| {
+            let store = cx.create_store(CreateDefault::<Hello>::default());
+            assert_eq!(&store.get().0, "Hello, world!");
+        });
+    }
+
+    #[test]
+    fn create_self() {
+        create_root(|cx| {
+            let store = cx.create_store(CreateSelf(-1));
+            assert_eq!(*store.get(), -1);
+        });
+    }
+
+    #[test]
+    fn create_signal() {
+        create_root(|cx| {
+            let store = cx.create_store(CreateSignal(-1));
+            let counter = cx.create_signal(0);
+            cx.create_effect(move |_| {
+                store.get().track();
+                counter.update(|x| *x + 1);
+            });
+            assert_eq!(*counter.get(), 1);
+            store.get().trigger();
+            assert_eq!(*counter.get(), 2);
+        });
+    }
+
     #[derive(Default)]
     struct Builder {
         state: i32,

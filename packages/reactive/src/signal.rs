@@ -8,11 +8,23 @@ use crate::{
     CovariantLifetime,
 };
 use indexmap::IndexSet;
-use std::{marker::PhantomData, ops::Deref, ptr::NonNull};
+use std::{fmt, marker::PhantomData, ops::Deref, ptr::NonNull};
 
 pub struct ReadSignal<'a, T> {
     id: SignalId,
     marker: PhantomData<(T, CovariantLifetime<'a>)>,
+}
+
+impl<T: fmt::Debug> fmt::Debug for ReadSignal<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Signal").field(&*self.get()).finish()
+    }
+}
+
+impl<T: fmt::Display> fmt::Display for ReadSignal<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.get().fmt(f)
+    }
 }
 
 impl<T> Clone for ReadSignal<'_, T> {
@@ -24,6 +36,18 @@ impl<T> Clone for ReadSignal<'_, T> {
 impl<T> Copy for ReadSignal<'_, T> {}
 
 pub struct Signal<'a, T>(ReadSignal<'a, T>);
+
+impl<T: fmt::Debug> fmt::Debug for Signal<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.deref().fmt(f)
+    }
+}
+
+impl<T: fmt::Display> fmt::Display for Signal<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.deref().fmt(f)
+    }
+}
 
 impl<'a, T> Deref for Signal<'a, T> {
     type Target = ReadSignal<'a, T>;
@@ -236,6 +260,15 @@ mod tests {
             let var = cx.create_variable(DropAndRead(None));
             let signal = cx.create_signal(String::from("Hello, xFrame!"));
             var.get_mut().0 = Some(signal);
+        });
+    }
+
+    #[test]
+    fn fmt_signal() {
+        create_root(|cx| {
+            let state = cx.create_signal(0);
+            assert_eq!(format!("{:?}", state), "Signal(0)");
+            assert_eq!(format!("{}", state), "0");
         });
     }
 }

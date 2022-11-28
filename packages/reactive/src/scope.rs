@@ -6,7 +6,7 @@ use crate::{
 };
 use bumpalo::Bump;
 use smallvec::SmallVec;
-use std::{cell::Cell, marker::PhantomData, ptr::NonNull};
+use std::{cell::Cell, fmt, marker::PhantomData, ptr::NonNull};
 
 const INITIAL_CLEANUP_SLOTS: usize = 4;
 
@@ -16,6 +16,18 @@ pub type Scope<'a> = BoundedScope<'a, 'a>;
 pub struct BoundedScope<'a, 'b: 'a> {
     pub(crate) id: ScopeId,
     marker: PhantomData<(InvariantLifetime<'a>, CovariantLifetime<'b>)>,
+}
+
+impl fmt::Debug for Scope<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.with_shared(|shared| {
+            self.id.with(shared, |raw| {
+                f.debug_struct("Scope")
+                    .field("cleanups", &raw.cleanups as _)
+                    .finish_non_exhaustive()
+            })
+        })
+    }
 }
 
 #[derive(Default)]
@@ -31,6 +43,19 @@ enum Cleanup<'a> {
     Signal(SignalId),
     Variable(VariableId),
     Callback(&'a (dyn 'a + Callback)),
+}
+
+impl fmt::Debug for Cleanup<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Cleanup::Effect(_) => f.debug_tuple("Effect"),
+            Cleanup::Signal(_) => f.debug_tuple("Signal"),
+            Cleanup::Variable(_) => f.debug_tuple("Variable"),
+            Cleanup::Callback(_) => f.debug_tuple("Callback"),
+        }
+        .field(&"_")
+        .finish()
+    }
 }
 
 /// Helper trait to invoke [`FnOnce`].
@@ -270,6 +295,7 @@ impl<'a> Scope<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{cell::RefCell, rc::Rc};
 
     #[test]
     fn cleanup() {
@@ -281,6 +307,30 @@ mod tests {
                 });
             });
             assert_eq!(*called.get(), 1);
+        });
+    }
+
+    #[test]
+    fn untrack() {
+        create_root(|cx| {
+            let trigger2 = cx.create_signal(());
+            let trigger1 = cx.create_signal(());
+            let counter = cx.create_signal(0);
+
+            cx.create_effect(move |_| {
+                trigger1.track();
+                cx.untrack(|| {
+                    trigger2.track();
+                    counter.update(|x| *x + 1);
+                });
+            });
+            assert_eq!(*counter.get(), 1);
+
+            trigger1.trigger();
+            assert_eq!(*counter.get(), 2);
+
+            trigger2.trigger();
+            assert_eq!(*counter.get(), 2);
         });
     }
 
@@ -331,6 +381,48 @@ mod tests {
             // A new scope is disposed.
             trigger.trigger();
             assert_eq!(*counter.get(), 2);
+        });
+    }
+
+    #[test]
+    fn leak_scope() {
+        thread_local! {
+            static COUNTER: Cell<usize> = Cell::new(0);
+        }
+        struct DropAndInc;
+        impl Drop for DropAndInc {
+            fn drop(&mut self) {
+                COUNTER.with(|x| x.set(x.get() + 1));
+            }
+        }
+        let disposer = create_root(|_| {});
+        let cx = disposer.leak();
+        cx.create_signal(DropAndInc);
+        // SAFETY: `cx` will be dropped only once.
+        unsafe { drop(ScopeDisposer::from_leaked(cx)) };
+        assert_eq!(COUNTER.with(Cell::get), 1);
+    }
+
+    #[test]
+    #[should_panic = "tried to dispose a borrowed value"]
+    fn cannot_dispose_a_used_scope() {
+        create_root(|cx| {
+            let trigger = cx.create_signal(());
+            let disposer = Rc::new(RefCell::new(None));
+            let child = {
+                let disposer = disposer.clone();
+                cx.create_child(move |cx| {
+                    cx.create_effect(move |_| {
+                        trigger.track();
+                        if let Some(disposer) = disposer.take() {
+                            // Current effect is running, this panics to dispose it.
+                            drop(disposer);
+                        }
+                    });
+                })
+            };
+            disposer.replace(Some(child));
+            trigger.trigger();
         });
     }
 }

@@ -5,6 +5,7 @@ use crate::{
 };
 use std::{
     cell::{Ref, RefCell, RefMut},
+    fmt,
     marker::PhantomData,
     ops::{Deref, DerefMut},
     ptr::NonNull,
@@ -22,6 +23,18 @@ impl<T> Clone for Variable<'_, T> {
 }
 
 impl<T> Copy for Variable<'_, T> {}
+
+impl<T: fmt::Debug> fmt::Debug for Variable<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Variable").field(&*self.get()).finish()
+    }
+}
+
+impl<T: fmt::Display> fmt::Display for Variable<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.get().fmt(f)
+    }
+}
 
 impl<'a, T> Variable<'a, T> {
     fn value(&self) -> &'a VarSlot<T> {
@@ -140,6 +153,17 @@ mod tests {
     use crate::create_root;
 
     #[test]
+    fn map_var_ref() {
+        create_root(|cx| {
+            let var = cx.create_variable((1, 2, 3));
+            let var_ref = var.get();
+            assert_eq!(&*var_ref, &(1, 2, 3));
+            let field1 = VarRef::map(var_ref, |(f1, _, _)| f1);
+            assert_eq!(*field1, 1);
+        });
+    }
+
+    #[test]
     #[should_panic = "tried to access a disposed variable"]
     fn cannot_read_disposed_variables() {
         struct DropAndRead<'a>(Option<Variable<'a, i32>>);
@@ -192,6 +216,15 @@ mod tests {
         create_root(|cx| {
             let var = cx.create_variable(777);
             cx.create_variable(DropAndAssert { var, expect: 777 });
+        });
+    }
+
+    #[test]
+    fn fmt_variable() {
+        create_root(|cx| {
+            let var = cx.create_variable(0);
+            assert_eq!(format!("{:?}", var), "Variable(0)");
+            assert_eq!(format!("{}", var), "0");
         });
     }
 }

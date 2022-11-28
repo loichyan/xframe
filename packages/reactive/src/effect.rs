@@ -5,7 +5,7 @@ use crate::{
     BoundedScope, CovariantLifetime,
 };
 use ahash::AHashSet;
-use std::marker::PhantomData;
+use std::{fmt, marker::PhantomData};
 
 /// An effect can track signals and automatically execute whenever the captured
 /// [`Signal`](crate::signal::Signal)s changed.
@@ -13,6 +13,12 @@ use std::marker::PhantomData;
 pub struct Effect<'a> {
     id: EffectId,
     marker: PhantomData<CovariantLifetime<'a>>,
+}
+
+impl fmt::Debug for Effect<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Effect").finish_non_exhaustive()
+    }
 }
 
 impl<'a> Effect<'a> {
@@ -138,7 +144,7 @@ impl<'a> Scope<'a> {
     pub fn create_effect<T: 'a>(&self, f: impl 'a + FnMut(Option<T>) -> T) -> Effect<'a> {
         self.with_shared(|shared| {
             let effect = self.id.with(shared, |cx| cx.create_effect(shared, f));
-            effect.run();
+            effect.id.run(shared).unwrap_or_else(|| unreachable!());
             effect
         })
     }

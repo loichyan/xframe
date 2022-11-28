@@ -134,7 +134,7 @@ mod tests {
     #[test]
     fn provide_and_use_context() {
         create_root(|cx| {
-            cx.provide_context(CreateSignal(777i32));
+            cx.provide_context(CreateSignal(777));
             let x = cx.use_context::<CreateSignal<i32>>();
             assert_eq!(*x.get().get(), 777);
         });
@@ -143,10 +143,13 @@ mod tests {
     #[test]
     fn use_context_from_child_scope() {
         create_root(|cx| {
-            cx.provide_context(CreateSelf(777i32));
+            cx.provide_context(CreateSelf(777));
+            cx.provide_context(CreateSelf("Hello, xFrame!"));
             cx.create_child(|cx| {
                 let x = cx.use_context::<CreateSelf<i32>>();
                 assert_eq!(*x.get(), 777);
+                let s = cx.use_context::<CreateSelf<&str>>();
+                assert_eq!(*s.get(), "Hello, xFrame!");
             });
         });
     }
@@ -154,8 +157,35 @@ mod tests {
     #[test]
     fn unique_context_in_same_scope() {
         create_root(|cx| {
-            cx.provide_context(CreateSelf(777i32));
-            assert!(cx.try_provide_context(CreateSelf(777i32)).is_err());
+            cx.provide_context(CreateSelf(777));
+            assert_eq!(
+                *cx.try_provide_context(CreateSelf(233)).unwrap_err().get(),
+                777
+            );
+        });
+    }
+
+    #[test]
+    #[should_panic = "tried to provide a duplicated context in the same scope"]
+    fn panic_unique_context_in_same_scope() {
+        create_root(|cx| {
+            cx.provide_context(CreateSelf(777));
+            cx.provide_context(CreateSelf(233));
+        });
+    }
+
+    #[test]
+    fn use_nonexistent_context() {
+        create_root(|cx| {
+            assert!(cx.try_use_context::<CreateSelf<i32>>().is_none());
+        });
+    }
+
+    #[test]
+    #[should_panic = "tried to use a nonexistent context"]
+    fn panic_use_nonexistent_context() {
+        create_root(|cx| {
+            cx.use_context::<CreateSignal<i32>>();
         });
     }
 }
