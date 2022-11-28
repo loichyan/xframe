@@ -2,10 +2,10 @@ mod modify;
 pub use modify::SignalModify;
 
 use crate::{
-    scope::{Cleanup, Scope},
+    scope::Scope,
     shared::{EffectId, Shared, SignalId, SHARED},
     variable::{VarRef, VarRefMut, VarSlot},
-    CovariantLifetime, Empty,
+    CovariantLifetime,
 };
 use indexmap::IndexSet;
 use std::{marker::PhantomData, ops::Deref, ptr::NonNull};
@@ -52,7 +52,7 @@ impl<'a, T> ReadSignal<'a, T> {
                 .unwrap_or_else(|| panic!("tried to access a disposed signal"));
             // SAFETY: The type is assumed by the `ty` marker and the value lives
             // as long as current `Scope`.
-            unsafe { ptr.cast().as_ref() }
+            unsafe { NonNull::from(ptr).cast().as_ref() }
         })
     }
 
@@ -149,19 +149,11 @@ impl<'a> Scope<'a> {
     pub fn create_signal<T: 'a>(&self, t: T) -> Signal<'a, T> {
         self.with_shared(|shared| {
             self.id.with(shared, |cx| {
-                let value = {
-                    // SAFETY: Same as creating variables.
-                    unsafe {
-                        let ptr = cx.alloc_var(t);
-                        std::mem::transmute(NonNull::from(ptr as &dyn Empty))
-                    }
-                };
-                let id = shared.signals.borrow_mut().insert(value);
+                let id = cx.alloc_signal(shared, t);
                 shared
                     .signal_contexts
                     .borrow_mut()
                     .insert(id, <_>::default());
-                cx.add_cleanup(Cleanup::Signal(id));
                 Signal(ReadSignal {
                     id,
                     marker: PhantomData,

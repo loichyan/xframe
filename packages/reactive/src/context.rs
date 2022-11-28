@@ -3,13 +3,15 @@ use crate::{
     shared::{ScopeId, Shared, VariableId},
     store::StoreBuilder,
     variable::Variable,
+    InvariantLifetime,
 };
 use ahash::AHashMap;
 use std::{any::TypeId, marker::PhantomData};
 
 #[derive(Default)]
-pub(crate) struct ScopeContexts {
+pub(crate) struct ScopeContexts<'a> {
     content: AHashMap<TypeId, VariableId>,
+    marker: PhantomData<InvariantLifetime<'a>>,
 }
 
 struct ContextId<T>(PhantomData<T>);
@@ -19,7 +21,7 @@ fn context_id<T: 'static>() -> TypeId {
 }
 
 impl ScopeId {
-    fn find_context<'a, T>(&self, shared: &'a Shared) -> Option<Variable<'a, T::Store<'a>>>
+    fn find_context<'a, T>(&self, shared: &Shared<'a>) -> Option<Variable<'a, T::Store<'a>>>
     where
         T: StoreBuilder,
     {
@@ -36,13 +38,13 @@ impl ScopeId {
                     // stored as the key in a hashmap;
                     // 2. This context can only be accessed from current and child
                     // scopes as a `Variable` which is safe to use.
-                    .map(|id| unsafe { id.create_variable() })
+                    .map(|id| unsafe { id.bound() })
             })
     }
 
     fn find_context_recursive<'a, T>(
         &self,
-        shared: &'a Shared,
+        shared: &Shared<'a>,
     ) -> Option<Variable<'a, T::Store<'a>>>
     where
         T: StoreBuilder,

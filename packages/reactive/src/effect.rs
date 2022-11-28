@@ -1,11 +1,11 @@
 use crate::{
-    scope::{Cleanup, RawScope, Scope},
+    scope::{RawScope, Scope},
     shared::{EffectId, Shared, SignalId, SHARED},
     variable::VarSlot,
     BoundedScope, CovariantLifetime,
 };
 use ahash::AHashSet;
-use std::{marker::PhantomData, ptr::NonNull};
+use std::marker::PhantomData;
 
 /// An effect can track signals and automatically execute whenever the captured
 /// [`Signal`](crate::signal::Signal)s changed.
@@ -86,8 +86,7 @@ impl EffectId {
             shared.observer.set(Some(*self));
 
             // 3) Call the effect.
-            // SAFETY: The closure lives as long as current `Scope`.
-            unsafe { effect.as_ref().run_untracked() };
+            effect.run_untracked();
 
             // 4) Subscribe dependencies.
             // An effect is appended to the subscriber list of the signals since we
@@ -105,38 +104,31 @@ impl EffectId {
     }
 }
 
-impl RawScope {
-    fn create_effect_dyn<'a>(
-        &mut self,
-        shared: &'a Shared,
-        effect: NonNull<dyn AnyEffect>,
-    ) -> Effect<'a> {
-        let id = shared.effects.borrow_mut().insert(effect);
+impl<'a> RawScope<'a> {
+    fn create_effect_dyn(&mut self, shared: &Shared<'a>, id: EffectId) -> Effect<'a> {
         shared
             .effect_contexts
             .borrow_mut()
             .insert(id, <_>::default());
-        self.add_cleanup(Cleanup::Effect(id));
         Effect {
             id,
             marker: PhantomData,
         }
     }
 
-    fn create_effect<'a, T: 'a>(
+    fn create_effect<T: 'a>(
         &mut self,
-        shared: &'a Shared,
+        shared: &Shared<'a>,
         f: impl 'a + FnMut(Option<T>) -> T,
     ) -> Effect<'a> {
-        // SAFETY: Same as creating variables.
-        let effect = unsafe {
-            let ptr = self.alloc_var(AnyEffectImpl {
+        let id = self.alloc_effect(
+            shared,
+            AnyEffectImpl {
                 prev: None,
                 func: f,
-            });
-            std::mem::transmute(NonNull::from(ptr as &dyn AnyEffect))
-        };
-        self.create_effect_dyn(shared, effect)
+            },
+        );
+        self.create_effect_dyn(shared, id)
     }
 }
 

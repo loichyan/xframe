@@ -1,7 +1,7 @@
 use crate::{
-    scope::{Cleanup, RawScope, Scope},
-    shared::{Shared, VariableId, SHARED},
-    CovariantLifetime, Empty,
+    scope::Scope,
+    shared::{VariableId, SHARED},
+    CovariantLifetime,
 };
 use std::{
     cell::{Ref, RefCell, RefMut},
@@ -34,7 +34,7 @@ impl<'a, T> Variable<'a, T> {
                 .unwrap_or_else(|| panic!("tried to access a disposed variable"));
             // SAFETY: The type is assumed by the marker `ty` and the allocated variable
             // lives as long as current `Scope`.
-            unsafe { ptr.cast().as_ref() }
+            unsafe { NonNull::from(ptr).cast().as_ref() }
         })
     }
 
@@ -112,7 +112,7 @@ impl<T> DerefMut for VarRefMut<'_, T> {
 }
 
 impl VariableId {
-    pub(crate) unsafe fn create_variable<'a, T>(&self) -> Variable<'a, T> {
+    pub(crate) unsafe fn bound<'a, T>(&self) -> Variable<'a, T> {
         Variable {
             id: *self,
             marker: PhantomData,
@@ -120,28 +120,17 @@ impl VariableId {
     }
 }
 
-impl RawScope {
-    pub fn create_variable<'a, T>(&mut self, shared: &'a Shared, t: T) -> Variable<'a, T> {
-        let value = {
-            // SAFETY: This pointer cannot be accessed once this scope is disposed.
-            // Check out the comment where we dispose `Scope` for more details.
-            unsafe {
-                let ptr = self.alloc_var(t);
-                std::mem::transmute(NonNull::from(ptr as &dyn Empty))
-            }
-        };
-        let id = shared.variables.borrow_mut().insert(value);
-        self.add_cleanup(Cleanup::Variable(id));
-        Variable {
-            id,
-            marker: PhantomData,
-        }
-    }
-}
-
 impl<'a> Scope<'a> {
     pub fn create_variable<T: 'a>(&self, t: T) -> Variable<'a, T> {
-        self.with_shared(|shared| self.id.with(shared, |cx| cx.create_variable(shared, t)))
+        self.with_shared(|shared| {
+            self.id.with(shared, |cx| {
+                let id = cx.alloc_variable(shared, t);
+                Variable {
+                    id,
+                    marker: PhantomData,
+                }
+            })
+        })
     }
 }
 

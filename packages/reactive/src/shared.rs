@@ -3,16 +3,16 @@ use crate::{
     effect::{AnyEffect, EffectContext},
     scope::RawScope,
     signal::SignalContext,
-    Empty,
+    Empty, InvariantLifetime,
 };
 use slotmap::{new_key_type, SecondaryMap, SlotMap, SparseSecondaryMap};
 use std::{
     cell::{Cell, RefCell},
-    ptr::NonNull,
+    marker::PhantomData,
 };
 
 thread_local! {
-    pub(crate) static SHARED: Shared = <_>::default();
+    pub(crate) static SHARED: Shared<'static> = <_>::default();
 }
 
 new_key_type! {
@@ -25,14 +25,15 @@ new_key_type! {
 type ASparseSecondaryMap<K, V> = SparseSecondaryMap<K, V, ahash::RandomState>;
 
 #[derive(Default)]
-pub(crate) struct Shared {
+pub(crate) struct Shared<'a> {
     pub observer: Cell<Option<EffectId>>,
-    pub scopes: RefCell<SlotMap<ScopeId, RawScope>>,
+    pub scopes: RefCell<SlotMap<ScopeId, RawScope<'a>>>,
     pub scope_parents: RefCell<SecondaryMap<ScopeId, ScopeId>>,
-    pub scope_contexts: RefCell<ASparseSecondaryMap<ScopeId, ScopeContexts>>,
-    pub signals: RefCell<SlotMap<SignalId, NonNull<dyn Empty>>>,
+    pub scope_contexts: RefCell<ASparseSecondaryMap<ScopeId, ScopeContexts<'a>>>,
+    pub signals: RefCell<SlotMap<SignalId, &'a (dyn 'a + Empty)>>,
     pub signal_contexts: RefCell<SecondaryMap<SignalId, SignalContext>>,
-    pub effects: RefCell<SlotMap<EffectId, NonNull<dyn AnyEffect>>>,
+    pub effects: RefCell<SlotMap<EffectId, &'a (dyn 'a + AnyEffect)>>,
     pub effect_contexts: RefCell<SecondaryMap<EffectId, EffectContext>>,
-    pub variables: RefCell<SlotMap<VariableId, NonNull<dyn Empty>>>,
+    pub variables: RefCell<SlotMap<VariableId, &'a (dyn 'a + Empty)>>,
+    marker: PhantomData<InvariantLifetime<'a>>,
 }

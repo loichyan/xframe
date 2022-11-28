@@ -1,7 +1,8 @@
 use crate::{
+    effect::AnyEffect,
     shared::{EffectId, ScopeId, Shared, SignalId, VariableId, SHARED},
     variable::VarSlot,
-    CovariantLifetime, Empty, InvariantLifetime,
+    CovariantLifetime, InvariantLifetime,
 };
 use bumpalo::Bump;
 use smallvec::SmallVec;
@@ -18,17 +19,18 @@ pub struct BoundedScope<'a, 'b: 'a> {
 }
 
 #[derive(Default)]
-pub(crate) struct RawScope {
+pub(crate) struct RawScope<'a> {
     arena: Bump,
-    cleanups: SmallVec<[Cleanup; INITIAL_CLEANUP_SLOTS]>,
+    cleanups: SmallVec<[Cleanup<'a>; INITIAL_CLEANUP_SLOTS]>,
+    marker: PhantomData<InvariantLifetime<'a>>,
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum Cleanup {
+enum Cleanup<'a> {
     Effect(EffectId),
     Signal(SignalId),
     Variable(VariableId),
-    Callback(NonNull<dyn Callback>),
+    Callback(&'a (dyn 'a + Callback)),
 }
 
 /// Helper trait to invoke [`FnOnce`].
@@ -81,8 +83,8 @@ impl<'a> ScopeDisposer<'a> {
     }
 }
 
-unsafe fn free<T: ?Sized>(mut ptr: NonNull<T>) {
-    std::ptr::drop_in_place(ptr.as_mut());
+unsafe fn free<T: ?Sized>(ptr: &T) {
+    std::ptr::drop_in_place(NonNull::from(ptr).as_mut());
 }
 
 impl Drop for ScopeDisposer<'_> {
@@ -124,8 +126,8 @@ impl Drop for ScopeDisposer<'_> {
                             .unwrap_or_else(|| unreachable!());
                         unsafe { free(ptr) };
                     }
-                    Cleanup::Callback(mut cb) => unsafe {
-                        cb.as_mut().call_once(shared);
+                    Cleanup::Callback(cb) => unsafe {
+                        NonNull::from(cb).as_mut().call_once(shared);
                         free(cb);
                     },
                 }
@@ -142,21 +144,43 @@ impl Drop for ScopeDisposer<'_> {
     }
 }
 
-impl RawScope {
-    unsafe fn alloc<'a, T: 'a>(&self, t: T) -> &'a T {
-        std::mem::transmute(self.arena.alloc(t))
+impl<'a> RawScope<'a> {
+    fn alloc_bounded<T: 'a>(&self, t: T) -> &'a T {
+        // SAFETY: The lifetime is invariant and bounded with a scope so the
+        // allocated variables can only be accessed within that scope.
+        unsafe { std::mem::transmute(self.arena.alloc(t)) }
     }
 
-    pub unsafe fn alloc_var<'a, T: 'a>(&self, t: T) -> &'a VarSlot<T> {
-        self.alloc(VarSlot::new(t))
+    pub fn alloc_variable<T: 'a>(&mut self, shared: &Shared<'a>, t: T) -> VariableId {
+        let ptr = self.alloc_bounded(VarSlot::new(t));
+        let id = shared.variables.borrow_mut().insert(ptr);
+        self.cleanups.push(Cleanup::Variable(id));
+        id
     }
 
-    pub fn add_cleanup(&mut self, cl: Cleanup) {
-        self.cleanups.push(cl);
+    pub fn alloc_signal<T: 'a>(&mut self, shared: &Shared<'a>, t: T) -> SignalId {
+        let ptr = self.alloc_bounded(VarSlot::new(t));
+        let id = shared.signals.borrow_mut().insert(ptr);
+        self.cleanups.push(Cleanup::Signal(id));
+        id
+    }
+
+    pub fn alloc_effect<F: 'a>(&mut self, shared: &Shared<'a>, f: F) -> EffectId
+    where
+        VarSlot<F>: AnyEffect,
+    {
+        let ptr = self.alloc_bounded(VarSlot::new(f));
+        self.alloc_effect_dyn(shared, ptr)
+    }
+
+    fn alloc_effect_dyn(&mut self, shared: &Shared<'a>, f: &'a (dyn 'a + AnyEffect)) -> EffectId {
+        let id = shared.effects.borrow_mut().insert(f);
+        self.cleanups.push(Cleanup::Effect(id));
+        id
     }
 }
 
-impl Shared {
+impl Shared<'_> {
     pub fn untrack(&self, f: impl FnOnce()) {
         let prev = self.observer.take();
         f();
@@ -165,7 +189,7 @@ impl Shared {
 }
 
 impl ScopeId {
-    pub fn with<T>(&self, shared: &Shared, f: impl FnOnce(&mut RawScope) -> T) -> T {
+    pub fn with<'a, T>(&self, shared: &Shared<'a>, f: impl FnOnce(&mut RawScope<'a>) -> T) -> T {
         shared
             .scopes
             .borrow_mut()
@@ -184,8 +208,9 @@ pub fn create_root<'disposer>(
 }
 
 impl<'a> Scope<'a> {
-    pub(crate) fn with_shared<T>(&self, f: impl FnOnce(&'a Shared) -> T) -> T {
-        // SAFETY: This is safe because the reference can't escape from the closure.
+    pub(crate) fn with_shared<T>(&self, f: impl FnOnce(&Shared<'a>) -> T) -> T {
+        // SAFETY: The lifetime 'a is invariant for `Shared` and `Scope`, this ensures
+        // all resources can only be accessed within the scope itself.
         SHARED.with(|shared| f(unsafe { std::mem::transmute(shared) }))
     }
 
@@ -214,10 +239,9 @@ impl<'a> Scope<'a> {
     pub unsafe fn alloc<T: 'a>(&self, t: T) -> &'a T {
         self.with_shared(|shared| {
             self.id.with(shared, |cx| {
-                let ptr = cx.alloc(t);
-                let any_ptr = std::mem::transmute(NonNull::from(ptr as &dyn Empty));
-                let id = shared.variables.borrow_mut().insert(any_ptr);
-                cx.add_cleanup(Cleanup::Variable(id));
+                let ptr = cx.alloc_bounded(t);
+                let id = shared.variables.borrow_mut().insert(ptr);
+                cx.cleanups.push(Cleanup::Variable(id));
                 ptr
             })
         })
@@ -233,15 +257,11 @@ impl<'a> Scope<'a> {
         self.with_shared(|shared| shared.untrack(f));
     }
 
-    pub fn on_cleanup(&self, f: impl FnOnce()) {
+    pub fn on_cleanup(&self, f: impl 'a + FnOnce()) {
         self.with_shared(|shared| {
             self.id.with(shared, |cx| {
-                // SAFETY: Same as creating variables.
-                let cb = unsafe {
-                    let ptr = cx.alloc(f);
-                    std::mem::transmute(NonNull::from(ptr as &dyn Callback))
-                };
-                cx.add_cleanup(Cleanup::Callback(cb));
+                let ptr = cx.alloc_bounded(f);
+                cx.cleanups.push(Cleanup::Callback(ptr));
             })
         })
     }
@@ -255,8 +275,8 @@ mod tests {
     fn cleanup() {
         create_root(|cx| {
             let called = cx.create_signal(0);
-            cx.create_child(|cx| {
-                cx.on_cleanup(|| {
+            cx.create_child(move |cx| {
+                cx.on_cleanup(move || {
                     called.update(|x| *x + 1);
                 });
             });
@@ -275,7 +295,7 @@ mod tests {
                 trigger_effect.track();
                 counter.update(|x| *x + 1);
 
-                cx.on_cleanup(|| {
+                cx.on_cleanup(move || {
                     trigger_cleanup.track();
                 });
             });
@@ -299,7 +319,7 @@ mod tests {
 
             cx.create_effect_scoped(move |cx| {
                 trigger.track();
-                cx.on_cleanup(|| {
+                cx.on_cleanup(move || {
                     counter.update(|x| *x + 1);
                 });
             });
