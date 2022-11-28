@@ -17,7 +17,7 @@ impl<'a> Scope<'a> {
                 memo.set(Some(signal));
             }
         });
-        memo.get().unwrap()
+        memo.get().unwrap_or_else(|| unreachable!())
     }
 
     pub fn create_memo<T: 'a>(&self, f: impl 'a + FnMut() -> T) -> Signal<'a, T> {

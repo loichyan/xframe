@@ -99,17 +99,29 @@ impl Drop for ScopeDisposer<'_> {
                 #[allow(clippy::undocumented_unsafe_blocks)]
                 match cl {
                     Cleanup::Signal(id) => {
-                        let ptr = shared.signals.borrow_mut().remove(id).unwrap();
+                        let ptr = shared
+                            .signals
+                            .borrow_mut()
+                            .remove(id)
+                            .unwrap_or_else(|| unreachable!());
                         unsafe { free(ptr) };
                         shared.signal_contexts.borrow_mut().remove(id);
                     }
                     Cleanup::Effect(id) => {
-                        let ptr = shared.effects.borrow_mut().remove(id).unwrap();
+                        let ptr = shared
+                            .effects
+                            .borrow_mut()
+                            .remove(id)
+                            .unwrap_or_else(|| unreachable!());
                         unsafe { free(ptr) };
                         shared.effect_contexts.borrow_mut().remove(id);
                     }
                     Cleanup::Variable(id) => {
-                        let ptr = shared.variables.borrow_mut().remove(id).unwrap();
+                        let ptr = shared
+                            .variables
+                            .borrow_mut()
+                            .remove(id)
+                            .unwrap_or_else(|| unreachable!());
                         unsafe { free(ptr) };
                     }
                     Cleanup::Callback(mut cb) => unsafe {
@@ -119,7 +131,11 @@ impl Drop for ScopeDisposer<'_> {
                 }
             }
             // 2) Cleanup resources onwed by this `Scope`.
-            shared.scopes.borrow_mut().remove(id);
+            shared
+                .scopes
+                .borrow_mut()
+                .remove(id)
+                .unwrap_or_else(|| unreachable!());
             shared.scope_contexts.borrow_mut().remove(id);
             shared.scope_parents.borrow_mut().remove(id);
         });
