@@ -1,85 +1,67 @@
-mod modify;
-pub use modify::SignalModify;
-
 use crate::{
-    scope::Scope,
+    scope::{Cleanup, Scope},
     shared::{EffectId, Shared, SignalId, SHARED},
-    variable::{VarRef, VarRefMut, VarSlot},
-    CovariantLifetime,
+    ThreadLocal,
 };
 use indexmap::IndexSet;
-use std::{fmt, marker::PhantomData, ops::Deref, ptr::NonNull};
+use std::{any::Any, fmt, marker::PhantomData, ops::Deref, rc::Rc};
 
-pub struct ReadSignal<'a, T> {
+pub struct ReadSignal<T: 'static> {
     id: SignalId,
-    marker: PhantomData<(T, CovariantLifetime<'a>)>,
+    marker: PhantomData<(T, ThreadLocal)>,
 }
 
-impl<T: fmt::Debug> fmt::Debug for ReadSignal<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Signal").field(&*self.get()).finish()
+impl<T: fmt::Debug> fmt::Debug for ReadSignal<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.read(|v| f.debug_tuple("Signal").field(v).finish())
     }
 }
 
-impl<T: fmt::Display> fmt::Display for ReadSignal<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.get().fmt(f)
+impl<T: fmt::Display> fmt::Display for ReadSignal<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.read(|v| v.fmt(f))
     }
 }
 
-impl<T> Clone for ReadSignal<'_, T> {
+impl<T> Clone for ReadSignal<T> {
     fn clone(&self) -> Self {
         Self { ..*self }
     }
 }
 
-impl<T> Copy for ReadSignal<'_, T> {}
+impl<T> Copy for ReadSignal<T> {}
 
-pub struct Signal<'a, T>(ReadSignal<'a, T>);
+pub struct Signal<T: 'static>(ReadSignal<T>);
 
-impl<T: fmt::Debug> fmt::Debug for Signal<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<T: fmt::Debug> fmt::Debug for Signal<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.deref().fmt(f)
     }
 }
 
-impl<T: fmt::Display> fmt::Display for Signal<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<T: fmt::Display> fmt::Display for Signal<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.deref().fmt(f)
     }
 }
 
-impl<'a, T> Deref for Signal<'a, T> {
-    type Target = ReadSignal<'a, T>;
+impl<T> Deref for Signal<T> {
+    type Target = ReadSignal<T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<T> Clone for Signal<'_, T> {
+impl<T> Clone for Signal<T> {
     fn clone(&self) -> Self {
         Self(self.0)
     }
 }
 
-impl<T> Copy for Signal<'_, T> {}
+impl<T> Copy for Signal<T> {}
 
-impl<'a, T> ReadSignal<'a, T> {
-    fn value(&self) -> &'a VarSlot<T> {
-        SHARED.with(|shared| {
-            let ptr = shared
-                .signals
-                .borrow()
-                .get(self.id)
-                .copied()
-                .unwrap_or_else(|| panic!("tried to access a disposed signal"));
-            // SAFETY: The type is assumed by the `ty` marker and the value lives
-            // as long as current `Scope`.
-            unsafe { NonNull::from(ptr).cast().as_ref() }
-        })
-    }
-
+impl<T> ReadSignal<T> {
     pub fn track(&self) {
         SHARED.with(|shared| {
             if let Some(id) = shared.observer.get() {
@@ -89,23 +71,60 @@ impl<'a, T> ReadSignal<'a, T> {
         });
     }
 
-    pub fn get(&self) -> VarRef<'_, T> {
+    pub fn read<U>(&self, f: impl FnOnce(&T) -> U) -> U {
+        self.track();
+        self.read_untracked(f)
+    }
+
+    pub fn read_untracked<U>(&self, f: impl FnOnce(&T) -> U) -> U {
+        SHARED.with(|shared| {
+            f(shared
+                .signals
+                .borrow()
+                .get(self.id)
+                .unwrap_or_else(|| panic!("tried to access a disposed signal"))
+                .downcast_ref::<T>()
+                .unwrap_or_else(|| unreachable!()))
+        })
+    }
+
+    pub fn get(&self) -> T
+    where
+        T: Clone,
+    {
         self.track();
         self.get_untracked()
     }
 
-    pub fn get_untracked(&self) -> VarRef<'_, T> {
-        self.value().get()
+    pub fn get_untracked(&self) -> T
+    where
+        T: Clone,
+    {
+        self.read_untracked(T::clone)
     }
 }
 
-impl<'a, T> Signal<'a, T> {
+impl<T> Signal<T> {
     pub fn trigger(&self) {
         SHARED.with(|shared| self.id.trigger(shared));
     }
 
-    pub fn get_mut(&self) -> VarRefMut<'_, T> {
-        self.value().get_mut()
+    pub fn write<U>(&self, f: impl FnOnce(&mut T) -> U) -> U {
+        let output = self.write_slient(f);
+        self.trigger();
+        output
+    }
+
+    pub fn write_slient<U>(&self, f: impl FnOnce(&mut T) -> U) -> U {
+        SHARED.with(|shared| {
+            f(shared
+                .signals
+                .borrow_mut()
+                .get_mut(self.id)
+                .unwrap_or_else(|| panic!("tried to access a disposed signal"))
+                .downcast_mut()
+                .unwrap_or_else(|| unreachable!()))
+        })
     }
 
     pub fn set(&self, val: T) {
@@ -114,17 +133,7 @@ impl<'a, T> Signal<'a, T> {
     }
 
     pub fn set_slient(&self, val: T) {
-        *self.value().get_mut() = val;
-    }
-
-    pub fn update(&self, f: impl FnOnce(&mut T) -> T) {
-        self.update_slient(f);
-        self.trigger();
-    }
-
-    pub fn update_slient(&self, f: impl FnOnce(&mut T) -> T) {
-        let mut mut_borrow = self.value().get_mut();
-        *mut_borrow = f(&mut *mut_borrow);
+        self.write_slient(|v| *v = val);
     }
 }
 
@@ -169,21 +178,31 @@ impl SignalId {
     }
 }
 
-impl<'a> Scope<'a> {
-    pub fn create_signal<T: 'a>(&self, t: T) -> Signal<'a, T> {
+impl Scope {
+    fn create_signal_dyn(&self, t: Box<dyn Any>) -> SignalId {
         self.with_shared(|shared| {
             self.id.with(shared, |cx| {
-                let id = cx.alloc_signal(shared, t);
+                let id = shared.signals.borrow_mut().insert(t);
+                cx.push_cleanup(Cleanup::Signal(id));
                 shared
                     .signal_contexts
                     .borrow_mut()
                     .insert(id, <_>::default());
-                Signal(ReadSignal {
-                    id,
-                    marker: PhantomData,
-                })
+                id
             })
         })
+    }
+
+    pub fn create_signal<T>(&self, t: T) -> Signal<T> {
+        let id = self.create_signal_dyn(Box::new(t));
+        Signal(ReadSignal {
+            id,
+            marker: PhantomData,
+        })
+    }
+
+    pub fn create_signal_rc<T>(&self, t: T) -> Signal<Rc<T>> {
+        self.create_signal(Rc::new(t))
     }
 }
 
@@ -196,9 +215,9 @@ mod tests {
     fn signal() {
         create_root(|cx| {
             let state = cx.create_signal(0);
-            assert_eq!(*state.get(), 0);
+            assert_eq!(state.get(), 0);
             state.set(1);
-            assert_eq!(*state.get(), 1);
+            assert_eq!(state.get(), 1);
         });
     }
 
@@ -206,7 +225,7 @@ mod tests {
     fn signal_composition() {
         create_root(|cx| {
             let state = cx.create_signal(1);
-            let double = || *state.get() * 2;
+            let double = || state.get() * 2;
             assert_eq!(double(), 2);
             state.set(2);
             assert_eq!(double(), 4);
@@ -217,10 +236,10 @@ mod tests {
     fn signal_set_slient() {
         create_root(|cx| {
             let state = cx.create_signal(1);
-            let double = cx.create_memo(move || *state.get() * 2);
-            assert_eq!(*double.get(), 2);
+            let double = cx.create_memo(move || state.get() * 2);
+            assert_eq!(double.get(), 2);
             state.set_slient(2);
-            assert_eq!(*double.get(), 2);
+            assert_eq!(double.get(), 2);
         });
     }
 
@@ -229,15 +248,15 @@ mod tests {
         create_root(|cx| {
             let state = cx.create_signal(1);
             let state2 = cx.create_signal(state);
-            let double = cx.create_memo(move || *state2.get().get() * 2);
-            assert_eq!(*state2.get().get(), 1);
+            let double = cx.create_memo(move || state2.get().get() * 2);
+            assert_eq!(state2.get().get(), 1);
             state.set(2);
-            assert_eq!(*double.get(), 4);
+            assert_eq!(double.get(), 4);
         });
     }
 
-    struct DropAndRead<'a>(Option<Signal<'a, String>>);
-    impl Drop for DropAndRead<'_> {
+    struct DropAndRead(Option<Signal<String>>);
+    impl Drop for DropAndRead {
         fn drop(&mut self) {
             self.0.unwrap().trigger();
         }
@@ -245,21 +264,21 @@ mod tests {
 
     #[test]
     #[should_panic = "tried to access a disposed signal"]
-    fn cannot_read_a_disposed_signal_value() {
+    fn cannot_read_disposed_signals() {
         create_root(|cx| {
             let var = cx.create_variable(DropAndRead(None));
             let signal = cx.create_signal(String::from("Hello, xFrame!"));
-            var.get_mut().0 = Some(signal);
+            var.write(|v| v.0 = Some(signal));
         });
     }
 
     #[test]
     #[should_panic = "tried to access a disposed signal"]
-    fn cannot_read_a_disposed_signal_context() {
+    fn cannot_read_disposed_signal_contexts() {
         create_root(|cx| {
             let var = cx.create_variable(DropAndRead(None));
             let signal = cx.create_signal(String::from("Hello, xFrame!"));
-            var.get_mut().0 = Some(signal);
+            var.write(|v| v.0 = Some(signal));
         });
     }
 

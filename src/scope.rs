@@ -1,24 +1,19 @@
 use crate::{
-    effect::AnyEffect,
     shared::{EffectId, ScopeId, Shared, SignalId, VariableId, SHARED},
-    variable::VarSlot,
-    CovariantLifetime, InvariantLifetime,
+    ThreadLocal,
 };
-use bumpalo::Bump;
 use smallvec::SmallVec;
-use std::{cell::Cell, fmt, marker::PhantomData, ptr::NonNull};
+use std::{fmt, marker::PhantomData, rc::Rc};
 
 const INITIAL_CLEANUP_SLOTS: usize = 4;
 
-pub type Scope<'a> = BoundedScope<'a, 'a>;
-
 #[derive(Clone, Copy)]
-pub struct BoundedScope<'a, 'b: 'a> {
+pub struct Scope {
     pub(crate) id: ScopeId,
-    marker: PhantomData<(InvariantLifetime<'a>, CovariantLifetime<'b>)>,
+    marker: PhantomData<ThreadLocal>,
 }
 
-impl fmt::Debug for Scope<'_> {
+impl fmt::Debug for Scope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.with_shared(|shared| {
             self.id.with(shared, |raw| {
@@ -31,21 +26,18 @@ impl fmt::Debug for Scope<'_> {
 }
 
 #[derive(Default)]
-pub(crate) struct RawScope<'a> {
-    arena: Bump,
-    cleanups: SmallVec<[Cleanup<'a>; INITIAL_CLEANUP_SLOTS]>,
-    marker: PhantomData<InvariantLifetime<'a>>,
+pub(crate) struct RawScope {
+    cleanups: SmallVec<[Cleanup; INITIAL_CLEANUP_SLOTS]>,
 }
 
-#[derive(Clone, Copy)]
-enum Cleanup<'a> {
+pub(crate) enum Cleanup {
     Effect(EffectId),
     Signal(SignalId),
     Variable(VariableId),
-    Callback(&'a (dyn 'a + Callback)),
+    Callback(Box<(dyn FnOnce())>),
 }
 
-impl fmt::Debug for Cleanup<'_> {
+impl fmt::Debug for Cleanup {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Cleanup::Effect(_) => f.debug_tuple("Effect"),
@@ -58,23 +50,9 @@ impl fmt::Debug for Cleanup<'_> {
     }
 }
 
-/// Helper trait to invoke [`FnOnce`].
-///
-/// Original post: <https://users.rust-lang.org/t/invoke-mut-dyn-fnonce/59356/4>
-pub(crate) trait Callback {
-    /// Please make sure this will only be called once!
-    unsafe fn call_once(&mut self, shared: &Shared);
-}
+pub struct ScopeDisposer(Scope);
 
-impl<F: FnOnce()> Callback for F {
-    unsafe fn call_once(&mut self, shared: &Shared) {
-        shared.untrack(|| std::ptr::read(self)())
-    }
-}
-
-pub struct ScopeDisposer<'a>(Scope<'a>);
-
-impl<'a> ScopeDisposer<'a> {
+impl ScopeDisposer {
     fn new(parent: Option<ScopeId>) -> Self {
         SHARED.with(|shared| {
             let id = shared.scopes.borrow_mut().insert(<_>::default());
@@ -91,70 +69,64 @@ impl<'a> ScopeDisposer<'a> {
 
     /// Consumes and leaks the [`ScopeDisposer`], returning a [`Scope`] with
     /// same lifetime.
-    pub fn leak(self) -> Scope<'a> {
+    pub fn leak(self) -> Scope {
         let cx = self.0;
         std::mem::forget(self);
         cx
     }
 
     /// Constructs a [`ScopeDisposer`] from the leaked [`Scope`].
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because a [`Scope`] may be disposed twice and
-    /// lead an undefined behavior.
-    pub unsafe fn from_leaked(cx: Scope<'a>) -> Self {
+    pub fn from_leaked(cx: Scope) -> Self {
         Self(cx)
     }
 }
 
-unsafe fn free<T: ?Sized>(ptr: &T) {
-    std::ptr::drop_in_place(NonNull::from(ptr).as_mut());
-}
-
-impl Drop for ScopeDisposer<'_> {
+impl Drop for ScopeDisposer {
     fn drop(&mut self) {
         SHARED.with(|shared| {
             let Scope { id, .. } = self.0;
             // 1) Cleanup resources created inside this `Scope`.
             let cleanups = id.with(shared, |cx| std::mem::take(&mut cx.cleanups));
             for cl in cleanups.into_iter().rev() {
-                // SAFETY: It's safe to destroy allocated values because `Signal`s
-                // `Effect`s and `Variable`s need to their IDs to request the `Shared`
-                // object and check the accessibility of owned resources and once these
-                // allocated resources are disposed their IDs are no longer available.
-                #[allow(clippy::undocumented_unsafe_blocks)]
                 match cl {
                     Cleanup::Signal(id) => {
-                        let ptr = shared
+                        let v = shared
                             .signals
                             .borrow_mut()
                             .remove(id)
                             .unwrap_or_else(|| unreachable!());
-                        unsafe { free(ptr) };
-                        shared.signal_contexts.borrow_mut().remove(id);
+                        shared
+                            .signal_contexts
+                            .borrow_mut()
+                            .remove(id)
+                            .unwrap_or_else(|| unreachable!());
+                        drop(v);
                     }
                     Cleanup::Effect(id) => {
-                        let ptr = shared
+                        let v = shared
                             .effects
                             .borrow_mut()
                             .remove(id)
                             .unwrap_or_else(|| unreachable!());
-                        unsafe { free(ptr) };
-                        shared.effect_contexts.borrow_mut().remove(id);
+                        shared
+                            .effect_contexts
+                            .borrow_mut()
+                            .remove(id)
+                            .unwrap_or_else(|| unreachable!());
+                        if Rc::strong_count(&v) != 1 {
+                            panic!("tried to dispose an effect in use")
+                        }
+                        drop(v);
                     }
                     Cleanup::Variable(id) => {
-                        let ptr = shared
+                        let v = shared
                             .variables
                             .borrow_mut()
                             .remove(id)
                             .unwrap_or_else(|| unreachable!());
-                        unsafe { free(ptr) };
+                        drop(v);
                     }
-                    Cleanup::Callback(cb) => unsafe {
-                        NonNull::from(cb).as_mut().call_once(shared);
-                        free(cb);
-                    },
+                    Cleanup::Callback(cb) => shared.untrack(cb),
                 }
             }
             // 2) Cleanup resources onwed by this `Scope`.
@@ -169,43 +141,13 @@ impl Drop for ScopeDisposer<'_> {
     }
 }
 
-impl<'a> RawScope<'a> {
-    fn alloc_bounded<T: 'a>(&self, t: T) -> &'a T {
-        // SAFETY: The lifetime is invariant and bounded with a scope so the
-        // allocated variables can only be accessed within that scope.
-        unsafe { std::mem::transmute(self.arena.alloc(t)) }
-    }
-
-    pub fn alloc_variable<T: 'a>(&mut self, shared: &Shared<'a>, t: T) -> VariableId {
-        let ptr = self.alloc_bounded(VarSlot::new(t));
-        let id = shared.variables.borrow_mut().insert(ptr);
-        self.cleanups.push(Cleanup::Variable(id));
-        id
-    }
-
-    pub fn alloc_signal<T: 'a>(&mut self, shared: &Shared<'a>, t: T) -> SignalId {
-        let ptr = self.alloc_bounded(VarSlot::new(t));
-        let id = shared.signals.borrow_mut().insert(ptr);
-        self.cleanups.push(Cleanup::Signal(id));
-        id
-    }
-
-    pub fn alloc_effect<F: 'a>(&mut self, shared: &Shared<'a>, f: F) -> EffectId
-    where
-        VarSlot<F>: AnyEffect,
-    {
-        let ptr = self.alloc_bounded(VarSlot::new(f));
-        self.alloc_effect_dyn(shared, ptr)
-    }
-
-    fn alloc_effect_dyn(&mut self, shared: &Shared<'a>, f: &'a (dyn 'a + AnyEffect)) -> EffectId {
-        let id = shared.effects.borrow_mut().insert(f);
-        self.cleanups.push(Cleanup::Effect(id));
-        id
+impl RawScope {
+    pub fn push_cleanup(&mut self, cleanup: Cleanup) {
+        self.cleanups.push(cleanup);
     }
 }
 
-impl Shared<'_> {
+impl Shared {
     pub fn untrack(&self, f: impl FnOnce()) {
         let prev = self.observer.take();
         f();
@@ -214,7 +156,7 @@ impl Shared<'_> {
 }
 
 impl ScopeId {
-    pub fn with<'a, T>(&self, shared: &Shared<'a>, f: impl FnOnce(&mut RawScope<'a>) -> T) -> T {
+    pub fn with<T>(&self, shared: &Shared, f: impl FnOnce(&mut RawScope) -> T) -> T {
         shared
             .scopes
             .borrow_mut()
@@ -224,69 +166,31 @@ impl ScopeId {
     }
 }
 
-pub fn create_root<'disposer>(
-    f: impl for<'root> FnOnce(BoundedScope<'root, 'disposer>),
-) -> ScopeDisposer<'disposer> {
+pub fn create_root(f: impl FnOnce(Scope)) -> ScopeDisposer {
     let disposer = ScopeDisposer::new(None);
     f(disposer.0);
     disposer
 }
 
-impl<'a> Scope<'a> {
-    pub(crate) fn with_shared<T>(&self, f: impl FnOnce(&Shared<'a>) -> T) -> T {
-        // SAFETY: The lifetime 'a is invariant for `Shared` and `Scope`, this ensures
-        // all resources can only be accessed within the scope itself.
-        SHARED.with(|shared| f(unsafe { std::mem::transmute(shared) }))
+impl Scope {
+    pub(crate) fn with_shared<T>(&self, f: impl FnOnce(&Shared) -> T) -> T {
+        SHARED.with(f)
     }
 
-    pub fn create_child(
-        &self,
-        f: impl for<'child> FnOnce(BoundedScope<'child, 'a>),
-    ) -> ScopeDisposer<'a> {
+    pub fn create_child(&self, f: impl FnOnce(Scope)) -> ScopeDisposer {
         let disposer = ScopeDisposer::new(Some(self.id));
-        // SAFETY: Since the 'child lifetime is shorter than 'a and child scope
-        // can't escape from the closure, we can safely transmute the lifetime.
-        f(unsafe { std::mem::transmute(disposer.0) });
+        f(disposer.0);
         disposer
-    }
-
-    /// Allocated a new arbitrary value under current scope.
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because the given value may hold a reference
-    /// to another variable allocated after it. If the value read that reference
-    /// while being disposed, this will result in an undefined behavior.
-    ///
-    /// For using this function safely, you must assume the specified value
-    /// will not read any references created after itself, and will not be read
-    /// by any references created before itself.
-    pub unsafe fn alloc<T: 'a>(&self, t: T) -> &'a T {
-        self.with_shared(|shared| {
-            self.id.with(shared, |cx| {
-                let ptr = cx.alloc_bounded(t);
-                let id = shared.variables.borrow_mut().insert(ptr);
-                cx.cleanups.push(Cleanup::Variable(id));
-                ptr
-            })
-        })
-    }
-
-    pub fn create_cell<T: 'a + Copy>(&self, t: T) -> &'a Cell<T> {
-        // SAFETY: A `Copy` type can't impelemt `Drop`, therefore the underlying
-        // value can't be read during disposal.
-        unsafe { self.alloc(Cell::new(t)) }
     }
 
     pub fn untrack(&self, f: impl FnOnce()) {
         self.with_shared(|shared| shared.untrack(f));
     }
 
-    pub fn on_cleanup(&self, f: impl 'a + FnOnce()) {
+    pub fn on_cleanup(&self, f: impl 'static + FnOnce()) {
         self.with_shared(|shared| {
             self.id.with(shared, |cx| {
-                let ptr = cx.alloc_bounded(f);
-                cx.cleanups.push(Cleanup::Callback(ptr));
+                cx.cleanups.push(Cleanup::Callback(Box::new(f)));
             })
         })
     }
@@ -295,7 +199,10 @@ impl<'a> Scope<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{cell::RefCell, rc::Rc};
+    use std::{
+        cell::{Cell, RefCell},
+        rc::Rc,
+    };
 
     #[test]
     fn cleanup() {
@@ -303,10 +210,10 @@ mod tests {
             let called = cx.create_signal(0);
             cx.create_child(move |cx| {
                 cx.on_cleanup(move || {
-                    called.update(|x| *x + 1);
+                    called.write(|x| *x += 1);
                 });
             });
-            assert_eq!(*called.get(), 1);
+            assert_eq!(called.get(), 1);
         });
     }
 
@@ -321,16 +228,16 @@ mod tests {
                 trigger1.track();
                 cx.untrack(|| {
                     trigger2.track();
-                    counter.update(|x| *x + 1);
+                    counter.write(|x| *x += 1);
                 });
             });
-            assert_eq!(*counter.get(), 1);
+            assert_eq!(counter.get(), 1);
 
             trigger1.trigger();
-            assert_eq!(*counter.get(), 2);
+            assert_eq!(counter.get(), 2);
 
             trigger2.trigger();
-            assert_eq!(*counter.get(), 2);
+            assert_eq!(counter.get(), 2);
         });
     }
 
@@ -343,21 +250,21 @@ mod tests {
 
             cx.create_effect_scoped(move |cx| {
                 trigger_effect.track();
-                counter.update(|x| *x + 1);
+                counter.write(|x| *x += 1);
 
                 cx.on_cleanup(move || {
                     trigger_cleanup.track();
                 });
             });
-            assert_eq!(*counter.get(), 1);
+            assert_eq!(counter.get(), 1);
 
             // Trigger effect to let the scope be disposed and run the cleanup.
             trigger_effect.trigger();
-            assert_eq!(*counter.get(), 2);
+            assert_eq!(counter.get(), 2);
 
             // This should not work since the cleanup is untracked.
             trigger_cleanup.trigger();
-            assert_eq!(*counter.get(), 2);
+            assert_eq!(counter.get(), 2);
         });
     }
 
@@ -370,17 +277,17 @@ mod tests {
             cx.create_effect_scoped(move |cx| {
                 trigger.track();
                 cx.on_cleanup(move || {
-                    counter.update(|x| *x + 1);
+                    counter.write(|x| *x += 1);
                 });
             });
-            assert_eq!(*counter.get(), 0);
+            assert_eq!(counter.get(), 0);
 
             trigger.trigger();
-            assert_eq!(*counter.get(), 1);
+            assert_eq!(counter.get(), 1);
 
             // A new scope is disposed.
             trigger.trigger();
-            assert_eq!(*counter.get(), 2);
+            assert_eq!(counter.get(), 2);
         });
     }
 
@@ -398,14 +305,13 @@ mod tests {
         let disposer = create_root(|_| {});
         let cx = disposer.leak();
         cx.create_signal(DropAndInc);
-        // SAFETY: `cx` will be dropped only once.
-        unsafe { drop(ScopeDisposer::from_leaked(cx)) };
+        drop(ScopeDisposer::from_leaked(cx));
         assert_eq!(COUNTER.with(Cell::get), 1);
     }
 
     #[test]
-    #[should_panic = "tried to dispose a borrowed value"]
-    fn cannot_dispose_a_used_scope() {
+    #[should_panic = "tried to dispose an effect in use"]
+    fn cannot_dispose_effects_in_use() {
         create_root(|cx| {
             let trigger = cx.create_signal(());
             let disposer = Rc::new(RefCell::new(None));
