@@ -4,7 +4,10 @@ use crate::{
     ThreadLocal,
 };
 use indexmap::IndexSet;
+use smallvec::SmallVec;
 use std::{any::Any, fmt, marker::PhantomData, ops::Deref, rc::Rc};
+
+const INITIAL_SUBCRIBER_SLOTS: usize = 4;
 
 pub struct ReadSignal<T: 'static> {
     id: SignalId,
@@ -164,8 +167,9 @@ impl SignalId {
     pub fn trigger(&self, shared: &Shared) {
         let subscribers = self
             .with_context(shared, |ctx| {
-                let new = IndexSet::with_capacity_and_hasher(ctx.subscribers.len(), <_>::default());
-                std::mem::replace(&mut ctx.subscribers, new)
+                ctx.subscribers
+                    .drain(..)
+                    .collect::<SmallVec<[_; INITIAL_SUBCRIBER_SLOTS]>>()
             })
             .unwrap_or_else(|| panic!("tried to access a disposed signal"));
         // Effects attach to subscribers at the end of the effect scope, an effect
