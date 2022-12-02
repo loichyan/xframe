@@ -1,27 +1,26 @@
 use crate::{
-    scope::{RawScope, Scope},
+    scope::{Cleanup, Scope},
     shared::{EffectId, Shared, SignalId, SHARED},
-    variable::VarSlot,
-    BoundedScope, CovariantLifetime,
+    ThreadLocal,
 };
 use ahash::AHashSet;
-use std::{fmt, marker::PhantomData};
+use std::{cell::RefCell, fmt, marker::PhantomData, rc::Rc};
 
 /// An effect can track signals and automatically execute whenever the captured
 /// [`Signal`](crate::signal::Signal)s changed.
 #[derive(Clone, Copy)]
-pub struct Effect<'a> {
+pub struct Effect {
     id: EffectId,
-    marker: PhantomData<CovariantLifetime<'a>>,
+    marker: PhantomData<ThreadLocal>,
 }
 
-impl fmt::Debug for Effect<'_> {
+impl fmt::Debug for Effect {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Effect").finish_non_exhaustive()
     }
 }
 
-impl<'a> Effect<'a> {
+impl Effect {
     pub fn run(&self) {
         SHARED.with(|shared| {
             self.id
@@ -43,7 +42,7 @@ impl EffectContext {
 }
 
 pub(crate) trait AnyEffect {
-    fn run_untracked(&self);
+    fn run_untracked(&mut self);
 }
 
 struct AnyEffectImpl<T, F> {
@@ -51,13 +50,12 @@ struct AnyEffectImpl<T, F> {
     func: F,
 }
 
-impl<T, F> AnyEffect for VarSlot<AnyEffectImpl<T, F>>
+impl<T, F> AnyEffect for AnyEffectImpl<T, F>
 where
     F: FnMut(Option<T>) -> T,
 {
-    fn run_untracked(&self) {
-        let this = &mut *self.get_mut();
-        this.prev = Some((this.func)(this.prev.take()));
+    fn run_untracked(&mut self) {
+        self.prev = Some((self.func)(self.prev.take()));
     }
 }
 
@@ -71,7 +69,7 @@ impl EffectId {
     }
 
     pub fn run(&self, shared: &Shared) -> Option<()> {
-        let effect = shared.effects.borrow().get(*self).copied();
+        let effect = shared.effects.borrow().get(*self).cloned();
         effect.map(|effect| {
             // 1) Clear dependencies.
             // After each execution a signal may not be tracked by this effect anymore,
@@ -92,7 +90,7 @@ impl EffectId {
             shared.observer.set(Some(*self));
 
             // 3) Call the effect.
-            effect.run_untracked();
+            effect.borrow_mut().run_untracked();
 
             // 4) Subscribe dependencies.
             // An effect is appended to the subscriber list of the signals since we
@@ -110,55 +108,40 @@ impl EffectId {
     }
 }
 
-impl<'a> RawScope<'a> {
-    fn create_effect_dyn(&mut self, shared: &Shared<'a>, id: EffectId) -> Effect<'a> {
-        shared
-            .effect_contexts
-            .borrow_mut()
-            .insert(id, <_>::default());
-        Effect {
-            id,
-            marker: PhantomData,
-        }
+impl Scope {
+    fn create_effect_dyn(&self, f: Rc<RefCell<dyn AnyEffect>>) -> Effect {
+        self.with_shared(|shared| {
+            let id = shared.effects.borrow_mut().insert(f);
+            self.id
+                .with(shared, |cx| cx.push_cleanup(Cleanup::Effect(id)));
+            shared
+                .effect_contexts
+                .borrow_mut()
+                .insert(id, <_>::default());
+            id.run(shared).unwrap_or_else(|| unreachable!());
+            Effect {
+                id,
+                marker: PhantomData,
+            }
+        })
     }
 
-    fn create_effect<T: 'a>(
-        &mut self,
-        shared: &Shared<'a>,
-        f: impl 'a + FnMut(Option<T>) -> T,
-    ) -> Effect<'a> {
-        let id = self.alloc_effect(
-            shared,
-            AnyEffectImpl {
-                prev: None,
-                func: f,
-            },
-        );
-        self.create_effect_dyn(shared, id)
-    }
-}
-
-impl<'a> Scope<'a> {
     /// Constructs an [`Effect`] which accepts its previous returned value as
     /// the parameter and automatically reruns whenever tracked signals update.
-    pub fn create_effect<T: 'a>(&self, f: impl 'a + FnMut(Option<T>) -> T) -> Effect<'a> {
-        self.with_shared(|shared| {
-            let effect = self.id.with(shared, |cx| cx.create_effect(shared, f));
-            effect.id.run(shared).unwrap_or_else(|| unreachable!());
-            effect
-        })
+    pub fn create_effect<T: 'static>(&self, f: impl 'static + FnMut(Option<T>) -> T) -> Effect {
+        self.create_effect_dyn(Rc::new(RefCell::new(AnyEffectImpl {
+            prev: None,
+            func: f,
+        })))
     }
 
     /// Constructs an [`Effect`] that run with a new child scope each time. The
     /// created [`Scope`] will not be disposed until the next run.
-    pub fn create_effect_scoped(
-        &self,
-        mut f: impl 'a + for<'child> FnMut(BoundedScope<'child, 'a>),
-    ) {
+    pub fn create_effect_scoped(&self, mut f: impl 'static + FnMut(Scope)) {
         let cx = *self;
         self.create_effect(move |disposer| {
             drop(disposer);
-            cx.create_child(|cx| f(cx))
+            cx.create_child(&mut f)
         });
     }
 }
@@ -175,15 +158,15 @@ mod tests {
             let double = cx.create_variable(-1);
 
             cx.create_effect(move |_| {
-                *double.get_mut() = *state.get() * 2;
+                double.set(state.get() * 2);
             });
-            assert_eq!(*double.get(), 0);
+            assert_eq!(double.get(), 0);
 
             state.set(1);
-            assert_eq!(*double.get(), 2);
+            assert_eq!(double.get(), 2);
 
             state.set(2);
-            assert_eq!(*double.get(), 4);
+            assert_eq!(double.get(), 4);
         });
     }
 
@@ -197,15 +180,15 @@ mod tests {
                 if let Some(prev) = prev {
                     prev_state.set(prev)
                 }
-                *state.get()
+                state.get()
             });
-            assert_eq!(*prev_state.get(), -1);
+            assert_eq!(prev_state.get(), -1);
 
             state.set(1);
-            assert_eq!(*prev_state.get(), 0);
+            assert_eq!(prev_state.get(), 0);
 
             state.set(2);
-            assert_eq!(*prev_state.get(), 1);
+            assert_eq!(prev_state.get(), 1);
         });
     }
 
@@ -244,32 +227,32 @@ mod tests {
             let counter = cx.create_signal(0);
 
             cx.create_effect(move |_| {
-                counter.update(|x| *x + 1);
+                counter.write(|x| *x += 1);
 
-                if *cond.get() {
+                if cond.get() {
                     state1.track();
                 } else {
                     state2.track();
                 }
             });
-            assert_eq!(*counter.get(), 1);
+            assert_eq!(counter.get(), 1);
 
             state1.set(1);
-            assert_eq!(*counter.get(), 2);
+            assert_eq!(counter.get(), 2);
 
             // `state2` is not tracked.
             state2.set(1);
-            assert_eq!(*counter.get(), 2);
+            assert_eq!(counter.get(), 2);
 
             // `state1` is untracked and `state2` is tracked
             cond.set(false);
-            assert_eq!(*counter.get(), 3);
+            assert_eq!(counter.get(), 3);
 
             state1.set(2);
-            assert_eq!(*counter.get(), 3);
+            assert_eq!(counter.get(), 3);
 
             state2.set(2);
-            assert_eq!(*counter.get(), 4);
+            assert_eq!(counter.get(), 4);
         });
     }
 
@@ -282,28 +265,28 @@ mod tests {
 
             cx.create_effect(move |_| {
                 state.track();
-                if *inner_counter.get() < 2 {
+                if inner_counter.get() < 2 {
                     cx.create_effect_scoped(move |cx| {
                         cx.create_effect(move |_| {
                             state.track();
-                            *inner_counter.get_mut() += 1;
+                            inner_counter.write(|v| *v += 1);
                         });
                     });
                 }
-                *outer_counter.get_mut() += 1;
+                outer_counter.write(|v| *v += 1);
             });
-            assert_eq!(*inner_counter.get(), 1);
-            assert_eq!(*outer_counter.get(), 1);
+            assert_eq!(inner_counter.get(), 1);
+            assert_eq!(outer_counter.get(), 1);
 
             // If the outer effect is triggered first, new effects will be created
             // and increase the counters.
             state.trigger();
-            assert_eq!(*inner_counter.get(), 2);
-            assert_eq!(*outer_counter.get(), 2);
+            assert_eq!(inner_counter.get(), 2);
+            assert_eq!(outer_counter.get(), 2);
 
             state.trigger();
-            assert_eq!(*inner_counter.get(), 3);
-            assert_eq!(*outer_counter.get(), 3);
+            assert_eq!(inner_counter.get(), 3);
+            assert_eq!(outer_counter.get(), 3);
         });
     }
 
@@ -341,9 +324,9 @@ mod tests {
 
     #[test]
     #[should_panic = "tried to access a disposed effect"]
-    fn cannot_read_run_a_disposed_effect() {
-        struct DropAndRead<'a>(Option<Effect<'a>>);
-        impl Drop for DropAndRead<'_> {
+    fn cannot_run_disposed_effects() {
+        struct DropAndRead(Option<Effect>);
+        impl Drop for DropAndRead {
             fn drop(&mut self) {
                 self.0.unwrap().run();
             }
@@ -353,7 +336,7 @@ mod tests {
             let var = cx.create_variable(DropAndRead(None));
             // Last creadted drop first.
             let eff = cx.create_effect(|_| ());
-            var.get_mut().0 = Some(eff);
+            var.write(|v| v.0 = Some(eff));
         });
     }
 }
