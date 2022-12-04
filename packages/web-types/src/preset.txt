@@ -1,0 +1,1126 @@
++ARIA {
+    aria_activedescendant : string,
+    aria_atomic           : boolean,
+    aria_autocomplete     : AriaAutoComplete(
+        "none"
+        "inline"
+        "list"
+        "both"
+    ),
+    aria_busy             : boolean,
+    aria_checked          : AriaChecked("false" "mixed" "true"),
+    aria_colcount         : number,
+    aria_colindex         : number,
+    aria_colspan          : number,
+    aria_controls         : string,
+    aria_current          : AriaCurrent(
+        "false"
+        "true"
+        "page"
+        "step"
+        "location"
+        "date"
+        "time"
+    ),
+    aria_describedby      : string,
+    aria_details          : string,
+    aria_disabled         : boolean,
+    aria_dropeffect       : AriaDropEffect(
+        "none"
+        "copy"
+        "execute"
+        "link"
+        "move"
+        "popup"
+    ),
+    aria_errormessage     : string,
+    aria_expanded         : boolean,
+    aria_flowto           : string,
+    aria_grabbed          : boolean,
+    aria_haspopup         : AriaHasPopup(
+        "false"
+        "true"
+        "menu"
+        "listbox"
+        "tree"
+        "grid"
+        "dialog"
+    ),
+    aria_hidden           : boolean,
+    aria_invalid          : AriaInvalid(
+        "false"
+        "true"
+        "grammar"
+        "spelling"
+    ),
+    aria_keyshortcuts     : string,
+    aria_label            : string,
+    aria_labelledby       : string,
+    aria_level            : number,
+    aria_live             : AriaLive("off" "assertive" "polite"),
+    aria_modal            : boolean,
+    aria_multiline        : boolean,
+    aria_multiselectable  : boolean,
+    aria_orientation      : AriaOrientation("horizontal" "vertical"),
+    aria_owns             : string,
+    aria_placeholder      : string,
+    aria_posinset         : number,
+    aria_pressed          : AriaPressed("false" "mixed" "true"),
+    aria_readonly         : boolean,
+    aria_relevant         : string,
+    aria_required         : boolean,
+    aria_roledescription  : string,
+    aria_rowcount         : number,
+    aria_rowindex         : number,
+    aria_rowspan          : number,
+    aria_selected         : boolean,
+    aria_setsize          : number,
+    aria_sort             : AriaSort(
+        "none"
+        "ascending"
+        "descending"
+        "other"
+    ),
+    aria_valuemax         : number,
+    aria_valuemin         : number,
+    aria_valuenow         : number,
+    aria_valuetext        : string,
+}
+
++ARIA_RULE {
+    role            : AriaRole(
+        "alert"
+        "alertdialog"
+        "application"
+        "article"
+        "banner"
+        "button"
+        "cell"
+        "checkbox"
+        "columnheader"
+        "combobox"
+        "complementary"
+        "contentinfo"
+        "definition"
+        "dialog"
+        "directory"
+        "document"
+        "feed"
+        "figure"
+        "form"
+        "grid"
+        "gridcell"
+        "group"
+        "heading"
+        "img"
+        "link"
+        "list"
+        "listbox"
+        "listitem"
+        "log"
+        "main"
+        "marquee"
+        "math"
+        "menu"
+        "menubar"
+        "menuitem"
+        "menuitemcheckbox"
+        "menuitemradio"
+        "navigation"
+        "none"
+        "note"
+        "option"
+        "presentation"
+        "progressbar"
+        "radio"
+        "radiogroup"
+        "region"
+        "row"
+        "rowgroup"
+        "rowheader"
+        "scrollbar"
+        "search"
+        "searchbox"
+        "separator"
+        "slider"
+        "spinbutton"
+        "status"
+        "switch"
+        "tab"
+        "table"
+        "tablist"
+        "tabpanel"
+        "term"
+        "textbox"
+        "timer"
+        "toolbar"
+        "tooltip"
+        "tree"
+        "treegrid"
+        "treeitem"
+    ),
+}
+
++HTML {
+    +ARIA,
+    +ARIA_RULE,
+    // Attributes
+    about           : string,
+    accesskey       : string,
+    autocapitalize  : string,
+    autocorrect     : string,
+    autosave        : string,
+    class           : string,
+    color           : string,
+    contenteditable : ContentEditable("true" "false" "inherit"),
+    contextmenu     : string,
+    datatype        : string,
+    dir             : string,
+    draggable       : boolean,
+    hidden          : boolean,
+    id              : string,
+    inlist          : string,
+    inputmode       : InputMode(
+        "none"
+        "text"
+        "tel"
+        "url"
+        "email"
+        "numeric"
+        "decimal"
+        "search"
+    ),
+    is              : string,
+    itemid          : string,
+    itemprop        : string,
+    itemref         : string,
+    itemscope       : boolean,
+    itemtype        : string,
+    lang            : string,
+    nonce           : string,
+    prefix          : string,
+    property        : string,
+    radiogroup      : string,
+    resource        : string,
+    results         : number,
+    security        : string,
+    slot            : string,
+    spellcheck      : boolean,
+    // style        : CSSProperties,
+    tabindex        : number,
+    title           : string,
+    translate       : Translate("yes" "no"),
+    typeof_         : string,
+    unselectable    : Unselectable("on" "off"),
+    vocab           : string,
+
+    // Events
+    @abort              : Event,
+    @animationend       : AnimationEvent,
+    @animationiteration : AnimationEvent,
+    @animationstart     : AnimationEvent,
+    @auxclick           : MouseEvent,
+    @beforeinput        : Event,
+    @blur               : FocusEvent,
+    @canplay            : Event,
+    @canplaythrough     : Event,
+    @change             : Event,
+    @click              : MouseEvent,
+    @compositionend     : CompositionEvent,
+    @compositionstart   : CompositionEvent,
+    @compositionupdate  : CompositionEvent,
+    @contextmenu        : MouseEvent,
+    @copy               : ClipboardEvent,
+    @cut                : ClipboardEvent,
+    @doubleclick        : MouseEvent,
+    @drag               : DragEvent,
+    @dragend            : DragEvent,
+    @dragenter          : DragEvent,
+    @dragexit           : DragEvent,
+    @dragleave          : DragEvent,
+    @dragover           : DragEvent,
+    @dragstart          : DragEvent,
+    @drop               : DragEvent,
+    @durationchange     : Event,
+    @emptied            : Event,
+    @encrypted          : Event,
+    @ended              : Event,
+    @error              : Event,
+    @focus              : FocusEvent,
+    @input              : Event,
+    @invalid            : Event,
+    @keydown            : KeyboardEvent,
+    @keypress           : KeyboardEvent,
+    @keyup              : KeyboardEvent,
+    @load               : Event,
+    @loadstart          : Event,
+    @loadeddata         : Event,
+    @loadedmetadata     : Event,
+    @mousedown          : MouseEvent,
+    @mouseenter         : MouseEvent,
+    @mouseleave         : MouseEvent,
+    @mousemove          : MouseEvent,
+    @mouseout           : MouseEvent,
+    @mouseover          : MouseEvent,
+    @mouseup            : MouseEvent,
+    @paste              : ClipboardEvent,
+    @pause              : Event,
+    @play               : Event,
+    @playing            : Event,
+    @pointercancel      : PointerEvent,
+    @pointerdown        : PointerEvent,
+    @pointerenter       : PointerEvent,
+    @pointerleave       : PointerEvent,
+    @pointermove        : PointerEvent,
+    @pointerout         : PointerEvent,
+    @pointerover        : PointerEvent,
+    @pointerup          : PointerEvent,
+    @progress           : Event,
+    @ratechange         : Event,
+    @reset              : Event,
+    @resize             : Event,
+    @scroll             : UiEvent,
+    @seeked             : Event,
+    @seeking            : Event,
+    @select             : Event,
+    @stalled            : Event,
+    @submit             : Event,
+    @suspend            : Event,
+    @timeupdate         : Event,
+    @touchcancel        : TouchEvent,
+    @touchend           : TouchEvent,
+    @touchmove          : TouchEvent,
+    @touchstart         : TouchEvent,
+    @transitionend      : TransitionEvent,
+    @volumechange       : Event,
+    @waiting            : Event,
+    @wheel              : WheelEvent,
+}
+
++MEDIA {
+    +HTML,
+    autoplay     : boolean,
+    controls     : string,
+    controlslist : string,
+    crossorigin  : string,
+    loop_        : boolean,
+    mediagroup   : string,
+    muted        : boolean,
+    playsinline  : boolean,
+    preload      : string,
+    src          : string,
+}
+
++REFERRER_POLICY {
+    referrerpolicy: ReferrerPolicy(
+        "no-referrer"
+        "no-referrer-when-downgrade"
+        "origin"
+        "origin-when-cross-origin"
+        "same-origin"
+        "strict-origin"
+        "strict-origin-when-cross-origin"
+        "unsafe-url"
+    ),
+}
+
++TABLE_CELL_ALIGIN {
+    align: TableCellAlign(
+        "left"
+        "center"
+        "right"
+        "justify"
+        "char"
+    ),
+}
+
++LOADING {
+    loading: Loading("eager" "lazy"),
+}
+
+a => HtmlAnchorElement {
+    +HTML,
+    +REFERRER_POLICY,
+    download : string,
+    href     : string,
+    hreflang : string,
+    media    : string,
+    ping     : string,
+    rel      : string,
+    target   : string,
+    type_    : string,
+}
+
+abbr => HtmlElement {
+    +HTML,
+}
+
+address => HtmlElement {
+    +HTML,
+}
+
+area => HtmlAreaElement {
+    +HTML,
+    +REFERRER_POLICY,
+    alt            : string,
+    coords         : string,
+    download       : string,
+    href           : string,
+    hreflang       : string,
+    media          : string,
+    rel            : string,
+    shape          : string,
+    target         : string,
+}
+
+article => HtmlElement {
+    +HTML,
+}
+
+aside => HtmlElement {
+    +HTML,
+}
+
+audio => HtmlAudioElement {
+    +MEDIA,
+}
+
+b => HtmlElement {
+    +HTML,
+}
+
+base => HtmlBaseElement {
+    +HTML,
+    href   : string,
+    target : string,
+}
+
+bdi => HtmlElement {
+    +HTML,
+}
+
+bdo => HtmlElement {
+    +HTML,
+}
+
+big => HtmlElement {
+    +HTML,
+}
+
+blockquote => HtmlQuoteElement {
+    +HTML,
+    cite: string,
+}
+
+body => HtmlBodyElement {
+    +HTML,
+}
+
+br => HtmlBrElement {
+    +HTML,
+}
+
+button => HtmlButtonElement {
+    +HTML,
+    autofocus      : boolean,
+    disabled       : boolean,
+    form           : string,
+    formaction     : string,
+    formenctype    : string,
+    formmethod     : string,
+    formnovalidate : boolean,
+    formtarget     : string,
+    name           : string,
+    type_          : ButtonType("submit" "reset" "button"),
+    value          : string,
+}
+
+canvas => HtmlCanvasElement {
+    +HTML,
+    height : string,
+    width  : string,
+}
+
+caption => HtmlTableCaptionElement {
+    +HTML,
+}
+
+cite => HtmlElement {
+    +HTML,
+}
+
+code => HtmlElement {
+    +HTML,
+}
+
+col => HtmlTableColElement {
+    +HTML,
+    height : string,
+    width  : string,
+}
+
+colgroup => HtmlTableColElement {
+    +HTML,
+    span: number,
+}
+
+data => HtmlDataElement {
+    +HTML,
+    value: string,
+}
+
+datalist => HtmlDataListElement {
+    +HTML,
+    open    : boolean,
+    @toggle : Event,
+}
+
+dd => HtmlElement {
+    +HTML,
+}
+
+del => HtmlModElement {
+    +HTML,
+    cite     : string,
+    datetime : string,
+}
+
+details => HtmlDetailsElement {
+    +HTML,
+    open    : boolean,
+    @toggle : Event,
+}
+
+dfn => HtmlElement {
+    +HTML,
+}
+
+dialog => HtmlDialogElement {
+    +HTML,
+    open    : boolean,
+    @cancel : Event,
+    @close  : Event,
+}
+
+div => HtmlDivElement {
+    +HTML,
+}
+
+dl => HtmlDListElement {
+    +HTML,
+}
+
+dt => HtmlElement {
+    +HTML,
+}
+
+em => HtmlElement {
+    +HTML,
+}
+
+embed => HtmlEmbedElement {
+    +HTML,
+    height : string,
+    src    : string,
+    type_  : string,
+    width  : string,
+}
+
+fieldset => HtmlFieldSetElement {
+    +HTML,
+    disabled : boolean,
+    form     : string,
+    name     : string,
+}
+
+figcaption => HtmlElement {
+    +HTML,
+}
+
+figure => HtmlElement {
+    +HTML,
+}
+
+footer => HtmlElement {
+    +HTML,
+}
+
+form => HtmlFormElement {
+    +HTML,
+    accept_charset : string,
+    action         : string,
+    autocomplete   : string,
+    enctype        : string,
+    method         : string,
+    name           : string,
+    novalidate     : boolean,
+    target         : string,
+    rel            : string,
+}
+
+h1 => HtmlHeadingElement {
+    +HTML,
+}
+
+h2 => HtmlHeadingElement {
+    +HTML,
+}
+
+h3 => HtmlHeadingElement {
+    +HTML,
+}
+
+h4 => HtmlHeadingElement {
+    +HTML,
+}
+
+h5 => HtmlHeadingElement {
+    +HTML,
+}
+
+h6 => HtmlHeadingElement {
+    +HTML,
+}
+
+head => HtmlHeadElement {
+    +HTML,
+}
+
+header => HtmlElement {
+    +HTML,
+}
+
+hgroup => HtmlElement {
+    +HTML,
+}
+
+hr => HtmlHrElement {
+    +HTML,
+}
+
+html => HtmlHtmlElement {
+    +HTML,
+    manifest: string,
+}
+
+i => HtmlElement {
+    +HTML,
+}
+
+iframe => HtmlIFrameElement {
+    +HTML,
+    +REFERRER_POLICY,
+    +LOADING,
+    allow             : string,
+    allowfullscreen   : boolean,
+    allowtransparency : boolean,
+    frameborder       : string,
+    height            : string,
+    marginheight      : number,
+    marginwidth       : number,
+    name              : string,
+    sandbox           : string,
+    scrolling         : string,
+    seamless          : boolean,
+    src               : string,
+    srcdoc            : string,
+    width             : string,
+}
+
+img => HtmlImageElement {
+    +HTML,
+    +REFERRER_POLICY,
+    +LOADING,
+    alt            : string,
+    crossorigin    : string,
+    decoding       : ImgDecoding("async" "auto" "sync"),
+    height         : string,
+    sizes          : string,
+    src            : string,
+    srcset         : string,
+    usemap         : string,
+    width          : string,
+}
+
++INPUT_TYPE {
+    type_: InputType(
+        "button"
+        "checkbox"
+        "color"
+        "date"
+        "datetime-local"
+        "email"
+        "file"
+        "hidden"
+        "image"
+        "month"
+        "number"
+        "password"
+        "radio"
+        "range"
+        "reset"
+        "search"
+        "submit"
+        "tel"
+        "text"
+        "time"
+        "url"
+        "week"
+    ),
+}
+
+input => HtmlInputElement {
+    +HTML,
+    accept         : string,
+    alt            : string,
+    autocomplete   : string,
+    autofocus      : boolean,
+    capture        : InputCapture(
+        "true"
+        "false"
+        "user"
+        "environment"
+    ),
+    checked        : boolean,
+    crossorigin    : string,
+    disabled       : boolean,
+    enterkeyhint   : InputEnterKeyHint(
+        "enter"
+        "done"
+        "go"
+        "next"
+        "previous"
+        "search"
+        "send"
+    ),
+    form           : string,
+    formaction     : string,
+    formenctype    : string,
+    formmethod     : string,
+    formnovalidate : boolean,
+    formtarget     : string,
+    height         : string,
+    list           : string,
+    max            : string,
+    maxlength      : number,
+    min            : string,
+    minlength      : number,
+    multiple       : boolean,
+    name           : string,
+    pattern        : string,
+    placeholder    : string,
+    readonly       : boolean,
+    required       : boolean,
+    size           : number,
+    src            : string,
+    step           : string,
+    value          : string,
+    width          : string,
+}
+
+ins => HtmlModElement {
+    +HTML,
+    cite     : string,
+    datetime : string,
+}
+
+kbd => HtmlElement {
+    +HTML,
+}
+
+keygen => HtmlElement {
+    +HTML,
+    autofocus : boolean,
+    challenge : string,
+    disabled  : boolean,
+    form      : string,
+    keyparams : string,
+    keytype   : string,
+    name      : string,
+}
+
+label => HtmlLabelElement {
+    +HTML,
+    for_ : string,
+    form : string,
+}
+
+legend => HtmlLegendElement {
+    +HTML,
+}
+
+li => HtmlLiElement {
+    +HTML,
+    value: string,
+}
+
+link => HtmlLinkElement {
+    +HTML,
+    +REFERRER_POLICY,
+    as_         : string,
+    charset     : string,
+    crossorigin : string,
+    href        : string,
+    hreflang    : string,
+    imagesizes  : string,
+    imagesrcset : string,
+    integrity   : string,
+    media       : string,
+    rel         : string,
+    sizes       : string,
+    type_       : string,
+}
+
+main => HtmlElement {
+    +HTML,
+}
+
+map => HtmlMapElement {
+    +HTML,
+    name: string,
+}
+
+mark => HtmlElement {
+    +HTML,
+}
+
+menu => HtmlMenuElement {
+    +HTML,
+    type_: string,
+}
+
+menuitem => HtmlMenuItemElement {
+    +HTML,
+    autoplay     : boolean,
+    controls     : boolean,
+    controlslist : string,
+    crossorigin  : string,
+    loop_        : boolean,
+    mediagroup   : string,
+    muted        : boolean,
+    playsinline  : boolean,
+    preload      : string,
+    src          : string,
+}
+
+meta => HtmlMetaElement {
+    +HTML,
+    charset    : string,
+    content    : string,
+    http_equiv : string,
+    media      : string,
+    name       : string,
+}
+
+meter => HtmlMeterElement {
+    +HTML,
+    form    : string,
+    high    : number,
+    low     : number,
+    max     : string ,
+    min     : string ,
+    optimum : number,
+    value   : string,
+}
+
+nav => HtmlElement {
+    +HTML,
+}
+
+noscript => HtmlElement {
+    +HTML,
+}
+
+object => HtmlObjectElement {
+    +HTML,
+    classid : string,
+    data    : string,
+    form    : string,
+    height  : string,
+    name    : string,
+    type_   : string,
+    usemap  : string,
+    width   : string,
+    wmode   : string,
+}
+
+ol => HtmlOListElement {
+    +HTML,
+    reversed : boolean,
+    start    : number,
+    type_    : string,
+}
+
+optgroup => HtmlOptGroupElement {
+    +HTML,
+    disabled : boolean,
+    label    : string,
+}
+
+option => HtmlOptionElement {
+    +HTML,
+    disabled : boolean,
+    label    : string,
+    selected : boolean,
+    value    : string,
+}
+
+output => HtmlOutputElement {
+    +HTML,
+    form : string,
+    for_ : string,
+    name : string,
+}
+
+p => HtmlParagraphElement {
+    +HTML,
+}
+
+param => HtmlParamElement {
+    +HTML,
+    name  : string,
+    value : string,
+}
+
+picture => HtmlPictureElement {
+    +HTML,
+}
+
+pre => HtmlPreElement {
+    +HTML,
+}
+
+progress => HtmlProgressElement {
+    +HTML,
+    max   : string,
+    value : string,
+}
+
+q => HtmlQuoteElement {
+    +HTML,
+    cite: string,
+}
+
+rp => HtmlElement {
+    +HTML,
+}
+
+rt => HtmlElement {
+    +HTML,
+}
+
+ruby => HtmlElement {
+    +HTML,
+}
+
+s => HtmlElement {
+    +HTML,
+}
+
+samp => HtmlElement {
+    +HTML,
+}
+
+script => HtmlScriptElement {
+    +HTML,
+    +REFERRER_POLICY,
+    async_      : boolean,
+    charset     : string,
+    crossorigin : string,
+    defer       : boolean,
+    integrity   : string,
+    nomodule    : boolean,
+    src         : string,
+    type_       : string,
+}
+
+section => HtmlElement {
+    +HTML,
+}
+
+select => HtmlSelectElement {
+    +HTML,
+    autocomplete : string,
+    autofocus    : boolean,
+    disabled     : boolean,
+    form         : string,
+    multiple     : boolean,
+    name         : string,
+    required     : boolean,
+    size         : number,
+    value        : string,
+}
+
+slot => HtmlSlotElement {
+    +HTML,
+    name: string,
+}
+
+small => HtmlElement {
+    +HTML,
+}
+
+source => HtmlSourceElement {
+    +HTML,
+    height : string,
+    media  : string,
+    sizes  : string,
+    src    : string,
+    srcset : string,
+    type_  : string,
+    width  : string,
+}
+
+span => HtmlSpanElement {
+    +HTML,
+}
+
+strong => HtmlElement {
+    +HTML,
+}
+
+style => HtmlStyleElement {
+    +HTML,
+    media  : string,
+    scoped : boolean,
+    type_  : string,
+}
+
+sub => HtmlElement {
+    +HTML,
+}
+
+summary => HtmlElement {
+    +HTML,
+}
+
+sup => HtmlElement {
+    +HTML,
+}
+
+table => HtmlTableElement {
+    +HTML,
+    align       : TableAlign("left" "center" "right"),
+    bgcolor     : string,
+    border      : number,
+    cellpadding : string,
+    cellspacing : string,
+    frame       : boolean,
+    rules       : TableRules(
+        "none"
+        "groups"
+        "rows"
+        "columns"
+        "all"
+    ),
+    summary     : string,
+    width       : string,
+}
+
+tbody => HtmlTableSectionElement {
+    +HTML,
+}
+
+td => HtmlTableCellElement {
+    +HTML,
+    +TABLE_CELL_ALIGIN,
+    abbr    : string,
+    colspan : number,
+    headers : string,
+    height  : string,
+    rowspan : number,
+    scope   : string,
+    valign  : TableCellVAlign(
+        "top"
+        "middle"
+        "bottom"
+        "baseline"
+    ),
+    width   : string,
+}
+
+template => HtmlTemplateElement {
+    +HTML,
+}
+
+textarea => HtmlTextAreaElement {
+    +HTML,
+    autocomplete : string,
+    autofocus    : boolean,
+    cols         : number,
+    dirname      : string,
+    disabled     : boolean,
+    form         : string,
+    maxlength    : number,
+    minlength    : number,
+    name         : string,
+    placeholder  : string,
+    readonly     : boolean,
+    required     : boolean,
+    rows         : number,
+    value        : string,
+    wrap         : string,
+}
+
+tfoot => HtmlTableSectionElement {
+    +HTML,
+}
+
+th => HtmlTableCellElement {
+    +HTML,
+    +TABLE_CELL_ALIGIN,
+    abbr    : string,
+    colspan : number,
+    headers : string,
+    rowspan : number,
+    scope   : string,
+}
+
+thead => HtmlTableSectionElement {
+    +HTML,
+}
+
+time => HtmlTimeElement {
+    +HTML,
+    datatime: string,
+}
+
+title => HtmlTitleElement {
+    +HTML,
+}
+
+tr => HtmlTableRowElement {
+    +HTML,
+}
+
+track => HtmlTrackElement {
+    +HTML,
+    default : boolean,
+    kind    : string,
+    label   : string,
+    src     : string,
+    srclang : string,
+}
+
+u => HtmlElement {
+    +HTML,
+}
+
+ul => HtmlUListElement {
+    +HTML,
+}
+
+var => HtmlElement {
+    +HTML,
+}
+
+video => HtmlVideoElement {
+    +MEDIA,
+    height      : string,
+    poster      : string,
+    width       : string,
+}
+
+wbr => HtmlElement {
+    +HTML,
+}

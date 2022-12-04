@@ -1,3 +1,6 @@
+[workspace]
+members = ["packages/*"]
+
 [package]
 name = "xframe"
 version = "0.0.0"

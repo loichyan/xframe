@@ -1,0 +1,115 @@
+[package]
+name = "xframe-web"
+version = "0.0.0"
+license = "MIT OR Apache-2.0"
+edition = "2021"
+
+[features]
+default = ["element", "event"]
+element = [
+    "web-sys/HtmlAnchorElement",
+    "web-sys/HtmlAreaElement",
+    "web-sys/HtmlAudioElement",
+    "web-sys/HtmlBaseElement",
+    "web-sys/HtmlBodyElement",
+    "web-sys/HtmlBrElement",
+    "web-sys/HtmlButtonElement",
+    "web-sys/HtmlCanvasElement",
+    "web-sys/HtmlDListElement",
+    "web-sys/HtmlDataElement",
+    "web-sys/HtmlDataListElement",
+    "web-sys/HtmlDetailsElement",
+    "web-sys/HtmlDialogElement",
+    "web-sys/HtmlDivElement",
+    "web-sys/HtmlElement",
+    "web-sys/HtmlEmbedElement",
+    "web-sys/HtmlFieldSetElement",
+    "web-sys/HtmlFormElement",
+    "web-sys/HtmlHeadElement",
+    "web-sys/HtmlHeadingElement",
+    "web-sys/HtmlHrElement",
+    "web-sys/HtmlHtmlElement",
+    "web-sys/HtmlIFrameElement",
+    "web-sys/HtmlImageElement",
+    "web-sys/HtmlInputElement",
+    "web-sys/HtmlLabelElement",
+    "web-sys/HtmlLegendElement",
+    "web-sys/HtmlLiElement",
+    "web-sys/HtmlLinkElement",
+    "web-sys/HtmlMapElement",
+    "web-sys/HtmlMenuElement",
+    "web-sys/HtmlMenuItemElement",
+    "web-sys/HtmlMetaElement",
+    "web-sys/HtmlMeterElement",
+    "web-sys/HtmlModElement",
+    "web-sys/HtmlOListElement",
+    "web-sys/HtmlObjectElement",
+    "web-sys/HtmlOptGroupElement",
+    "web-sys/HtmlOptionElement",
+    "web-sys/HtmlOutputElement",
+    "web-sys/HtmlParagraphElement",
+    "web-sys/HtmlParamElement",
+    "web-sys/HtmlPictureElement",
+    "web-sys/HtmlPreElement",
+    "web-sys/HtmlProgressElement",
+    "web-sys/HtmlQuoteElement",
+    "web-sys/HtmlScriptElement",
+    "web-sys/HtmlSelectElement",
+    "web-sys/HtmlSlotElement",
+    "web-sys/HtmlSourceElement",
+    "web-sys/HtmlSpanElement",
+    "web-sys/HtmlStyleElement",
+    "web-sys/HtmlTableCaptionElement",
+    "web-sys/HtmlTableCellElement",
+    "web-sys/HtmlTableColElement",
+    "web-sys/HtmlTableElement",
+    "web-sys/HtmlTableRowElement",
+    "web-sys/HtmlTableSectionElement",
+    "web-sys/HtmlTemplateElement",
+    "web-sys/HtmlTextAreaElement",
+    "web-sys/HtmlTimeElement",
+    "web-sys/HtmlTitleElement",
+    "web-sys/HtmlTrackElement",
+    "web-sys/HtmlUListElement",
+    "web-sys/HtmlVideoElement",
+]
+event = [
+    "web-sys/AnimationEvent",
+    "web-sys/ClipboardEvent",
+    "web-sys/CompositionEvent",
+    "web-sys/DragEvent",
+    "web-sys/Event",
+    "web-sys/FocusEvent",
+    "web-sys/KeyboardEvent",
+    "web-sys/MouseEvent",
+    "web-sys/PointerEvent",
+    "web-sys/TouchEvent",
+    "web-sys/TransitionEvent",
+    "web-sys/UiEvent",
+    "web-sys/WheelEvent",
+]
+
+[dependencies]
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+    "AddEventListenerOptions",
+    "Document",
+    "DomTokenList",
+    "Element",
+    "Event",
+    "Window",
+]
+
+[build-dependencies]
+heck = "0.4"
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = "1.0"
+
+[build-dependencies.web-types]
+path = "../web-types"
+features = ["preset"]

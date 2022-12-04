@@ -1,0 +1,315 @@
+use heck::{ToKebabCase, ToPascalCase};
+use proc_macro2::{Span, TokenStream};
+use quote::{format_ident, quote, ToTokens};
+use std::collections::{BTreeMap, BTreeSet};
+use syn::{Ident, LitStr};
+use web_types::JsType;
+
+trait StrExt: AsRef<str> {
+    fn to_lit_str(&self) -> LitStr {
+        LitStr::new(self.as_ref(), Span::call_site())
+    }
+
+    fn to_ident(&self) -> Ident {
+        Ident::new(self.as_ref(), Span::call_site())
+    }
+}
+
+impl<T: AsRef<str>> StrExt for T {}
+
+pub fn expand(input: &[web_types::Element]) -> TokenStream {
+    let mut elements = Vec::default();
+    let mut attr_types = BTreeMap::default();
+    let mut event_types = BTreeMap::default();
+    let mut element_types = BTreeSet::default();
+    for element in input {
+        let element = Element::from_web(element);
+        if !element_types.contains(&element.ty) {
+            element_types.insert(element.ty.clone());
+        }
+        for attr in element.attributes.iter() {
+            if let JsType::Literals(lits) = &attr.original.js_type {
+                if attr_types.contains_key(&attr.ty) {
+                    continue;
+                }
+                let variants = lits
+                    .values
+                    .iter()
+                    .map(|lit| Variant {
+                        name: lit.to_pascal_case().to_ident(),
+                        literal: lit.to_lit_str(),
+                    })
+                    .collect();
+                attr_types.insert(attr.ty.clone(), AttrLitType { variants });
+            }
+        }
+        for event in element.events.iter() {
+            if event_types.contains_key(&event.ty) {
+                continue;
+            }
+            let unstable = matches!(event.original.web_sys_type, "ClipboardEvent");
+            event_types.insert(event.ty.clone(), EventType { unstable });
+        }
+        elements.push(element);
+    }
+    let element_types = element_types.iter().map(QuoteElementType);
+    let attr_types = attr_types.iter().map(QuoteAttrType);
+    let event_types = event_types.iter().map(QuoteEventType);
+    let element_fns = elements.iter().map(Element::quote_fn);
+    let element_structs = elements.iter().map(Element::quote_struct);
+    quote!(
+        pub mod output {
+            use super::input;
+            pub mod elements { #(#element_fns)* }
+            pub mod element_types { #(#element_structs)* #(#element_types)* }
+            pub mod attr_types { #(#attr_types)* }
+            pub mod event_types { #(#event_types)* }
+        }
+    )
+}
+
+struct Element<'a> {
+    key: LitStr,
+    ty: Ident,
+    fn_: Ident,
+    struct_: Ident,
+    attributes: Vec<Attribute<'a>>,
+    events: Vec<Event<'a>>,
+}
+
+impl<'a> Element<'a> {
+    fn from_web(input: &'a web_types::Element<'a>) -> Self {
+        let web_types::Element {
+            name,
+            web_sys_type,
+            events,
+            attributes,
+        } = input;
+        Self {
+            key: name.to_kebab_case().to_lit_str(),
+            ty: web_sys_type.to_ident(),
+            fn_: name.to_ident(),
+            struct_: name.to_pascal_case().to_ident(),
+            attributes: attributes.iter().map(Attribute::from_web).collect(),
+            events: events.iter().map(Event::from_web).collect(),
+        }
+    }
+
+    fn quote_fn(&self) -> TokenStream {
+        let Self {
+            key, fn_, struct_, ..
+        } = self;
+        quote!(
+            pub fn #fn_<N: super::input::GenericNode>() -> super::element_types::#struct_<N> {
+                super::element_types::#struct_::<N>(super::input::BaseElement::create(#key))
+            }
+        )
+    }
+
+    fn quote_struct(&self) -> TokenStream {
+        let Self {
+            ty,
+            struct_,
+            attributes,
+            events,
+            ..
+        } = self;
+        let attr_fns = attributes.iter().map(Attribute::quote_fn);
+        let event_fns = events.iter().map(Event::quote_fn);
+        quote!(
+            pub struct #struct_<N>(pub(crate) super::input::BaseElement<N>);
+
+            impl<N> super::input::GenericElement for #struct_<N>
+            where
+                N: super::input::GenericNode,
+            {
+                type Node = N;
+                fn node(&self) -> &N {
+                    super::input::GenericElement::node(&self.0)
+                }
+                fn into_node(self) -> Self::Node {
+                    super::input::GenericElement::into_node(self.0)
+                }
+            }
+
+            impl<N> AsRef<super::element_types::#ty> for #struct_<N>
+            where
+                N: super::input::GenericNode + AsRef<::web_sys::Node>,
+            {
+                fn as_ref(&self) -> &super::element_types::#ty {
+                    self.0.as_web_sys_element()
+                }
+            }
+
+            impl<N: super::input::GenericNode> #struct_<N> { #(#attr_fns)* }
+
+            impl<N: super::input::GenericNode> #struct_<N> { #(#event_fns)* }
+        )
+    }
+}
+
+struct Attribute<'a> {
+    original: &'a web_types::Attribute<'a>,
+    key: LitStr,
+    generic: Option<TokenStream>,
+    ty: Ident,
+    fn_: Ident,
+}
+
+impl<'a> Attribute<'a> {
+    fn from_web(input: &'a web_types::Attribute<'a>) -> Self {
+        let web_types::Attribute { name, js_type } = input;
+        let mut generic = None;
+        let ty = match js_type {
+            JsType::Type(ty) => match *ty {
+                "string" => {
+                    generic = Some(quote!(T: super::input::AsCowStr,));
+                    "T".to_ident()
+                }
+                "number" => "i32".to_ident(),
+                "boolean" => "bool".to_ident(),
+                _ => panic!("unknown js type '{ty}'"),
+            },
+            JsType::Literals(lits) => lits.name.to_ident(),
+        };
+        Self {
+            original: input,
+            key: name.to_kebab_case().to_lit_str(),
+            generic,
+            ty,
+            fn_: name.to_ident(),
+        }
+    }
+
+    fn quote_fn(&self) -> TokenStream {
+        let Self {
+            original,
+            key,
+            generic,
+            ty,
+            fn_,
+        } = self;
+        let path = if let JsType::Literals(_) = original.js_type {
+            Some(quote!(super::attr_types::))
+        } else {
+            None
+        };
+        quote!(
+            pub fn #fn_<#generic>(self, val: #path #ty) -> Self {
+                self.0.set_attribute(#key, val);
+                self
+            }
+        )
+    }
+}
+
+struct Event<'a> {
+    original: &'a web_types::Event<'a>,
+    key: LitStr,
+    ty: Ident,
+    fn_: Ident,
+}
+
+impl<'a> Event<'a> {
+    fn from_web(input: &'a web_types::Event<'a>) -> Self {
+        let web_types::Event { name, web_sys_type } = input;
+        Self {
+            original: input,
+            key: name.to_kebab_case().to_lit_str(),
+            ty: web_sys_type.to_ident(),
+            fn_: format_ident!("on_{}", name.to_ident()),
+        }
+    }
+
+    fn quote_fn(&self) -> TokenStream {
+        let Self { key, ty, fn_, .. } = self;
+        quote!(
+            pub fn #fn_(
+                self,
+                handler: impl super::input::EventHandler<super::event_types::#ty>,
+            ) -> Self {
+                self.0.listen_event(#key, handler);
+                self
+            }
+        )
+    }
+}
+
+struct AttrLitType {
+    variants: Vec<Variant>,
+}
+
+struct Variant {
+    name: Ident,
+    literal: LitStr,
+}
+
+struct EventType {
+    unstable: bool,
+}
+
+struct QuoteEventType<'a>((&'a Ident, &'a EventType));
+
+impl ToTokens for QuoteEventType<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let Self((name, ty)) = self;
+        let active_cfg = if ty.unstable {
+            quote!(all(web_sys_unstable_apis, feature = "event"))
+        } else {
+            quote!(feature = "event")
+        };
+        quote!(
+            #[cfg(#active_cfg)]
+            pub type #name = ::web_sys::#name;
+            #[cfg(not(#active_cfg))]
+            pub type #name = ::web_sys::Event;
+        )
+        .to_tokens(tokens);
+    }
+}
+
+struct QuoteAttrType<'a>((&'a Ident, &'a AttrLitType));
+
+impl ToTokens for QuoteAttrType<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let Self((name, ty)) = self;
+        let variants = ty.variants.iter().map(|v| {
+            let Variant { name, literal } = v;
+            quote!(
+                #[doc = "Literal of `"]
+                #[doc = #literal]
+                #[doc = "`."]
+                #name
+            )
+        });
+        let arms = ty
+            .variants
+            .iter()
+            .map(|Variant { name, literal }| quote!(Self::#name => #literal));
+        quote!(
+            pub enum #name { #(#variants,)* }
+
+            impl super::input::AsCowStr for #name {
+                fn as_cow_str(&self) -> ::std::borrow::Cow<str> {
+                    super::input::cow_str_from_literal(match self { #(#arms,)* })
+                }
+            }
+        )
+        .to_tokens(tokens);
+    }
+}
+
+struct QuoteElementType<'a>(&'a Ident);
+
+impl ToTokens for QuoteElementType<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let Self(name) = self;
+        quote!(
+            #[cfg(feature = "element")]
+            pub type #name = ::web_sys::#name;
+            #[cfg(not(feature = "element"))]
+            pub type #name = ::web_sys::Element;
+        )
+        .to_tokens(tokens);
+    }
+}
