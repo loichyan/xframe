@@ -5,6 +5,25 @@ use std::collections::{BTreeMap, BTreeSet};
 use syn::{Ident, LitStr};
 use web_types::JsType;
 
+macro_rules! new_type_quote {
+    ($name:ident($($tt:tt)*)) => {
+        #[allow(non_camel_case_types)]
+        #[allow(clippy::upper_case_acronyms)]
+        struct $name;
+        impl ::quote::ToTokens for $name {
+            fn to_tokens(&self, tokens: &mut ::proc_macro2::TokenStream) {
+                ::quote::quote!($($tt)*).to_tokens(tokens);
+            }
+        }
+    };
+}
+
+new_type_quote!(INPUT(super::input));
+new_type_quote!(WEB_SYS(#INPUT::web_sys));
+new_type_quote!(ELEMENT_TYPES(super::element_types));
+new_type_quote!(EVENT_TYPES(super::event_types));
+new_type_quote!(ATTR_TYPES(super::attr_types));
+
 trait StrExt: AsRef<str> {
     fn to_lit_str(&self) -> LitStr {
         LitStr::new(self.as_ref(), Span::call_site())
@@ -100,8 +119,8 @@ impl<'a> Element<'a> {
             key, fn_, struct_, ..
         } = self;
         quote!(
-            pub fn #fn_<N: super::input::GenericNode>() -> super::element_types::#struct_<N> {
-                super::element_types::#struct_::<N>(super::input::BaseElement::create(#key))
+            pub fn #fn_<N: #INPUT::GenericNode>() -> #ELEMENT_TYPES::#struct_<N> {
+                #ELEMENT_TYPES::#struct_::<N>(#INPUT::BaseElement::create(#key))
             }
         )
     }
@@ -117,33 +136,33 @@ impl<'a> Element<'a> {
         let attr_fns = attributes.iter().map(Attribute::quote_fn);
         let event_fns = events.iter().map(Event::quote_fn);
         quote!(
-            pub struct #struct_<N>(pub(crate) super::input::BaseElement<N>);
+            pub struct #struct_<N>(pub(crate) #INPUT::BaseElement<N>);
 
-            impl<N> super::input::GenericElement for #struct_<N>
+            impl<N> #INPUT::GenericElement for #struct_<N>
             where
-                N: super::input::GenericNode,
+                N: #INPUT::GenericNode,
             {
                 type Node = N;
                 fn node(&self) -> &N {
-                    super::input::GenericElement::node(&self.0)
+                    #INPUT::GenericElement::node(&self.0)
                 }
                 fn into_node(self) -> Self::Node {
-                    super::input::GenericElement::into_node(self.0)
+                    #INPUT::GenericElement::into_node(self.0)
                 }
             }
 
-            impl<N> AsRef<super::element_types::#ty> for #struct_<N>
+            impl<N> AsRef<#ELEMENT_TYPES::#ty> for #struct_<N>
             where
-                N: super::input::GenericNode + AsRef<::web_sys::Node>,
+                N: #INPUT::GenericNode + AsRef<#WEB_SYS::Node>,
             {
-                fn as_ref(&self) -> &super::element_types::#ty {
+                fn as_ref(&self) -> &#ELEMENT_TYPES::#ty {
                     self.0.as_web_sys_element()
                 }
             }
 
-            impl<N: super::input::GenericNode> #struct_<N> { #(#attr_fns)* }
+            impl<N: #INPUT::GenericNode> #struct_<N> { #(#attr_fns)* }
 
-            impl<N: super::input::GenericNode> #struct_<N> { #(#event_fns)* }
+            impl<N: #INPUT::GenericNode> #struct_<N> { #(#event_fns)* }
         )
     }
 }
@@ -163,7 +182,7 @@ impl<'a> Attribute<'a> {
         let ty = match js_type {
             JsType::Type(ty) => match *ty {
                 "string" => {
-                    generic = Some(quote!(T: super::input::AsCowStr,));
+                    generic = Some(quote!(T: #INPUT::AsCowStr,));
                     "T".to_ident()
                 }
                 "number" => "i32".to_ident(),
@@ -190,7 +209,7 @@ impl<'a> Attribute<'a> {
             fn_,
         } = self;
         let path = if let JsType::Literals(_) = original.js_type {
-            Some(quote!(super::attr_types::))
+            Some(quote!(#ATTR_TYPES::))
         } else {
             None
         };
@@ -226,7 +245,7 @@ impl<'a> Event<'a> {
         quote!(
             pub fn #fn_(
                 self,
-                handler: impl super::input::EventHandler<super::event_types::#ty>,
+                handler: impl #INPUT::EventHandler<#EVENT_TYPES::#ty>,
             ) -> Self {
                 self.0.listen_event(#key, handler);
                 self
@@ -260,9 +279,9 @@ impl ToTokens for QuoteEventType<'_> {
         };
         quote!(
             #[cfg(#active_cfg)]
-            pub type #name = ::web_sys::#name;
+            pub type #name = #WEB_SYS::#name;
             #[cfg(not(#active_cfg))]
-            pub type #name = ::web_sys::Event;
+            pub type #name = #WEB_SYS::Event;
         )
         .to_tokens(tokens);
     }
@@ -289,9 +308,9 @@ impl ToTokens for QuoteAttrType<'_> {
         quote!(
             pub enum #name { #(#variants,)* }
 
-            impl super::input::AsCowStr for #name {
+            impl #INPUT::AsCowStr for #name {
                 fn as_cow_str(&self) -> ::std::borrow::Cow<str> {
-                    super::input::cow_str_from_literal(match self { #(#arms,)* })
+                    #INPUT::cow_str_from_literal(match self { #(#arms,)* })
                 }
             }
         )
@@ -306,9 +325,9 @@ impl ToTokens for QuoteElementType<'_> {
         let Self(name) = self;
         quote!(
             #[cfg(feature = "element")]
-            pub type #name = ::web_sys::#name;
+            pub type #name = #WEB_SYS::#name;
             #[cfg(not(feature = "element"))]
-            pub type #name = ::web_sys::Element;
+            pub type #name = #WEB_SYS::Element;
         )
         .to_tokens(tokens);
     }

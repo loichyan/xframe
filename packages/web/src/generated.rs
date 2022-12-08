@@ -1,9 +1,12 @@
 mod input {
-    pub(super) use crate::{
-        attr::{cow_str_from_literal, AsCowStr},
-        element::{BaseElement, GenericElement},
-        event::EventHandler,
-        node::GenericNode,
+    pub(super) use {
+        crate::{
+            attr::{cow_str_from_literal, AsCowStr},
+            element::{BaseElement, GenericElement},
+            event::EventHandler,
+            node::GenericNode,
+        },
+        ::web_sys,
     };
 }
 
