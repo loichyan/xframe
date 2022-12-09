@@ -5,8 +5,9 @@ license = "MIT OR Apache-2.0"
 edition = "2021"
 
 [features]
-default = ["element", "event"]
-element = [
+default = []
+extra = [ "extra-attributes", "extra-elements", "extra-events"]
+extra-elements = [
     "web-sys/HtmlAnchorElement",
     "web-sys/HtmlAreaElement",
     "web-sys/HtmlAudioElement",
@@ -73,7 +74,9 @@ element = [
     "web-sys/HtmlUListElement",
     "web-sys/HtmlVideoElement",
 ]
-event = [
+extra-attributes = ["extra-elements"]
+extra-events = [
+    "extra-elements",
     "web-sys/AnimationEvent",
     "web-sys/ClipboardEvent",
     "web-sys/CompositionEvent",
@@ -103,6 +106,9 @@ features = [
     "Event",
     "Window",
 ]
+
+[dependencies.xframe]
+path = "../.."
 
 [build-dependencies]
 heck = "0.4"

@@ -77,11 +77,14 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
     let element_fns = elements.iter().map(Element::quote_fn);
     let element_structs = elements.iter().map(Element::quote_struct);
     quote!(
+        #[cfg(feature = "extra-elements")]
         pub mod output {
             use super::input;
             pub mod elements { #(#element_fns)* }
             pub mod element_types { #(#element_structs)* #(#element_types)* }
+            #[cfg(feature = "extra-attributes")]
             pub mod attr_types { #(#attr_types)* }
+            #[cfg(feature = "extra-events")]
             pub mod event_types { #(#event_types)* }
         }
     )
@@ -109,7 +112,16 @@ impl<'a> Element<'a> {
             ty: web_sys_type.to_ident(),
             fn_: name.to_ident(),
             struct_: name.to_pascal_case().to_ident(),
-            attributes: attributes.iter().map(Attribute::from_web).collect(),
+            attributes: attributes
+                .iter()
+                .filter_map(|attr| {
+                    if attr.name == "class" {
+                        None
+                    } else {
+                        Some(Attribute::from_web(attr))
+                    }
+                })
+                .collect(),
             events: events.iter().map(Event::from_web).collect(),
         }
     }
@@ -138,31 +150,60 @@ impl<'a> Element<'a> {
         quote!(
             pub struct #struct_<N>(pub(crate) #INPUT::BaseElement<N>);
 
-            impl<N> #INPUT::GenericElement for #struct_<N>
-            where
-                N: #INPUT::GenericNode,
-            {
-                type Node = N;
-                fn node(&self) -> &N {
-                    #INPUT::GenericElement::node(&self.0)
-                }
-                fn into_node(self) -> Self::Node {
-                    #INPUT::GenericElement::into_node(self.0)
-                }
-            }
+            const _: () = {
+                use #INPUT::{AsCowStr, GenericElement, GenericNode};
 
-            impl<N> AsRef<#ELEMENT_TYPES::#ty> for #struct_<N>
-            where
-                N: #INPUT::GenericNode + AsRef<#WEB_SYS::Node>,
-            {
-                fn as_ref(&self) -> &#ELEMENT_TYPES::#ty {
-                    self.0.as_web_sys_element()
+                impl<N: GenericNode> GenericElement
+                for #struct_<N>
+                {
+                    type Node = N;
+                    fn into_node(self) -> Self::Node {
+                        GenericElement::into_node(self.0)
+                    }
                 }
-            }
 
-            impl<N: #INPUT::GenericNode> #struct_<N> { #(#attr_fns)* }
+                impl<N> AsRef<#ELEMENT_TYPES::#ty> for #struct_<N>
+                where
+                    N: GenericNode + AsRef<#WEB_SYS::Node>,
+                {
+                    fn as_ref(&self) -> &#ELEMENT_TYPES::#ty {
+                        self.0.as_web_sys_element()
+                    }
+                }
 
-            impl<N: #INPUT::GenericNode> #struct_<N> { #(#event_fns)* }
+                #[cfg(feature = "extra-attributes")]
+                impl<N: GenericNode> #struct_<N> { #(#attr_fns)* }
+
+                #[cfg(feature = "extra-events")]
+                impl<N: GenericNode> #struct_<N> { #(#event_fns)* }
+
+                impl<N: GenericNode> #struct_<N> {
+                    /// Add a class to this element.
+                    pub fn class<T: AsCowStr>(self, name: T) -> Self {
+                        self.0.node().add_class(name.as_cow_str());
+                        self
+                    }
+
+                    pub fn child<E>(self, element: E) -> Self
+                    where
+                        E: GenericElement<Node = N>,
+                    {
+                        self.0.node().append_child(element.into_node());
+                        self
+                    }
+
+                    pub fn children<I>(self, nodes: I) -> Self
+                    where
+                        I: IntoIterator<Item = N>,
+                    {
+                        let node = self.0.node();
+                        for child in nodes {
+                            node.append_child(child);
+                        }
+                        self
+                    }
+                }
+            };
         )
     }
 }
@@ -272,17 +313,18 @@ struct QuoteEventType<'a>((&'a Ident, &'a EventType));
 impl ToTokens for QuoteEventType<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self((name, ty)) = self;
-        let active_cfg = if ty.unstable {
-            quote!(all(web_sys_unstable_apis, feature = "event"))
+        if ty.unstable {
+            quote!(
+                #[cfg(web_sys_unstable_apis)]
+                pub type #name = #WEB_SYS::#name;
+                #[cfg(not(web_sys_unstable_apis))]
+                pub type #name = #WEB_SYS::Event;
+            )
         } else {
-            quote!(feature = "event")
-        };
-        quote!(
-            #[cfg(#active_cfg)]
-            pub type #name = #WEB_SYS::#name;
-            #[cfg(not(#active_cfg))]
-            pub type #name = #WEB_SYS::Event;
-        )
+            quote!(
+                pub type #name = #WEB_SYS::#name;
+            )
+        }
         .to_tokens(tokens);
     }
 }
@@ -324,10 +366,7 @@ impl ToTokens for QuoteElementType<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self(name) = self;
         quote!(
-            #[cfg(feature = "element")]
             pub type #name = #WEB_SYS::#name;
-            #[cfg(not(feature = "element"))]
-            pub type #name = #WEB_SYS::Element;
         )
         .to_tokens(tokens);
     }

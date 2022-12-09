@@ -1,5 +1,5 @@
 use crate::{event::EventHandlerWithOptions, Str};
-use wasm_bindgen::{JsCast, prelude::*};
+use wasm_bindgen::{prelude::*, JsCast};
 use web_sys::{Document, Window};
 
 pub trait GenericNode {
@@ -54,7 +54,9 @@ impl GenericNode for DomNode {
         self.node
             .add_event_listener_with_callback_and_add_event_listener_options(
                 &event,
-                &Closure::wrap(handler.handler).into_js_value().unchecked_into(),
+                &Closure::wrap(handler.handler)
+                    .into_js_value()
+                    .unchecked_into(),
                 &handler.options,
             )
             .unwrap();

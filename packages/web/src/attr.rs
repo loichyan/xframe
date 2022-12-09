@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 use wasm_bindgen::intern;
 
+#[cfg(feature = "extra-attributes")]
+#[doc(inline)]
 pub use crate::generated::output::attr_types::*;
 
 pub trait AsCowStr {
@@ -37,8 +39,4 @@ impl AsCowStr for i32 {
             i => i.to_string().into(),
         }
     }
-}
-
-pub(crate) fn cow_str_from_literal(s: &'static str) -> Cow<str> {
-    intern(s).into()
 }

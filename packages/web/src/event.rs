@@ -1,6 +1,7 @@
-use wasm_bindgen::JsCast;
 use web_sys::AddEventListenerOptions;
 
+#[cfg(feature = "extra-events")]
+#[doc(inline)]
 pub use crate::generated::output::event_types::*;
 
 pub struct EventHandlerWithOptions<Ev = web_sys::Event> {
@@ -8,21 +9,26 @@ pub struct EventHandlerWithOptions<Ev = web_sys::Event> {
     pub(crate) options: AddEventListenerOptions,
 }
 
-impl<Ev> EventHandlerWithOptions<Ev> {
-    pub(crate) fn erase_type(self) -> EventHandlerWithOptions
-    where
-        Ev: 'static + JsCast,
-    {
-        let Self {
-            mut handler,
-            options,
-        } = self;
-        EventHandlerWithOptions {
-            handler: Box::new(move |ev: web_sys::Event| (handler)(ev.unchecked_into())),
-            options,
+#[cfg(feature = "extra-events")]
+const _: () = {
+    use wasm_bindgen::JsCast;
+
+    impl<Ev> EventHandlerWithOptions<Ev> {
+        pub(crate) fn erase_type(self) -> EventHandlerWithOptions
+        where
+            Ev: 'static + wasm_bindgen::JsCast,
+        {
+            let Self {
+                mut handler,
+                options,
+            } = self;
+            EventHandlerWithOptions {
+                handler: Box::new(move |ev: web_sys::Event| (handler)(ev.unchecked_into())),
+                options,
+            }
         }
     }
-}
+};
 
 pub trait EventHandler<Ev>: Sized {
     fn into_event_handler(self) -> EventHandlerWithOptions<Ev>;
