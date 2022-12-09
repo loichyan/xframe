@@ -1,10 +1,10 @@
-use crate::{event::EventHandlerWithOptions, Str};
+use crate::{attr::Attribute, event::EventHandlerWithOptions, Str};
 use wasm_bindgen::{prelude::*, JsCast};
 use web_sys::{Document, Window};
 
 pub trait GenericNode {
     fn create(tag: Str) -> Self;
-    fn set_attribute(&self, name: Str, attr: Str);
+    fn set_attribute(&self, name: Str, attr: Attribute);
     fn add_class(&self, name: Str);
     fn listen_event(&self, event: Str, handler: EventHandlerWithOptions);
     fn append_child(&self, child: Self);
@@ -35,11 +35,13 @@ impl GenericNode for DomNode {
         }
     }
 
-    fn set_attribute(&self, name: Str, val: Str) {
-        self.node
-            .unchecked_ref::<web_sys::Element>()
-            .set_attribute(&name, &val)
-            .unwrap();
+    fn set_attribute(&self, name: Str, val: Attribute) {
+        val.read(|val| {
+            self.node
+                .unchecked_ref::<web_sys::Element>()
+                .set_attribute(&name, val)
+                .unwrap();
+        });
     }
 
     fn add_class(&self, name: Str) {

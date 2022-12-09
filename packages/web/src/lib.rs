@@ -7,10 +7,10 @@ pub mod event;
 
 #[doc(inline)]
 pub use self::{
-    attr::AsCowStr,
+    attr::{Attribute, IntoAttribute},
     element::GenericElement,
     event::{EventHandler, EventHandlerWithOptions},
     node::{DomNode, GenericNode},
 };
 
-type Str<'a> = std::borrow::Cow<'a, str>;
+type Str = std::borrow::Cow<'static, str>;

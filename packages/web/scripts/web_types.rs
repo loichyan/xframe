@@ -151,7 +151,8 @@ impl<'a> Element<'a> {
             pub struct #struct_<N>(pub(crate) #INPUT::BaseElement<N>);
 
             const _: () = {
-                use #INPUT::{AsCowStr, GenericElement, GenericNode};
+                use #INPUT::{GenericElement, GenericNode, IntoAttribute};
+                use std::borrow::Cow;
 
                 impl<N: GenericNode> GenericElement
                 for #struct_<N>
@@ -178,9 +179,18 @@ impl<'a> Element<'a> {
                 impl<N: GenericNode> #struct_<N> { #(#event_fns)* }
 
                 impl<N: GenericNode> #struct_<N> {
+                    pub fn attribute<K: Into<Cow<'static, str>>, V: IntoAttribute>(
+                        self,
+                        name: K,
+                        val: V,
+                    ) -> Self {
+                        self.0.node().set_attribute(name.into(), val.into_attribute());
+                        self
+                    }
+
                     /// Add a class to this element.
-                    pub fn class<T: AsCowStr>(self, name: T) -> Self {
-                        self.0.node().add_class(name.as_cow_str());
+                    pub fn class<T: Into<Cow<'static, str>>>(self, name: T) -> Self {
+                        self.0.node().add_class(name.into());
                         self
                     }
 
@@ -223,7 +233,7 @@ impl<'a> Attribute<'a> {
         let ty = match js_type {
             JsType::Type(ty) => match *ty {
                 "string" => {
-                    generic = Some(quote!(T: #INPUT::AsCowStr,));
+                    generic = Some(quote!(T: #INPUT::IntoAttribute,));
                     "T".to_ident()
                 }
                 "number" => "i32".to_ident(),
@@ -350,9 +360,9 @@ impl ToTokens for QuoteAttrType<'_> {
         quote!(
             pub enum #name { #(#variants,)* }
 
-            impl #INPUT::AsCowStr for #name {
-                fn as_cow_str(&self) -> ::std::borrow::Cow<str> {
-                    #INPUT::cow_str_from_literal(match self { #(#arms,)* })
+            impl #INPUT::IntoAttribute for #name {
+                fn into_attribute(self) -> #INPUT::Attribute {
+                    #INPUT::Attribute::from_literal(match self { #(#arms,)* })
                 }
             }
         )

@@ -1,3 +1,5 @@
+use wasm_bindgen::{intern, JsCast};
+
 use crate::GenericNode;
 
 #[cfg(feature = "extra-elements")]
@@ -15,62 +17,51 @@ pub trait GenericElement: Sized {
     fn into_node(self) -> Self::Node;
 }
 
-#[cfg(feature = "extra-elements")]
 pub(crate) struct BaseElement<N>(N);
 
-#[cfg(feature = "extra-elements")]
-const _: () = {
-    use wasm_bindgen::{intern, JsCast};
+impl<N: GenericNode> GenericElement for BaseElement<N> {
+    type Node = N;
+    fn into_node(self) -> Self::Node {
+        self.0
+    }
+}
 
-    impl<N: GenericNode> GenericElement for BaseElement<N> {
-        type Node = N;
-        fn into_node(self) -> Self::Node {
-            self.0
-        }
+#[allow(dead_code)]
+impl<N: GenericNode> BaseElement<N> {
+    pub fn create(tag: &'static str) -> Self {
+        Self(N::create(intern(tag).into()))
     }
 
-    #[cfg(feature = "extra-elements")]
-    impl<N: GenericNode> BaseElement<N> {
-        pub fn create(tag: &'static str) -> Self {
-            Self(N::create(intern(tag).into()))
-        }
-
-        pub fn node(&self) -> &N {
-            &self.0
-        }
-
-        pub fn as_web_sys_element<T>(&self) -> &T
-        where
-            N: AsRef<web_sys::Node>,
-            T: JsCast,
-        {
-            self.0.as_ref().unchecked_ref()
-        }
+    pub fn node(&self) -> &N {
+        &self.0
     }
 
-    #[cfg(feature = "extra-attributes")]
-    impl<N: GenericNode> BaseElement<N> {
-        pub fn set_attribute<T>(&self, name: &'static str, val: T)
-        where
-            T: crate::attr::AsCowStr,
-        {
-            self.0.set_attribute(intern(name).into(), val.as_cow_str());
-        }
+    pub fn as_web_sys_element<T>(&self) -> &T
+    where
+        N: AsRef<web_sys::Node>,
+        T: JsCast,
+    {
+        self.0.as_ref().unchecked_ref()
     }
 
-    #[cfg(feature = "extra-events")]
-    impl<N: GenericNode> BaseElement<N> {
-        pub fn listen_event<Ev>(
-            &self,
-            event: &'static str,
-            handler: impl crate::event::EventHandler<Ev>,
-        ) where
-            Ev: 'static + JsCast,
-        {
-            self.0.listen_event(
-                intern(event).into(),
-                handler.into_event_handler().erase_type(),
-            );
-        }
+    pub fn set_attribute<T>(&self, name: &'static str, val: T)
+    where
+        T: crate::attr::IntoAttribute,
+    {
+        self.0
+            .set_attribute(intern(name).into(), val.into_attribute());
     }
-};
+
+    pub fn listen_event<Ev>(
+        &self,
+        event: &'static str,
+        handler: impl crate::event::EventHandler<Ev>,
+    ) where
+        Ev: 'static + JsCast,
+    {
+        self.0.listen_event(
+            intern(event).into(),
+            handler.into_event_handler().erase_type(),
+        );
+    }
+}

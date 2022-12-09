@@ -6,7 +6,7 @@ edition = "2021"
 
 [features]
 default = []
-extra = [ "extra-attributes", "extra-elements", "extra-events"]
+extra = ["extra-elements", "extra-attributes", "extra-events"]
 extra-elements = [
     "web-sys/HtmlAnchorElement",
     "web-sys/HtmlAreaElement",
