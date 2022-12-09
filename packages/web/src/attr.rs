@@ -6,18 +6,17 @@ use xframe::Signal;
 #[doc(inline)]
 pub use crate::generated::output::attr_types::*;
 
+#[derive(Clone)]
 pub enum Attribute {
     Static(&'static str),
-    Owned(String),
     Shared(Rc<String>),
-    Reactive(Box<dyn Fn() -> Attribute>),
+    Reactive(Rc<dyn Fn() -> Attribute>),
 }
 
 impl Attribute {
     pub fn read<U>(&self, f: impl FnOnce(&str) -> U) -> U {
         match self {
             Self::Static(t) => f(t),
-            Self::Owned(t) => f(t),
             Self::Shared(t) => f(t),
             Self::Reactive(t) => (t)().read(f),
         }
@@ -29,16 +28,28 @@ impl Attribute {
     }
 }
 
-pub trait IntoAttribute {
+pub trait IntoAttribute: 'static {
     fn into_attribute(self) -> Attribute;
+}
+
+impl IntoAttribute for Attribute {
+    fn into_attribute(self) -> Attribute {
+        self
+    }
 }
 
 impl IntoAttribute for Cow<'static, str> {
     fn into_attribute(self) -> Attribute {
         match self {
             Cow::Borrowed(s) => Attribute::Static(s),
-            Cow::Owned(s) => Attribute::Owned(s),
+            Cow::Owned(s) => Attribute::Shared(Rc::new(s)),
         }
+    }
+}
+
+impl IntoAttribute for String {
+    fn into_attribute(self) -> Attribute {
+        Attribute::Shared(Rc::new(self))
     }
 }
 
@@ -48,7 +59,7 @@ where
     U: IntoAttribute,
 {
     fn into_attribute(self) -> Attribute {
-        Attribute::Reactive(Box::new(move || (self)().into_attribute()))
+        Attribute::Reactive(Rc::new(move || (self)().into_attribute()))
     }
 }
 
@@ -57,7 +68,7 @@ where
     T: Clone + IntoAttribute,
 {
     fn into_attribute(self) -> Attribute {
-        Attribute::Reactive(Box::new(move || self.get().into_attribute()))
+        Attribute::Reactive(Rc::new(move || self.get().into_attribute()))
     }
 }
 
@@ -83,7 +94,6 @@ macro_rules! impl_for_wrapped_types {
 
 impl_for_wrapped_types! {
     Static => &'static str,
-    Owned  => String,
     Shared => Rc<String>,
 }
 

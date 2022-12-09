@@ -2,7 +2,7 @@ use crate::{attr::Attribute, event::EventHandlerWithOptions, Str};
 use wasm_bindgen::{prelude::*, JsCast};
 use web_sys::{Document, Window};
 
-pub trait GenericNode {
+pub trait GenericNode: 'static + Clone {
     fn create(tag: Str) -> Self;
     fn set_attribute(&self, name: Str, attr: Attribute);
     fn add_class(&self, name: Str);
@@ -15,6 +15,7 @@ thread_local! {
     static DOCUMENT: Document = WINDOW.with(Window::document).unwrap();
 }
 
+#[derive(Clone)]
 pub struct DomNode {
     node: web_sys::Node,
 }

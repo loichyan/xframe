@@ -20,9 +20,15 @@ macro_rules! new_type_quote {
 
 new_type_quote!(INPUT(super::input));
 new_type_quote!(WEB_SYS(#INPUT::web_sys));
+new_type_quote!(XFRAME(#INPUT::xframe));
+new_type_quote!(GENERIC_NODE(#INPUT::GenericNode));
+new_type_quote!(GENERIC_ELEMENT(#INPUT::GenericElement));
+new_type_quote!(INTO_ATTRIBUTE(#INPUT::IntoAttribute));
+new_type_quote!(ATTRIBUTE(#INPUT::Attribute));
+new_type_quote!(COW_STR(::std::borrow::Cow<'static, str>));
 new_type_quote!(ELEMENT_TYPES(super::element_types));
-new_type_quote!(EVENT_TYPES(super::event_types));
 new_type_quote!(ATTR_TYPES(super::attr_types));
+new_type_quote!(EVENT_TYPES(super::event_types));
 
 trait StrExt: AsRef<str> {
     fn to_lit_str(&self) -> LitStr {
@@ -83,7 +89,11 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
             pub mod elements { #(#element_fns)* }
             pub mod element_types { #(#element_structs)* #(#element_types)* }
             #[cfg(feature = "extra-attributes")]
-            pub mod attr_types { #(#attr_types)* }
+            pub mod attr_types {
+                pub(super) type Number = i32;
+                pub(super) type Boolean = bool;
+                #(#attr_types)*
+            }
             #[cfg(feature = "extra-events")]
             pub mod event_types { #(#event_types)* }
         }
@@ -131,8 +141,8 @@ impl<'a> Element<'a> {
             key, fn_, struct_, ..
         } = self;
         quote!(
-            pub fn #fn_<N: #INPUT::GenericNode>() -> #ELEMENT_TYPES::#struct_<N> {
-                #ELEMENT_TYPES::#struct_::<N>(#INPUT::BaseElement::create(#key))
+            pub fn #fn_<N: #GENERIC_NODE>(cx: #XFRAME::Scope) -> #ELEMENT_TYPES::#struct_<N> {
+                #ELEMENT_TYPES::#struct_::<N>(#INPUT::BaseElement::create(#key, cx))
             }
         )
     }
@@ -147,73 +157,73 @@ impl<'a> Element<'a> {
         } = self;
         let attr_fns = attributes.iter().map(Attribute::quote_fn);
         let event_fns = events.iter().map(Event::quote_fn);
+        let default_methods = self.quote_default_methods();
         quote!(
             pub struct #struct_<N>(pub(crate) #INPUT::BaseElement<N>);
 
-            const _: () = {
-                use #INPUT::{GenericElement, GenericNode, IntoAttribute};
-                use std::borrow::Cow;
-
-                impl<N: GenericNode> GenericElement
-                for #struct_<N>
-                {
-                    type Node = N;
-                    fn into_node(self) -> Self::Node {
-                        GenericElement::into_node(self.0)
-                    }
+            impl<N: #GENERIC_NODE> #GENERIC_ELEMENT
+            for #struct_<N>
+            {
+                type Node = N;
+                fn into_node(self) -> Self::Node {
+                    #GENERIC_ELEMENT::into_node(self.0)
                 }
+            }
 
-                impl<N> AsRef<#ELEMENT_TYPES::#ty> for #struct_<N>
-                where
-                    N: GenericNode + AsRef<#WEB_SYS::Node>,
-                {
-                    fn as_ref(&self) -> &#ELEMENT_TYPES::#ty {
-                        self.0.as_web_sys_element()
-                    }
+            impl<N> AsRef<#ELEMENT_TYPES::#ty> for #struct_<N>
+            where
+                N: #GENERIC_NODE + AsRef<#WEB_SYS::Node>,
+            {
+                fn as_ref(&self) -> &#ELEMENT_TYPES::#ty {
+                    self.0.as_web_sys_element()
                 }
+            }
 
-                #[cfg(feature = "extra-attributes")]
-                impl<N: GenericNode> #struct_<N> { #(#attr_fns)* }
+            impl<N: #GENERIC_NODE> #struct_<N> { #default_methods }
 
-                #[cfg(feature = "extra-events")]
-                impl<N: GenericNode> #struct_<N> { #(#event_fns)* }
+            #[cfg(feature = "extra-attributes")]
+            impl<N: #GENERIC_NODE> #struct_<N> { #(#attr_fns)* }
 
-                impl<N: GenericNode> #struct_<N> {
-                    pub fn attribute<K: Into<Cow<'static, str>>, V: IntoAttribute>(
-                        self,
-                        name: K,
-                        val: V,
-                    ) -> Self {
-                        self.0.node().set_attribute(name.into(), val.into_attribute());
-                        self
-                    }
+            #[cfg(feature = "extra-events")]
+            impl<N: #GENERIC_NODE> #struct_<N> { #(#event_fns)* }
+        )
+    }
 
-                    /// Add a class to this element.
-                    pub fn class<T: Into<Cow<'static, str>>>(self, name: T) -> Self {
-                        self.0.node().add_class(name.into());
-                        self
-                    }
+    fn quote_default_methods(&self) -> TokenStream {
+        quote!(
+            pub fn attr<K: Into<#COW_STR>, V: #INTO_ATTRIBUTE>(
+                self,
+                name: K,
+                val: V,
+            ) -> Self {
+                self.0.set_attribute(name.into(), #INTO_ATTRIBUTE::into_attribute(val));
+                self
+            }
 
-                    pub fn child<E>(self, element: E) -> Self
-                    where
-                        E: GenericElement<Node = N>,
-                    {
-                        self.0.node().append_child(element.into_node());
-                        self
-                    }
+            /// Add a class to this element.
+            pub fn class<T: Into<#COW_STR>>(self, name: T) -> Self {
+                self.0.node().add_class(name.into());
+                self
+            }
 
-                    pub fn children<I>(self, nodes: I) -> Self
-                    where
-                        I: IntoIterator<Item = N>,
-                    {
-                        let node = self.0.node();
-                        for child in nodes {
-                            node.append_child(child);
-                        }
-                        self
-                    }
+            pub fn child<E>(self, element: E) -> Self
+            where
+                E: #GENERIC_ELEMENT<Node = N>,
+            {
+                self.0.node().append_child(element.into_node());
+                self
+            }
+
+            pub fn children<I>(self, nodes: I) -> Self
+            where
+                I: IntoIterator<Item = N>,
+            {
+                let node = self.0.node();
+                for child in nodes {
+                    node.append_child(child);
                 }
-            };
+                self
+            }
         )
     }
 }
@@ -221,7 +231,7 @@ impl<'a> Element<'a> {
 struct Attribute<'a> {
     original: &'a web_types::Attribute<'a>,
     key: LitStr,
-    generic: Option<TokenStream>,
+    generic: bool,
     ty: Ident,
     fn_: Ident,
 }
@@ -229,15 +239,15 @@ struct Attribute<'a> {
 impl<'a> Attribute<'a> {
     fn from_web(input: &'a web_types::Attribute<'a>) -> Self {
         let web_types::Attribute { name, js_type } = input;
-        let mut generic = None;
+        let mut generic = false;
         let ty = match js_type {
             JsType::Type(ty) => match *ty {
                 "string" => {
-                    generic = Some(quote!(T: #INPUT::IntoAttribute,));
+                    generic = true;
                     "T".to_ident()
                 }
-                "number" => "i32".to_ident(),
-                "boolean" => "bool".to_ident(),
+                "number" => "Number".to_ident(),
+                "boolean" => "Boolean".to_ident(),
                 _ => panic!("unknown js type '{ty}'"),
             },
             JsType::Literals(lits) => lits.name.to_ident(),
@@ -253,20 +263,23 @@ impl<'a> Attribute<'a> {
 
     fn quote_fn(&self) -> TokenStream {
         let Self {
-            original,
             key,
             generic,
             ty,
             fn_,
+            ..
         } = self;
-        let path = if let JsType::Literals(_) = original.js_type {
-            Some(quote!(#ATTR_TYPES::))
+        let (generic, path) = if *generic {
+            (Some(quote!(<T: #INTO_ATTRIBUTE>)), None)
         } else {
-            None
+            (None, Some(quote!(#ATTR_TYPES::)))
         };
         quote!(
-            pub fn #fn_<#generic>(self, val: #path #ty) -> Self {
-                self.0.set_attribute(#key, val);
+            pub fn #fn_ #generic (self, val: #path #ty) -> Self {
+                self.0.set_attribute_literal(
+                    #key,
+                    #INTO_ATTRIBUTE::into_attribute(val),
+                );
                 self
             }
         )
@@ -360,9 +373,9 @@ impl ToTokens for QuoteAttrType<'_> {
         quote!(
             pub enum #name { #(#variants,)* }
 
-            impl #INPUT::IntoAttribute for #name {
-                fn into_attribute(self) -> #INPUT::Attribute {
-                    #INPUT::Attribute::from_literal(match self { #(#arms,)* })
+            impl #INTO_ATTRIBUTE for #name {
+                fn into_attribute(self) -> #ATTRIBUTE {
+                    #ATTRIBUTE::from_literal(match self { #(#arms,)* })
                 }
             }
         )

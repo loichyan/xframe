@@ -7,6 +7,7 @@ mod input {
         node::GenericNode,
     };
     pub(crate) use ::web_sys;
+    pub(crate) use ::xframe;
 }
 
 #[cfg(feature = "extra-elements")]
