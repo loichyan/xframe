@@ -210,7 +210,7 @@ mod tests {
             let called = cx.create_signal(0);
             cx.create_child(move |cx| {
                 cx.on_cleanup(move || {
-                    called.write(|x| *x += 1);
+                    called.update(|x| x + 1);
                 });
             });
             assert_eq!(called.get(), 1);
@@ -228,7 +228,7 @@ mod tests {
                 trigger1.track();
                 cx.untrack(|| {
                     trigger2.track();
-                    counter.write(|x| *x += 1);
+                    counter.update(|x| x + 1);
                 });
             });
             assert_eq!(counter.get(), 1);
@@ -250,7 +250,7 @@ mod tests {
 
             cx.create_effect_scoped(move |cx| {
                 trigger_effect.track();
-                counter.write(|x| *x += 1);
+                counter.update(|x| x + 1);
 
                 cx.on_cleanup(move || {
                     trigger_cleanup.track();
@@ -277,7 +277,7 @@ mod tests {
             cx.create_effect_scoped(move |cx| {
                 trigger.track();
                 cx.on_cleanup(move || {
-                    counter.write(|x| *x += 1);
+                    counter.update(|x| x + 1);
                 });
             });
             assert_eq!(counter.get(), 0);

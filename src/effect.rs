@@ -227,7 +227,7 @@ mod tests {
             let counter = cx.create_signal(0);
 
             cx.create_effect(move |_| {
-                counter.write(|x| *x += 1);
+                counter.update(|x| *x + 1);
 
                 if cond.get() {
                     state1.track();
@@ -269,11 +269,11 @@ mod tests {
                     cx.create_effect_scoped(move |cx| {
                         cx.create_effect(move |_| {
                             state.track();
-                            inner_counter.write(|v| *v += 1);
+                            inner_counter.update(|x| x + 1);
                         });
                     });
                 }
-                outer_counter.write(|v| *v += 1);
+                outer_counter.update(|x| x + 1);
             });
             assert_eq!(inner_counter.get(), 1);
             assert_eq!(outer_counter.get(), 1);

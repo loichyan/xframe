@@ -86,7 +86,7 @@ mod tests {
             let counter = cx.create_signal(0);
 
             let double = cx.create_memo(move || {
-                counter.write(|x| *x += 1);
+                counter.update(|x| x + 1);
                 state.get() * 2
             });
             assert_eq!(double.get(), 2);
@@ -135,7 +135,7 @@ mod tests {
             let counter2 = cx.create_signal(0);
             cx.create_effect(move |_| {
                 double.track();
-                counter2.write(|x| *x += 1);
+                counter2.update(|x| x + 1);
             });
             assert_eq!(counter2.get(), 1);
             assert_eq!(double.get(), 2);

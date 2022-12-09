@@ -65,6 +65,10 @@ impl<T> Variable<T> {
     pub fn set(&self, t: T) {
         self.write(|v| *v = t);
     }
+
+    pub fn update(&self, f: impl FnOnce(&T) -> T) {
+        self.write(|t| *t = f(t));
+    }
 }
 
 impl Scope {

@@ -138,6 +138,15 @@ impl<T> Signal<T> {
     pub fn set_slient(&self, val: T) {
         self.write_slient(|v| *v = val);
     }
+
+    pub fn update(&self, f: impl FnOnce(&T) -> T) {
+        self.update_silent(f);
+        self.trigger();
+    }
+
+    pub fn update_silent(&self, f: impl FnOnce(&T) -> T) {
+        self.write_slient(|t| *t = f(t));
+    }
 }
 
 #[derive(Default)]
