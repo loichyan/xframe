@@ -1,4 +1,4 @@
-use heck::{ToKebabCase, ToPascalCase};
+use heck::{ToKebabCase, ToPascalCase, ToSnakeCase};
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, ToTokens};
 use std::collections::{BTreeMap, BTreeSet};
@@ -60,10 +60,8 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
                 let variants = lits
                     .values
                     .iter()
-                    .map(|lit| Variant {
-                        name: lit.to_pascal_case().to_ident(),
-                        literal: lit.to_lit_str(),
-                    })
+                    .copied()
+                    .flat_map(Variant::from_web)
                     .collect();
                 attr_types.insert(attr.ty.clone(), AttrLitType { variants });
             }
@@ -72,7 +70,7 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
             if event_types.contains_key(&event.ty) {
                 continue;
             }
-            let unstable = matches!(event.original.web_sys_type, "ClipboardEvent");
+            let unstable = matches!(event.original.js_class, "ClipboardEvent");
             event_types.insert(event.ty.clone(), EventType { unstable });
         }
         elements.push(element);
@@ -113,13 +111,19 @@ impl<'a> Element<'a> {
     fn from_web(input: &'a web_types::Element<'a>) -> Self {
         let web_types::Element {
             name,
-            web_sys_type,
+            js_class,
             events,
             attributes,
         } = input;
+        let ty = match *js_class {
+            "HTMLBRElement" => "HtmlBrElement".to_ident(),
+            "HTMLHRElement" => "HtmlHrElement".to_ident(),
+            "HTMLLIElement" => "HtmlLiElement".to_ident(),
+            _ => format!("Html{}", &js_class[4..]).to_ident(),
+        };
         Self {
             key: name.to_kebab_case().to_lit_str(),
-            ty: web_sys_type.to_ident(),
+            ty,
             fn_: name.to_ident(),
             struct_: name.to_pascal_case().to_ident(),
             attributes: attributes
@@ -196,7 +200,7 @@ impl<'a> Element<'a> {
                 name: K,
                 val: V,
             ) -> Self {
-                self.0.set_attribute(name.into(), #INTO_ATTRIBUTE::into_attribute(val));
+                self.0.set_property(name.into(), #INTO_ATTRIBUTE::into_attribute(val));
                 self
             }
 
@@ -252,12 +256,16 @@ impl<'a> Attribute<'a> {
             },
             JsType::Literals(lits) => lits.name.to_ident(),
         };
+        let mut fn_ = name.to_snake_case();
+        if matches!(*name, "type" | "loop" | "async" | "as") {
+            fn_.push('_');
+        }
         Self {
             original: input,
-            key: name.to_kebab_case().to_lit_str(),
+            key: name.to_lit_str(),
             generic,
             ty,
-            fn_: name.to_ident(),
+            fn_: fn_.to_ident(),
         }
     }
 
@@ -276,7 +284,7 @@ impl<'a> Attribute<'a> {
         };
         quote!(
             pub fn #fn_ #generic (self, val: #path #ty) -> Self {
-                self.0.set_attribute_literal(
+                self.0.set_property_literal(
                     #key,
                     #INTO_ATTRIBUTE::into_attribute(val),
                 );
@@ -295,11 +303,16 @@ struct Event<'a> {
 
 impl<'a> Event<'a> {
     fn from_web(input: &'a web_types::Event<'a>) -> Self {
-        let web_types::Event { name, web_sys_type } = input;
+        let web_types::Event { name, js_class } = input;
+        let ty = match *js_class {
+            "UIEvent" => "UiEvent".to_ident(),
+            "FormDataEvent" => "Event".to_ident(),
+            _ => js_class.to_ident(),
+        };
         Self {
             original: input,
             key: name.to_kebab_case().to_lit_str(),
-            ty: web_sys_type.to_ident(),
+            ty,
             fn_: format_ident!("on_{}", name.to_ident()),
         }
     }
@@ -325,6 +338,18 @@ struct AttrLitType {
 struct Variant {
     name: Ident,
     literal: LitStr,
+}
+
+impl Variant {
+    fn from_web(lit: &str) -> Option<Self> {
+        if lit.is_empty() {
+            return None;
+        }
+        Some(Self {
+            name: lit.to_pascal_case().to_ident(),
+            literal: lit.to_lit_str(),
+        })
+    }
 }
 
 struct EventType {

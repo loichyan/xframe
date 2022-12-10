@@ -7,7 +7,7 @@ pub static PRESET: &str = include_str!("preset.txt");
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Element<'a> {
     pub name: &'a str,
-    pub web_sys_type: &'a str,
+    pub js_class: &'a str,
     pub attributes: Vec<Attribute<'a>>,
     pub events: Vec<Event<'a>>,
 }
@@ -33,7 +33,7 @@ pub struct Literals<'a> {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Event<'a> {
     pub name: &'a str,
-    pub web_sys_type: &'a str,
+    pub js_class: &'a str,
 }
 
 pub fn load(s: &str) -> Result<Vec<Element>, String> {

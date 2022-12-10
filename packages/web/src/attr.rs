@@ -1,5 +1,5 @@
 use std::{borrow::Cow, rc::Rc};
-use wasm_bindgen::intern;
+use wasm_bindgen::{intern, JsValue};
 use xframe::Signal;
 
 #[cfg(feature = "extra-attributes")]
@@ -8,17 +8,47 @@ pub use crate::generated::output::attr_types::*;
 
 #[derive(Clone)]
 pub enum Attribute {
-    Static(&'static str),
+    Boolean(bool),
+    Number(f64),
+    String(&'static str),
     Shared(Rc<String>),
     Reactive(Rc<dyn Fn() -> Attribute>),
 }
 
 impl Attribute {
-    pub fn read<U>(&self, f: impl FnOnce(&str) -> U) -> U {
+    pub fn as_js_value(&self) -> JsValue {
         match self {
-            Self::Static(t) => f(t),
-            Self::Shared(t) => f(t),
-            Self::Reactive(t) => (t)().read(f),
+            Self::Boolean(t) => JsValue::from_bool(*t),
+            Self::Number(t) => JsValue::from_f64(*t),
+            Self::String(t) => JsValue::from_str(t),
+            Self::Shared(t) => JsValue::from_str(t),
+            Self::Reactive(t) => (t)().as_js_value(),
+        }
+    }
+
+    pub fn as_string(&self) -> Attribute {
+        match self {
+            Self::Boolean(t) => intern(if *t { "true" } else { "false" }).into_attribute(),
+            &Self::Number(t) => {
+                if t == 0.0 {
+                    intern("0").into_attribute()
+                } else if t == 1.0 {
+                    intern("1").into_attribute()
+                } else {
+                    t.to_string().into_attribute()
+                }
+            }
+            Self::String(s) => s.into_attribute(),
+            Self::Shared(s) => s.clone().into_attribute(),
+            Self::Reactive(t) => (t)().as_string(),
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Shared(s) => s,
+            Self::String(s) => s,
+            _ => panic!("expected a string value"),
         }
     }
 
@@ -41,7 +71,7 @@ impl IntoAttribute for Attribute {
 impl IntoAttribute for Cow<'static, str> {
     fn into_attribute(self) -> Attribute {
         match self {
-            Cow::Borrowed(s) => Attribute::Static(s),
+            Cow::Borrowed(s) => Attribute::String(s),
             Cow::Owned(s) => Attribute::Shared(Rc::new(s)),
         }
     }
@@ -74,11 +104,7 @@ where
 
 impl IntoAttribute for bool {
     fn into_attribute(self) -> Attribute {
-        intern(match self {
-            true => "true",
-            false => "false",
-        })
-        .into_attribute()
+        Attribute::Boolean(self)
     }
 }
 
@@ -93,22 +119,34 @@ macro_rules! impl_for_wrapped_types {
 }
 
 impl_for_wrapped_types! {
-    Static => &'static str,
+    String => &'static str,
     Shared => Rc<String>,
 }
 
-macro_rules! impl_for_num_types {
+macro_rules! impl_for_small_nums {
     ($($ty:ident),*) => {$(
         impl IntoAttribute for $ty {
             fn into_attribute(self) -> Attribute {
-                match self {
-                    0 => intern("0").into_attribute(),
-                    1 => intern("1").into_attribute(),
-                    i => i.to_string().into_attribute(),
+                Attribute::Number(self as f64)
+            }
+        }
+    )*};
+}
+
+impl_for_small_nums!(i8, u8, i16, u16, i32, u32, i64, isize, f32);
+
+macro_rules! impl_for_big_nums {
+    ($($ty:ident),*) => {$(
+        impl IntoAttribute for $ty {
+            fn into_attribute(self) -> Attribute {
+                if self < i64::MAX as $ty {
+                    Attribute::Number(self as f64)
+                } else {
+                    self.to_string().into_attribute()
                 }
             }
         }
     )*};
 }
 
-impl_for_num_types!(i8, u8, i16, u16, i32, i64, u32, u64, i128, u128, usize, isize);
+impl_for_big_nums!(u64, i128, u128, usize);

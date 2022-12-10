@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "skipLibCheck": true,
+    "moduleResolution": "node",
+    "lib": ["DOM", "ESNext"],
+    "outDir": "dist",
+    "plugins": [{ "transform": "./scripts/web-types-transformer.ts" }]
+  },
+  "include": ["scripts/*"]
+}

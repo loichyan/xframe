@@ -53,15 +53,15 @@ impl<N: GenericNode> BaseElement<N> {
         self.node.as_ref().unchecked_ref()
     }
 
-    pub fn set_attribute_literal(&self, name: &'static str, val: Attribute) {
-        self.set_attribute(intern(name).into(), val.into_attribute());
+    pub fn set_property_literal(&self, name: &'static str, val: Attribute) {
+        self.set_property(intern(name).into(), val.into_attribute());
     }
 
-    pub fn set_attribute(&self, name: Cow<'static, str>, val: Attribute) {
+    pub fn set_property(&self, name: Cow<'static, str>, val: Attribute) {
         let attr = val.into_attribute();
         let node = self.node.clone();
         self.cx.create_effect(move |_| {
-            node.set_attribute(name.clone(), attr.clone());
+            node.set_property(name.clone(), attr.clone());
         });
     }
 

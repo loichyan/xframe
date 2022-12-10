@@ -66,11 +66,11 @@ impl<'a> Parser<'a> {
     fn parse_preset(&mut self, name: &'a str) -> Result<Element<'a>> {
         self.lexer.expect_char(b'=')?;
         self.lexer.expect_char(b'>')?;
-        let web_sys_type = self.lexer.expect_ident()?;
+        let js_class = self.lexer.expect_ident()?;
         let content = self.parse_content()?;
         Ok(Element {
             name,
-            web_sys_type,
+            js_class,
             attributes: content.attributes,
             events: content.events,
         })
@@ -133,8 +133,8 @@ impl<'a> ParseContent<'a, '_> {
                 Token::Char(b'@') => {
                     let name = self.lexer.expect_ident()?;
                     self.lexer.expect_char(b':')?;
-                    let web_sys_type = self.lexer.expect_ident()?;
-                    self.content.events.push(Event { name, web_sys_type })
+                    let js_class = self.lexer.expect_ident()?;
+                    self.content.events.push(Event { name, js_class })
                 }
                 // An attribute.
                 Token::Ident => {
