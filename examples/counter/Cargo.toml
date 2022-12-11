@@ -1,0 +1,8 @@
+[package]
+name = "counter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies.xframe-web]
+path = "../../packages/web"
+features = ["extra"]

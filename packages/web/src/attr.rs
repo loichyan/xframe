@@ -1,6 +1,6 @@
 use std::{borrow::Cow, rc::Rc};
 use wasm_bindgen::{intern, JsValue};
-use xframe::Signal;
+use xframe::{ReadSignal, Signal};
 
 #[cfg(feature = "extra-attributes")]
 #[doc(inline)]
@@ -16,20 +16,28 @@ pub enum Attribute {
 }
 
 impl Attribute {
-    pub fn as_js_value(&self) -> JsValue {
-        match self {
-            Self::Boolean(t) => JsValue::from_bool(*t),
-            Self::Number(t) => JsValue::from_f64(*t),
+    pub fn to_js_value(&self) -> JsValue {
+        let mut val = self.clone();
+        while let Self::Reactive(f) = val {
+            val = f();
+        }
+        match val {
+            Self::Boolean(t) => JsValue::from_bool(t),
+            Self::Number(t) => JsValue::from_f64(t),
             Self::String(t) => JsValue::from_str(t),
-            Self::Shared(t) => JsValue::from_str(t),
-            Self::Reactive(t) => (t)().as_js_value(),
+            Self::Shared(t) => JsValue::from_str(&t),
+            Self::Reactive(_) => unreachable!(),
         }
     }
 
-    pub fn as_string(&self) -> Attribute {
-        match self {
-            Self::Boolean(t) => intern(if *t { "true" } else { "false" }).into_attribute(),
-            &Self::Number(t) => {
+    pub fn to_string(&self) -> Attribute {
+        let mut val = self.clone();
+        while let Self::Reactive(f) = val {
+            val = f()
+        }
+        match val {
+            Self::Boolean(t) => intern(if t { "true" } else { "false" }).into_attribute(),
+            Self::Number(t) => {
                 if t == 0.0 {
                     intern("0").into_attribute()
                 } else if t == 1.0 {
@@ -39,8 +47,8 @@ impl Attribute {
                 }
             }
             Self::String(s) => s.into_attribute(),
-            Self::Shared(s) => s.clone().into_attribute(),
-            Self::Reactive(t) => (t)().as_string(),
+            Self::Shared(s) => s.into_attribute(),
+            Self::Reactive(_) => unreachable!(),
         }
     }
 
@@ -94,6 +102,15 @@ where
 }
 
 impl<T> IntoAttribute for Signal<T>
+where
+    T: Clone + IntoAttribute,
+{
+    fn into_attribute(self) -> Attribute {
+        Attribute::Reactive(Rc::new(move || self.get().into_attribute()))
+    }
+}
+
+impl<T> IntoAttribute for ReadSignal<T>
 where
     T: Clone + IntoAttribute,
 {

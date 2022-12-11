@@ -22,6 +22,7 @@
             (with pkgs.fenix; combine [
               stable.defaultToolchain
               stable.rust-src
+              targets.wasm32-unknown-unknown.stable.rust-std
             ])
           ];
         };

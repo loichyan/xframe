@@ -1,3 +1,5 @@
+#![allow(clippy::all)]
+
 #[allow(unused_imports)]
 mod input {
     pub(crate) use crate::{

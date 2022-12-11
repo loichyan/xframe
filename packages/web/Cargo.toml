@@ -22,7 +22,6 @@ extra-elements = [
     "web-sys/HtmlDetailsElement",
     "web-sys/HtmlDialogElement",
     "web-sys/HtmlDivElement",
-    "web-sys/HtmlElement",
     "web-sys/HtmlEmbedElement",
     "web-sys/HtmlFieldSetElement",
     "web-sys/HtmlFormElement",
@@ -113,10 +112,13 @@ wasm-bindgen = "0.2"
 version = "0.3"
 features = [
     "AddEventListenerOptions",
+    "CharacterData",
     "Document",
     "DomTokenList",
     "Element",
     "Event",
+    "HtmlElement",
+    "Text",
     "Window",
 ]
 

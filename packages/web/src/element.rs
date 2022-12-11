@@ -1,16 +1,19 @@
-use std::borrow::Cow;
-
-use wasm_bindgen::{intern, JsCast};
-use xframe::Scope;
+mod text;
 
 use crate::{Attribute, EventHandler, GenericNode, IntoAttribute};
+use std::borrow::Cow;
+use wasm_bindgen::{intern, JsCast};
+use xframe::Scope;
 
 #[cfg(feature = "extra-elements")]
 #[doc(inline)]
 pub use crate::generated::output::{element_types::*, elements::*};
+#[doc(inline)]
+pub use text::*;
 
-#[cfg(feature = "extra-elements")]
 pub mod prelude {
+    #[doc(inline)]
+    pub use super::text;
     #[doc(inline)]
     pub use crate::generated::output::elements::*;
 }

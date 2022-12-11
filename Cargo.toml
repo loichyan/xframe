@@ -1,5 +1,5 @@
 [workspace]
-members = ["packages/*"]
+members = ["packages/*", "examples/*"]
 
 [package]
 name = "xframe"
@@ -12,3 +12,7 @@ ahash = "0.8"
 indexmap = "1.9"
 smallvec = "1.10"
 slotmap = "1.0"
+
+[dependencies.getrandom]
+version = "0.2"
+features = ["js"]
