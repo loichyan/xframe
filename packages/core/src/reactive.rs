@@ -5,7 +5,7 @@ use xframe_reactive::{ReadSignal, Signal};
 pub use Reactive::Value;
 
 #[derive(Clone)]
-pub enum Reactive<T> {
+pub enum Reactive<T: 'static> {
     Value(T),
     Fn(Rc<dyn Fn() -> Reactive<T>>),
 }
@@ -18,6 +18,16 @@ impl<T> Reactive<T> {
                 Value(t) => return t,
                 Reactive::Fn(f) => val = f(),
             }
+        }
+    }
+
+    pub fn cast<U>(self) -> Reactive<U>
+    where
+        T: Into<U>,
+    {
+        match self {
+            Value(t) => Value(t.into()),
+            Reactive::Fn(t) => Reactive::Fn(Rc::new(move || t().cast())),
         }
     }
 }

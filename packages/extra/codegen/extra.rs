@@ -20,13 +20,12 @@ macro_rules! new_type_quote {
 
 new_type_quote!(INPUT(super::input));
 new_type_quote!(WEB_SYS(#INPUT::web_sys));
-new_type_quote!(REACTIVE(#INPUT::reactive));
+new_type_quote!(XFRAME(#INPUT::xframe));
 new_type_quote!(GENERIC_NODE(#INPUT::core::GenericNode));
 new_type_quote!(GENERIC_ELEMENT(#INPUT::core::GenericElement));
 new_type_quote!(ATTRIBUTE(#INPUT::core::Attribute));
-new_type_quote!(CORE_REACTIVE(#INPUT::core::Reactive));
-new_type_quote!(REACTIVE_ATTRIBUTE(#CORE_REACTIVE::<#ATTRIBUTE>));
-new_type_quote!(INTO_ATTRIBUTE(Into::<#REACTIVE_ATTRIBUTE>));
+new_type_quote!(REACTIVE(#INPUT::core::Reactive));
+new_type_quote!(REACTIVE_ATTRIBUTE(#REACTIVE::<#ATTRIBUTE>));
 new_type_quote!(INTO_EVENT_HANDLER(#INPUT::core::IntoEventHandler));
 new_type_quote!(COW_STR(::std::borrow::Cow<'static, str>));
 new_type_quote!(ELEMENT_TYPES(super::element_types));
@@ -92,8 +91,9 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
             pub mod element_types { #(#element_structs)* #(#element_types)* }
             #[cfg(feature = "attributes")]
             pub mod attr_types {
-                pub(super) type Number = i32;
-                pub(super) type Boolean = bool;
+                pub(super) type JsBoolean = #INPUT::JsBoolean;
+                pub(super) type JsNumber = #INPUT::JsNumber;
+                pub(super) type JsString = #INPUT::JsString;
                 #(#attr_types)*
             }
             #[cfg(feature = "events")]
@@ -149,7 +149,7 @@ impl<'a> Element<'a> {
             key, fn_, struct_, ..
         } = self;
         quote!(
-            pub fn #fn_<N: #GENERIC_NODE>(cx: #REACTIVE::Scope) -> #ELEMENT_TYPES::#struct_<N> {
+            pub fn #fn_<N: #GENERIC_NODE>(cx: #XFRAME::Scope) -> #ELEMENT_TYPES::#struct_<N> {
                 #ELEMENT_TYPES::#struct_::<N>(#INPUT::BaseElement::create(#key, cx))
             }
         )
@@ -199,7 +199,7 @@ impl<'a> Element<'a> {
 
     fn quote_default_methods(&self) -> TokenStream {
         quote!(
-            pub fn attr<K: Into<#COW_STR>, V: #INTO_ATTRIBUTE>(
+            pub fn attr<K: Into<#COW_STR>, V: Into<#REACTIVE_ATTRIBUTE>>(
                 self,
                 name: K,
                 val: V,
@@ -239,7 +239,6 @@ impl<'a> Element<'a> {
 struct Attribute<'a> {
     original: &'a web_types::Attribute<'a>,
     key: LitStr,
-    generic: bool,
     ty: Ident,
     fn_: Ident,
 }
@@ -247,15 +246,11 @@ struct Attribute<'a> {
 impl<'a> Attribute<'a> {
     fn from_web(input: &'a web_types::Attribute<'a>) -> Self {
         let web_types::Attribute { name, js_type } = input;
-        let mut generic = false;
         let ty = match js_type {
             JsType::Type(ty) => match *ty {
-                "string" => {
-                    generic = true;
-                    "T".to_ident()
-                }
-                "number" => "Number".to_ident(),
-                "boolean" => "Boolean".to_ident(),
+                "string" => "JsString".to_ident(),
+                "number" => "JsNumber".to_ident(),
+                "boolean" => "JsBoolean".to_ident(),
                 _ => panic!("unknown js type '{ty}'"),
             },
             JsType::Literals(lits) => lits.name.to_ident(),
@@ -267,27 +262,15 @@ impl<'a> Attribute<'a> {
         Self {
             original: input,
             key: name.to_lit_str(),
-            generic,
             ty,
             fn_: fn_.to_ident(),
         }
     }
 
     fn quote_fn(&self) -> TokenStream {
-        let Self {
-            key,
-            generic,
-            ty,
-            fn_,
-            ..
-        } = self;
-        let (generic, path) = if *generic {
-            (Some(quote!(<T: #INTO_ATTRIBUTE>)), None)
-        } else {
-            (None, Some(quote!(#ATTR_TYPES::)))
-        };
+        let Self { key, ty, fn_, .. } = self;
         quote!(
-            pub fn #fn_ #generic (self, val: #path #ty) -> Self {
+            pub fn #fn_<T: Into<#REACTIVE<#ATTR_TYPES::#ty>>>(self, val: T) -> Self {
                 self.0.set_property_literal(#key, val);
                 self
             }
@@ -401,9 +384,27 @@ impl ToTokens for QuoteAttrType<'_> {
         quote!(
             pub enum #name { #(#variants,)* }
 
+            impl From<#name> for &'static str {
+                fn from(t: #name) -> Self {
+                    match t { #(#arms,)* }
+                }
+            }
+
+            impl From<#name> for #ATTRIBUTE {
+                fn from(t: #name) -> Self {
+                    #ATTRIBUTE::from_literal(t.into())
+                }
+            }
+
+            impl From<#name> for #REACTIVE<#name> {
+                fn from(t: #name) -> Self {
+                    #REACTIVE::Value(t)
+                }
+            }
+
             impl From<#name> for #REACTIVE_ATTRIBUTE {
                 fn from(t: #name) -> Self {
-                    #CORE_REACTIVE::Value(#ATTRIBUTE::from_literal(match t { #(#arms,)* }))
+                    #REACTIVE::Value(t.into())
                 }
             }
         )

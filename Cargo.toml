@@ -26,3 +26,7 @@ path = "packages/reactive"
 
 [dependencies.xframe-web]
 path = "packages/web"
+
+[profile.release]
+lto = true
+opt-level = "z"
