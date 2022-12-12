@@ -23,8 +23,10 @@ new_type_quote!(WEB_SYS(#INPUT::web_sys));
 new_type_quote!(REACTIVE(#INPUT::reactive));
 new_type_quote!(GENERIC_NODE(#INPUT::core::GenericNode));
 new_type_quote!(GENERIC_ELEMENT(#INPUT::core::GenericElement));
-new_type_quote!(INTO_ATTRIBUTE(#INPUT::core::IntoAttribute));
 new_type_quote!(ATTRIBUTE(#INPUT::core::Attribute));
+new_type_quote!(CORE_REACTIVE(#INPUT::core::Reactive));
+new_type_quote!(REACTIVE_ATTRIBUTE(#CORE_REACTIVE::<#ATTRIBUTE>));
+new_type_quote!(INTO_ATTRIBUTE(Into::<#REACTIVE_ATTRIBUTE>));
 new_type_quote!(INTO_EVENT_HANDLER(#INPUT::core::IntoEventHandler));
 new_type_quote!(COW_STR(::std::borrow::Cow<'static, str>));
 new_type_quote!(ELEMENT_TYPES(super::element_types));
@@ -202,7 +204,7 @@ impl<'a> Element<'a> {
                 name: K,
                 val: V,
             ) -> Self {
-                self.0.set_property(name.into(), #INTO_ATTRIBUTE::into_attribute(val));
+                self.0.set_property(name.into(), val);
                 self
             }
 
@@ -286,10 +288,7 @@ impl<'a> Attribute<'a> {
         };
         quote!(
             pub fn #fn_ #generic (self, val: #path #ty) -> Self {
-                self.0.set_property_literal(
-                    #key,
-                    #INTO_ATTRIBUTE::into_attribute(val),
-                );
+                self.0.set_property_literal(#key, val);
                 self
             }
         )
@@ -393,16 +392,18 @@ impl ToTokens for QuoteAttrType<'_> {
                 #name
             )
         });
-        let arms = ty
-            .variants
-            .iter()
-            .map(|Variant { name, literal }| quote!(Self::#name => #literal));
+        let arms = ty.variants.iter().map(
+            |Variant {
+                 name: variant,
+                 literal,
+             }| quote!(#name::#variant => #literal),
+        );
         quote!(
             pub enum #name { #(#variants,)* }
 
-            impl #INTO_ATTRIBUTE for #name {
-                fn into_attribute(self) -> #ATTRIBUTE {
-                    #ATTRIBUTE::from_literal(match self { #(#arms,)* })
+            impl From<#name> for #REACTIVE_ATTRIBUTE {
+                fn from(t: #name) -> Self {
+                    #CORE_REACTIVE::Value(#ATTRIBUTE::from_literal(match t { #(#arms,)* }))
                 }
             }
         )

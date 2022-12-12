@@ -11,10 +11,8 @@ type ThreadLocal = *const ();
 trait Empty {}
 impl<T> Empty for T {}
 
-pub use effect::Effect;
-pub use scope::{create_root, Scope, ScopeDisposer};
-pub use signal::{ReadSignal, Signal};
-pub use variable::Variable;
+#[doc(inline)]
+pub use self::{effect::*, scope::*, signal::*, variable::*};
 
 #[test]
 fn readme_example() {

@@ -1,6 +1,11 @@
 mod dom_node;
 
-pub mod elements;
+pub mod elements {
+    pub(crate) mod text;
+
+    #[doc(inline)]
+    pub use text::text;
+}
 pub mod element_types {
     #[doc(inline)]
     pub use crate::elements::text::Text;

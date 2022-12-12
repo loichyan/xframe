@@ -40,13 +40,13 @@ impl GenericNode for DomNode {
     }
 
     fn set_property(&self, name: Str, attr: Attribute) {
-        Reflect::set(&self.node, &JsValue::from_str(&name), &attr.to_js_value()).unwrap();
+        Reflect::set(&self.node, &JsValue::from_str(&name), &attr.into_js_value()).unwrap();
     }
 
     fn set_attribute(&self, name: Str, val: Attribute) {
         self.node
             .unchecked_ref::<web_sys::Element>()
-            .set_attribute(&name, val.to_string().as_str())
+            .set_attribute(&name, val.into_string_only().as_str())
             .unwrap();
     }
 

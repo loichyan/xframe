@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use wasm_bindgen::{intern, JsCast};
-use xframe_core::{Attribute, GenericElement, GenericNode, IntoAttribute, IntoEventHandler};
+use xframe_core::{Attribute, GenericElement, GenericNode, IntoEventHandler, Reactive};
 use xframe_reactive::Scope;
 
 pub(crate) struct BaseElement<N> {
@@ -37,15 +37,15 @@ impl<N: GenericNode> BaseElement<N> {
         self.node.as_ref().unchecked_ref()
     }
 
-    pub fn set_property_literal(&self, name: &'static str, val: impl IntoAttribute) {
-        self.set_property(intern(name).into(), val.into_attribute());
+    pub fn set_property_literal(&self, name: &'static str, val: impl Into<Reactive<Attribute>>) {
+        self.set_property(intern(name).into(), val.into());
     }
 
-    pub fn set_property(&self, name: Cow<'static, str>, val: Attribute) {
-        let attr = val.into_attribute();
+    pub fn set_property(&self, name: Cow<'static, str>, val: impl Into<Reactive<Attribute>>) {
+        let attr = val.into();
         let node = self.node.clone();
         self.cx.create_effect(move |_| {
-            node.set_property(name.clone(), attr.clone());
+            node.set_property(name.clone(), attr.clone().into_value());
         });
     }
 
