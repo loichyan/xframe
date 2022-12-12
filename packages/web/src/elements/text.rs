@@ -1,6 +1,6 @@
-use crate::{Attribute, GenericElement, GenericNode, IntoAttribute};
 use std::marker::PhantomData;
-use xframe::Scope;
+use xframe_core::{Attribute, GenericElement, GenericNode, IntoAttribute};
+use xframe_reactive::Scope;
 
 pub struct Text<N, Data = Attribute> {
     cx: Scope,

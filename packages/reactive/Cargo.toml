@@ -1,0 +1,15 @@
+[package]
+name = "xframe-reactive"
+version = "0.0.0"
+license = "MIT OR Apache-2.0"
+edition = "2021"
+
+[dependencies]
+ahash = "0.8"
+indexmap = "1.9"
+smallvec = "1.10"
+slotmap = "1.0"
+
+[dependencies.getrandom]
+version = "0.2"
+features = ["js"]

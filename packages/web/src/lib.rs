@@ -1,32 +1,21 @@
-#[macro_use]
-mod macros;
+mod dom_node;
 
-mod generated;
-mod node;
-
-pub mod attr;
-pub mod element;
-pub mod event;
+pub mod elements;
+pub mod element_types {
+    #[doc(inline)]
+    pub use crate::elements::text::Text;
+}
 
 #[doc(inline)]
-pub use xframe::*;
-
-#[doc(inline)]
-pub use self::{
-    attr::{Attribute, IntoAttribute},
-    element::GenericElement,
-    event::{EventHandler, EventHandlerWithOptions},
-    node::{DomNode, GenericNode},
-};
+pub use dom_node::DomNode;
+use xframe_core::GenericElement;
 
 thread_local! {
     static WINDOW: web_sys::Window = web_sys::window().unwrap();
     static DOCUMENT: web_sys::Document = WINDOW.with(web_sys::Window::document).unwrap();
 }
 
-type Str = std::borrow::Cow<'static, str>;
-
-pub fn render_to_body<E>(f: impl FnOnce(Scope) -> E)
+pub fn render_to_body<E>(f: impl FnOnce(xframe_reactive::Scope) -> E)
 where
     E: GenericElement<Node = DomNode>,
 {
@@ -34,11 +23,11 @@ where
     render(&body, f);
 }
 
-pub fn render<E>(root: &web_sys::Node, f: impl FnOnce(Scope) -> E)
+pub fn render<E>(root: &web_sys::Node, f: impl FnOnce(xframe_reactive::Scope) -> E)
 where
     E: GenericElement<Node = DomNode>,
 {
-    create_root(|cx| {
+    xframe_reactive::create_root(|cx| {
         let node = f(cx).into_node();
         root.append_child(node.as_ref()).unwrap();
     })

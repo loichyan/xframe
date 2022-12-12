@@ -1,10 +1,6 @@
 use std::{borrow::Cow, rc::Rc};
 use wasm_bindgen::{intern, JsValue};
-use xframe::{ReadSignal, Signal};
-
-#[cfg(feature = "extra-attributes")]
-#[doc(inline)]
-pub use crate::generated::output::attr_types::*;
+use xframe_reactive::{ReadSignal, Signal};
 
 #[derive(Clone)]
 pub enum Attribute {
@@ -60,8 +56,7 @@ impl Attribute {
         }
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn from_literal(literal: &'static str) -> Self {
+    pub fn from_literal(literal: &'static str) -> Self {
         intern(literal).into_attribute()
     }
 }

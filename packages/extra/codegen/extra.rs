@@ -20,11 +20,12 @@ macro_rules! new_type_quote {
 
 new_type_quote!(INPUT(super::input));
 new_type_quote!(WEB_SYS(#INPUT::web_sys));
-new_type_quote!(XFRAME(#INPUT::xframe));
-new_type_quote!(GENERIC_NODE(#INPUT::GenericNode));
-new_type_quote!(GENERIC_ELEMENT(#INPUT::GenericElement));
-new_type_quote!(INTO_ATTRIBUTE(#INPUT::IntoAttribute));
-new_type_quote!(ATTRIBUTE(#INPUT::Attribute));
+new_type_quote!(REACTIVE(#INPUT::reactive));
+new_type_quote!(GENERIC_NODE(#INPUT::core::GenericNode));
+new_type_quote!(GENERIC_ELEMENT(#INPUT::core::GenericElement));
+new_type_quote!(INTO_ATTRIBUTE(#INPUT::core::IntoAttribute));
+new_type_quote!(ATTRIBUTE(#INPUT::core::Attribute));
+new_type_quote!(INTO_EVENT_HANDLER(#INPUT::core::IntoEventHandler));
 new_type_quote!(COW_STR(::std::borrow::Cow<'static, str>));
 new_type_quote!(ELEMENT_TYPES(super::element_types));
 new_type_quote!(ATTR_TYPES(super::attr_types));
@@ -81,18 +82,19 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
     let element_fns = elements.iter().map(Element::quote_fn);
     let element_structs = elements.iter().map(Element::quote_struct);
     quote!(
-        #[cfg(feature = "extra-elements")]
+        #[cfg(feature = "elements")]
+        #[allow(clippy::all)]
         pub mod output {
             use super::input;
             pub mod elements { #(#element_fns)* }
             pub mod element_types { #(#element_structs)* #(#element_types)* }
-            #[cfg(feature = "extra-attributes")]
+            #[cfg(feature = "attributes")]
             pub mod attr_types {
                 pub(super) type Number = i32;
                 pub(super) type Boolean = bool;
                 #(#attr_types)*
             }
-            #[cfg(feature = "extra-events")]
+            #[cfg(feature = "events")]
             pub mod event_types { #(#event_types)* }
         }
     )
@@ -145,7 +147,7 @@ impl<'a> Element<'a> {
             key, fn_, struct_, ..
         } = self;
         quote!(
-            pub fn #fn_<N: #GENERIC_NODE>(cx: #XFRAME::Scope) -> #ELEMENT_TYPES::#struct_<N> {
+            pub fn #fn_<N: #GENERIC_NODE>(cx: #REACTIVE::Scope) -> #ELEMENT_TYPES::#struct_<N> {
                 #ELEMENT_TYPES::#struct_::<N>(#INPUT::BaseElement::create(#key, cx))
             }
         )
@@ -185,11 +187,11 @@ impl<'a> Element<'a> {
 
             impl<N: #GENERIC_NODE> #struct_<N> { #default_methods }
 
-            #[cfg(feature = "extra-attributes")]
+            #[cfg(feature = "attributes")]
             impl<N: #GENERIC_NODE> #struct_<N> { #(#attr_fns)* }
 
-            #[cfg(feature = "extra-events")]
-            impl<N: #GENERIC_NODE> #struct_<N> { #(#event_fns)* }
+            #[cfg(feature = "events")]
+            impl<N: #GENERIC_NODE<Event = #WEB_SYS::Event>> #struct_<N> { #(#event_fns)* }
         )
     }
 
@@ -322,7 +324,7 @@ impl<'a> Event<'a> {
         quote!(
             pub fn #fn_(
                 self,
-                handler: impl #INPUT::EventHandler<#EVENT_TYPES::#ty>,
+                handler: impl #INTO_EVENT_HANDLER<#EVENT_TYPES::#ty>,
             ) -> Self {
                 self.0.listen_event(#key, handler);
                 self

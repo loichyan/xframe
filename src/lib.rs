@@ -1,35 +1,41 @@
-mod context;
-mod effect;
-mod memo;
-mod scope;
-mod shared;
-mod signal;
-mod variable;
+#[macro_use]
+mod macros;
 
-type ThreadLocal = *const ();
+pub mod element {
+    pub mod prelude {
+        #[cfg(feature = "extra-elements")]
+        #[doc(inline)]
+        pub use xframe_extra::elements::*;
+        #[doc(inline)]
+        pub use xframe_web::elements::*;
+    }
+    #[doc(inline)]
+    pub use prelude::*;
 
-trait Empty {}
-impl<T> Empty for T {}
-
-pub use effect::Effect;
-pub use scope::{create_root, Scope, ScopeDisposer};
-pub use signal::{ReadSignal, Signal};
-pub use variable::Variable;
-
-#[test]
-fn readme_example() {
-    use crate::*;
-
-    create_root(|cx| {
-        let state = cx.create_signal(1);
-
-        let double = cx.create_memo(move || state.get() * 2);
-        assert_eq!(double.get(), 2);
-
-        state.set(2);
-        assert_eq!(double.get(), 4);
-
-        state.set(3);
-        assert_eq!(double.get(), 6);
-    });
+    #[cfg(feature = "extra-elements")]
+    #[doc(inline)]
+    pub use xframe_extra::element_types::*;
+    #[doc(inline)]
+    pub use xframe_web::element_types::*;
 }
+
+pub mod attr {
+    #[cfg(feature = "extra-attributes")]
+    #[doc(inline)]
+    pub use xframe_extra::attr_types::*;
+}
+
+pub mod event {
+    #[cfg(feature = "extra-events")]
+    #[doc(inline)]
+    pub use xframe_extra::event_types::*;
+}
+
+#[doc(inline)]
+pub use xframe_core::*;
+
+#[doc(inline)]
+pub use xframe_reactive::*;
+
+#[doc(inline)]
+pub use xframe_web::{render, render_to_body};

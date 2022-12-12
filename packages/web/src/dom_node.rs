@@ -1,17 +1,10 @@
-use crate::{attr::Attribute, event::EventHandlerWithOptions, Str, DOCUMENT};
+use crate::DOCUMENT;
 use js_sys::Reflect;
 use wasm_bindgen::{prelude::*, JsCast};
+use web_sys::AddEventListenerOptions;
+use xframe_core::{Attribute, EventHandler, GenericNode};
 
-pub trait GenericNode: 'static + Clone {
-    fn create(tag: Str) -> Self;
-    fn create_text_node(data: &str) -> Self;
-    fn set_inner_text(&self, data: &str);
-    fn set_property(&self, name: Str, attr: Attribute);
-    fn set_attribute(&self, name: Str, attr: Attribute);
-    fn add_class(&self, name: Str);
-    fn listen_event(&self, event: Str, handler: EventHandlerWithOptions);
-    fn append_child(&self, child: Self);
-}
+type Str = std::borrow::Cow<'static, str>;
 
 #[derive(Clone)]
 pub struct DomNode {
@@ -25,6 +18,8 @@ impl AsRef<web_sys::Node> for DomNode {
 }
 
 impl GenericNode for DomNode {
+    type Event = web_sys::Event;
+
     fn create(tag: Str) -> Self {
         Self {
             node: DOCUMENT
@@ -63,14 +58,18 @@ impl GenericNode for DomNode {
             .unwrap();
     }
 
-    fn listen_event(&self, event: Str, handler: EventHandlerWithOptions) {
+    fn listen_event(&self, event: Str, handler: EventHandler<Self::Event>) {
+        let mut options = AddEventListenerOptions::default();
+        options.capture(handler.options.capture);
+        options.once(handler.options.once);
+        options.passive(handler.options.passive);
         self.node
             .add_event_listener_with_callback_and_add_event_listener_options(
                 &event,
                 &Closure::wrap(handler.handler)
                     .into_js_value()
                     .unchecked_into(),
-                &handler.options,
+                &options,
             )
             .unwrap();
     }

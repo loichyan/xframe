@@ -1,10 +1,10 @@
 {
-  "name": "web-types",
+  "name": "web-types-codegen",
   "version": "0.0.0",
-  "private": true,
   "license": "MIT OR Apache-2.0",
+  "private": true,
   "scripts": {
-    "generate": "ts-node -C ttypescript scripts/web-types.ts",
+    "generate": "ts-node -C ttypescript codegen/index.ts",
     "build": "ttsc"
   },
   "devDependencies": {

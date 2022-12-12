@@ -7,12 +7,22 @@ version = "0.0.0"
 license = "MIT OR Apache-2.0"
 edition = "2021"
 
-[dependencies]
-ahash = "0.8"
-indexmap = "1.9"
-smallvec = "1.10"
-slotmap = "1.0"
+[features]
+extra = ["extra-elements", "extra-attributes", "extra-events"]
+extra-elements = ["xframe-extra/elements"]
+extra-attributes = ["xframe-extra/attributes"]
+extra-events = ["xframe-extra/events"]
 
-[dependencies.getrandom]
-version = "0.2"
-features = ["js"]
+[dependencies.xframe-core]
+path = "packages/core"
+
+[dependencies.xframe-extra]
+path = "packages/extra"
+optional = true
+default-features = false
+
+[dependencies.xframe-reactive]
+path = "packages/reactive"
+
+[dependencies.xframe-web]
+path = "packages/web"
