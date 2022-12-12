@@ -4,15 +4,13 @@ use xframe_reactive::{ReadSignal, Signal};
 #[doc(inline)]
 pub use Reactive::Value;
 
-#[derive(Clone)]
-pub enum Reactive<T: 'static> {
-    Value(T),
-    Fn(Rc<dyn Fn() -> Reactive<T>>),
-}
+pub trait IntoReactive<T>: Into<Reactive<T>> {
+    fn into_reactive(self) -> Reactive<T> {
+        self.into()
+    }
 
-impl<T> Reactive<T> {
-    pub fn into_value(self) -> T {
-        let mut val = self;
+    fn into_value(self) -> T {
+        let mut val = self.into_reactive();
         loop {
             match val {
                 Value(t) => return t,
@@ -21,21 +19,29 @@ impl<T> Reactive<T> {
         }
     }
 
-    pub fn cast<U>(self) -> Reactive<U>
+    fn cast<U>(self) -> Reactive<U>
     where
-        T: Into<U>,
+        T: 'static + Into<U>,
     {
-        match self {
+        match self.into_reactive() {
             Value(t) => Value(t.into()),
-            Reactive::Fn(t) => Reactive::Fn(Rc::new(move || t().cast())),
+            Reactive::Fn(t) => Reactive::Fn(Rc::new(move || Value(t().into_value().into()))),
         }
     }
+}
+
+impl<T, U: Into<Reactive<T>>> IntoReactive<T> for U {}
+
+#[derive(Clone)]
+pub enum Reactive<T> {
+    Value(T),
+    Fn(Rc<dyn Fn() -> Reactive<T>>),
 }
 
 impl<T, F, U> From<F> for Reactive<T>
 where
     F: 'static + Fn() -> U,
-    U: Into<Reactive<T>>,
+    U: IntoReactive<T>,
 {
     fn from(t: F) -> Self {
         Reactive::Fn(Rc::new(move || (t)().into()))
@@ -44,7 +50,7 @@ where
 
 impl<T, U> From<Signal<U>> for Reactive<T>
 where
-    U: Clone + Into<Reactive<T>>,
+    U: Clone + IntoReactive<T>,
 {
     fn from(t: Signal<U>) -> Self {
         Reactive::Fn(Rc::new(move || t.get().into()))
@@ -53,7 +59,7 @@ where
 
 impl<T, U> From<ReadSignal<U>> for Reactive<T>
 where
-    U: Clone + Into<Reactive<T>>,
+    U: Clone + IntoReactive<T>,
 {
     fn from(t: ReadSignal<U>) -> Self {
         Reactive::Fn(Rc::new(move || t.get().into()))

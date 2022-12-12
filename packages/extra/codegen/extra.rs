@@ -25,7 +25,7 @@ new_type_quote!(GENERIC_NODE(#INPUT::core::GenericNode));
 new_type_quote!(GENERIC_ELEMENT(#INPUT::core::GenericElement));
 new_type_quote!(ATTRIBUTE(#INPUT::core::Attribute));
 new_type_quote!(REACTIVE(#INPUT::core::Reactive));
-new_type_quote!(REACTIVE_ATTRIBUTE(#REACTIVE::<#ATTRIBUTE>));
+new_type_quote!(INTO_REACTIVE(#INPUT::core::IntoReactive));
 new_type_quote!(INTO_EVENT_HANDLER(#INPUT::core::IntoEventHandler));
 new_type_quote!(COW_STR(::std::borrow::Cow<'static, str>));
 new_type_quote!(ELEMENT_TYPES(super::element_types));
@@ -199,7 +199,7 @@ impl<'a> Element<'a> {
 
     fn quote_default_methods(&self) -> TokenStream {
         quote!(
-            pub fn attr<K: Into<#COW_STR>, V: Into<#REACTIVE_ATTRIBUTE>>(
+            pub fn attr<K: Into<#COW_STR>, V: #INTO_REACTIVE<#ATTRIBUTE>>(
                 self,
                 name: K,
                 val: V,
@@ -270,7 +270,7 @@ impl<'a> Attribute<'a> {
     fn quote_fn(&self) -> TokenStream {
         let Self { key, ty, fn_, .. } = self;
         quote!(
-            pub fn #fn_<T: Into<#REACTIVE<#ATTR_TYPES::#ty>>>(self, val: T) -> Self {
+            pub fn #fn_<T: #INTO_REACTIVE<#ATTR_TYPES::#ty>>(self, val: T) -> Self {
                 self.0.set_property_literal(#key, val);
                 self
             }
@@ -402,7 +402,7 @@ impl ToTokens for QuoteAttrType<'_> {
                 }
             }
 
-            impl From<#name> for #REACTIVE_ATTRIBUTE {
+            impl From<#name> for #REACTIVE<#ATTRIBUTE> {
                 fn from(t: #name) -> Self {
                     #REACTIVE::Value(t.into())
                 }

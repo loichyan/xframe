@@ -1,5 +1,5 @@
 use std::marker::PhantomData;
-use xframe_core::{Attribute, GenericElement, GenericNode, Reactive};
+use xframe_core::{Attribute, GenericElement, GenericNode, Reactive, IntoReactive};
 use xframe_reactive::Scope;
 
 pub struct Text<N, Data = Reactive<Attribute>> {
@@ -9,7 +9,7 @@ pub struct Text<N, Data = Reactive<Attribute>> {
 }
 
 impl<N> Text<N, ()> {
-    pub fn data<A: Into<Reactive<Attribute>>>(self, data: A) -> Text<N, Reactive<Attribute>> {
+    pub fn data<A: IntoReactive<Attribute>>(self, data: A) -> Text<N, Reactive<Attribute>> {
         Text {
             cx: self.cx,
             node: PhantomData,

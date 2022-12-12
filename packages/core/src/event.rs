@@ -25,42 +25,40 @@ impl<T> EventHandler<T> {
     }
 }
 
-pub trait IntoEventHandler<Ev>: Sized {
-    fn into_event_handler(self) -> EventHandler<Ev>;
+pub trait IntoEventHandler<T>: Into<EventHandler<T>> {
+    fn into_event_handler(self) -> EventHandler<T> {
+        self.into()
+    }
 
-    fn captured(self, val: bool) -> EventHandler<Ev> {
+    fn captured(self, val: bool) -> EventHandler<T> {
         let mut t = self.into_event_handler();
         t.options.capture = val;
         t
     }
 
-    fn once(self, val: bool) -> EventHandler<Ev> {
+    fn once(self, val: bool) -> EventHandler<T> {
         let mut t = self.into_event_handler();
         t.options.once = val;
         t
     }
 
-    fn passive(self, val: bool) -> EventHandler<Ev> {
+    fn passive(self, val: bool) -> EventHandler<T> {
         let mut t = self.into_event_handler();
         t.options.passive = val;
         t
     }
 }
 
-impl<Ev, F> IntoEventHandler<Ev> for F
+impl<T, U: Into<EventHandler<T>>> IntoEventHandler<T> for U {}
+
+impl<T, F> From<F> for EventHandler<T>
 where
-    F: 'static + FnMut(Ev),
+    F: 'static + FnMut(T),
 {
-    fn into_event_handler(self) -> EventHandler<Ev> {
+    fn from(t: F) -> Self {
         EventHandler {
-            handler: Box::new(self),
+            handler: Box::new(t),
             options: Default::default(),
         }
-    }
-}
-
-impl<Ev> IntoEventHandler<Ev> for EventHandler<Ev> {
-    fn into_event_handler(self) -> EventHandler<Ev> {
-        self
     }
 }

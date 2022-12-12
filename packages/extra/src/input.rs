@@ -1,6 +1,8 @@
+#![allow(dead_code)]
+
 use std::borrow::Cow;
 use wasm_bindgen::{intern, JsCast};
-use xframe_core::{Attribute, GenericElement, GenericNode, IntoEventHandler, Reactive};
+use xframe_core::{Attribute, GenericElement, GenericNode, IntoEventHandler, IntoReactive};
 use xframe_reactive::Scope;
 
 pub(crate) type JsBoolean = bool;
@@ -40,14 +42,14 @@ impl<N: GenericNode> BaseElement<N> {
         self.node.as_ref().unchecked_ref()
     }
 
-    pub fn set_property_literal<T>(&self, name: &'static str, val: impl Into<Reactive<T>>)
+    pub fn set_property_literal<T>(&self, name: &'static str, val: impl IntoReactive<T>)
     where
         T: 'static + Into<Attribute>,
     {
-        self.set_property(intern(name).into(), val.into().cast());
+        self.set_property(intern(name).into(), val.into_reactive().cast());
     }
 
-    pub fn set_property(&self, name: Cow<'static, str>, val: impl Into<Reactive<Attribute>>) {
+    pub fn set_property(&self, name: Cow<'static, str>, val: impl IntoReactive<Attribute>) {
         let attr = val.into();
         let node = self.node.clone();
         self.cx.create_effect(move |_| {
