@@ -13,90 +13,54 @@ thread_local! {
     static TEMPLATES: Templates = Templates::default();
 }
 
-pub struct Component<Init, Render> {
-    cx: Scope,
+pub struct ComponentNode<Init, Render> {
     init: Init,
     render: Render,
+}
+
+pub trait Component: 'static + Into<ComponentNode<Self::Init, Self::Render>> {
+    type Node: GenericNode;
+    type Init: InitChain<Node = Self::Node>;
+    type Render: RenderChain<Node = Self::Node>;
+    type ChainTo<C: Component<Node = Self::Node>>: Component<Node = Self::Node>;
+
+    fn render(self) -> Self::Node;
+    fn child<C>(self, component: C) -> Self::ChainTo<C>
+    where
+        C: Component<Node = Self::Node>;
 }
 
 pub fn create_component<N, E>(
     cx: Scope,
     render: impl 'static + FnOnce(E),
-) -> Component<impl InitChain<Node = N>, impl RenderChain<Node = N>>
+) -> impl Component<Node = N>
 where
     N: GenericNode,
     E: GenericElement<Node = N>,
 {
-    Component {
+    ComponentImpl {
         cx,
-        init: InitChainImpl(PhantomData, move || E::create(cx).into_node()),
-        render: RenderChainImpl(PhantomData, move |node: N| {
-            let next = node.first_child();
-            render(E::create_with_node(cx, node));
-            next
-        }),
+        init: InitElement::<E>(PhantomData),
+        render: RenderElement::<E, _>(PhantomData, render),
     }
 }
 
-impl<N, Init, Render> Component<Init, Render>
-where
-    N: GenericNode,
-    Init: InitChain<Node = N>,
-    Render: RenderChain<Node = N>,
-{
-    pub fn child(
-        self,
-        component: impl IntoComponent<Node = N>,
-    ) -> Component<impl InitChain<Node = N>, impl RenderChain<Node = N>> {
-        let child = component.into_component();
-        Component {
-            cx: self.cx,
-            init: InitChainImpl(PhantomData, move || {
-                let node = self.init.init();
-                node.append_child(child.init.init());
-                node
-            }),
-            render: RenderChainImpl(PhantomData, move |mut node: N| {
-                node = self.render.render(node).unwrap();
-                let next = node.next_sibling();
-                child.render.render(node);
-                next
-            }),
+struct ComponentImpl<Init, Render> {
+    cx: Scope,
+    init: Init,
+    render: Render,
+}
+
+impl<Init, Render> From<ComponentImpl<Init, Render>> for ComponentNode<Init, Render> {
+    fn from(t: ComponentImpl<Init, Render>) -> Self {
+        Self {
+            init: t.init,
+            render: t.render,
         }
     }
 }
 
-pub trait IntoComponent: 'static + Sized {
-    type Node: GenericNode;
-    type Init: InitChain<Node = Self::Node>;
-    type Render: RenderChain<Node = Self::Node>;
-
-    fn into_component(self) -> Component<Self::Init, Self::Render>;
-
-    fn render(self) -> Self::Node {
-        let component = self.into_component();
-        let node = TEMPLATES.with(|templates| {
-            // Reuse existed templates or create a new one.
-            templates
-                .borrow_mut()
-                .entry(TypeId::of::<Self>())
-                .or_insert_with(move || {
-                    let fragment = Self::Node::create_fragment();
-                    fragment.append_child(component.init.init());
-                    Box::new(fragment)
-                })
-                .downcast_ref::<Self::Node>()
-                .unwrap_or_else(|| unreachable!())
-                .first_child()
-                .unwrap_or_else(|| unreachable!())
-                .deep_clone()
-        });
-        component.render.render(node.clone());
-        node
-    }
-}
-
-impl<N, Init, Render> IntoComponent for Component<Init, Render>
+impl<N, Init, Render> Component for ComponentImpl<Init, Render>
 where
     N: GenericNode,
     Init: InitChain<Node = N>,
@@ -105,47 +69,108 @@ where
     type Node = N;
     type Init = Init;
     type Render = Render;
+    type ChainTo<C: Component<Node = Self::Node>> =
+        ComponentImpl<InitChain2<Init, C::Init>, RenderChain2<Render, C::Render>>;
 
-    fn into_component(self) -> Component<Self::Init, Self::Render> {
-        self
+    fn render(self) -> Self::Node {
+        let node = TEMPLATES.with(|templates| {
+            templates
+                .borrow_mut()
+                .entry(TypeId::of::<Self>())
+                .or_insert_with(|| {
+                    let fragment = Self::Node::create_fragment();
+                    fragment.append_child(self.init.append_and_return_root(self.cx));
+                    Box::new(fragment)
+                })
+                .downcast_ref::<Self::Node>()
+                .unwrap_or_else(|| unreachable!())
+                .first_child()
+                .unwrap_or_else(|| unreachable!())
+                .deep_clone()
+        });
+        self.render.render_and_return_next(self.cx, node.clone());
+        node
+    }
+
+    fn child<C>(self, component: C) -> Self::ChainTo<C>
+    where
+        C: Component<Node = Self::Node>,
+    {
+        let component: ComponentNode<_, _> = component.into();
+        ComponentImpl {
+            cx: self.cx,
+            init: InitChain2(self.init, component.init),
+            render: RenderChain2(self.render, component.render),
+        }
     }
 }
 
 pub trait InitChain: 'static {
     type Node: GenericNode;
-
-    fn init(self) -> Self::Node;
+    fn append_and_return_root(self, cx: Scope) -> Self::Node;
 }
 
-struct InitChainImpl<N, F>(PhantomData<N>, F);
-
-impl<N, F> InitChain for InitChainImpl<N, F>
+struct InitElement<E>(PhantomData<E>);
+impl<N, E> InitChain for InitElement<E>
 where
     N: GenericNode,
-    F: 'static + FnOnce() -> N,
+    E: GenericElement<Node = N>,
 {
     type Node = N;
-    fn init(self) -> Self::Node {
-        (self.1)()
+    fn append_and_return_root(self, cx: Scope) -> Self::Node {
+        E::create(cx).into_node()
+    }
+}
+
+struct InitChain2<Prev, This>(Prev, This);
+impl<N, Prev, This> InitChain for InitChain2<Prev, This>
+where
+    N: GenericNode,
+    Prev: InitChain<Node = N>,
+    This: InitChain<Node = N>,
+{
+    type Node = N;
+    fn append_and_return_root(self, cx: Scope) -> Self::Node {
+        // Append previous siblings first.
+        let root = self.0.append_and_return_root(cx);
+        root.append_child(self.1.append_and_return_root(cx));
+        root
     }
 }
 
 pub trait RenderChain: 'static {
     type Node: GenericNode;
-
-    fn render(self, node: Self::Node) -> Option<Self::Node>;
+    fn render_and_return_next(self, cx: Scope, prev: Self::Node) -> Option<Self::Node>;
 }
 
-struct RenderChainImpl<N, F>(PhantomData<N>, F);
-
-impl<N, F> RenderChain for RenderChainImpl<N, F>
+struct RenderElement<E, F>(PhantomData<E>, F);
+impl<N, E, F> RenderChain for RenderElement<E, F>
 where
     N: GenericNode,
-    F: 'static + FnOnce(N) -> Option<N>,
+    E: GenericElement<Node = N>,
+    F: 'static + FnOnce(E),
 {
     type Node = N;
+    fn render_and_return_next(self, cx: Scope, prev: Self::Node) -> Option<Self::Node> {
+        let next = prev.first_child();
+        (self.1)(E::create_with_node(cx, prev));
+        next
+    }
+}
 
-    fn render(self, node: N) -> Option<N> {
-        (self.1)(node)
+struct RenderChain2<Prev, This>(Prev, This);
+impl<N, Prev, This> RenderChain for RenderChain2<Prev, This>
+where
+    N: GenericNode,
+    Prev: RenderChain<Node = N>,
+    This: RenderChain<Node = N>,
+{
+    type Node = N;
+    fn render_and_return_next(self, cx: Scope, prev: N) -> Option<N> {
+        // Render previous siblings and get this node.
+        let node = self.0.render_and_return_next(cx, prev).unwrap();
+        let next = node.next_sibling();
+        self.1.render_and_return_next(cx, node);
+        next
     }
 }
