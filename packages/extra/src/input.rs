@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 use wasm_bindgen::{intern, JsCast};
-use xframe_core::{Attribute, GenericElement, GenericNode, IntoEventHandler, IntoReactive};
+use xframe_core::{Attribute, GenericNode, IntoEventHandler, IntoReactive};
 use xframe_reactive::Scope;
 
 pub(crate) type JsBoolean = bool;
@@ -14,24 +14,25 @@ pub(crate) struct BaseElement<N> {
     cx: Scope,
 }
 
-impl<N: GenericNode> GenericElement for BaseElement<N> {
-    type Node = N;
-    fn into_node(self) -> Self::Node {
-        self.node
-    }
-}
-
 #[allow(dead_code)]
 impl<N: GenericNode> BaseElement<N> {
     pub fn create(tag: &'static str, cx: Scope) -> Self {
         Self {
-            node: N::create(intern(tag).into()),
             cx,
+            node: N::create(intern(tag).into()),
         }
+    }
+
+    pub fn create_with_node(cx: Scope, node: N) -> Self {
+        Self { cx, node }
     }
 
     pub fn node(&self) -> &N {
         &self.node
+    }
+
+    pub fn into_node(self) -> N {
+        self.node
     }
 
     pub fn as_web_sys_element<T>(&self) -> &T
@@ -62,7 +63,11 @@ impl<N: GenericNode> BaseElement<N> {
         Ev: 'static + JsCast,
         N: GenericNode<Event = web_sys::Event>,
     {
-        self.node
-            .listen_event(intern(event).into(), handler.into_event_handler().cast());
+        self.node.listen_event(
+            intern(event).into(),
+            handler
+                .into_event_handler()
+                .cast_with(|ev| ev.unchecked_into()),
+        );
     }
 }

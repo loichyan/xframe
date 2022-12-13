@@ -14,6 +14,7 @@ features = [
     "AddEventListenerOptions",
     "CharacterData",
     "Document",
+    "DocumentFragment",
     "DomTokenList",
     "Element",
     "Event",

@@ -1,31 +1,16 @@
-use wasm_bindgen::JsCast;
-
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Options {
+pub struct EventOptions {
     pub capture: bool,
     pub once: bool,
     pub passive: bool,
 }
 
-pub struct EventHandler<T> {
+pub struct EventHandler<T: 'static> {
     pub handler: Box<dyn FnMut(T)>,
-    pub options: Options,
+    pub options: EventOptions,
 }
 
-impl<T> EventHandler<T> {
-    pub fn cast<U>(mut self) -> EventHandler<U>
-    where
-        T: 'static + JsCast,
-        U: 'static + JsCast,
-    {
-        EventHandler {
-            handler: Box::new(move |ev: U| (self.handler)(ev.unchecked_into())),
-            options: self.options,
-        }
-    }
-}
-
-pub trait IntoEventHandler<T>: Into<EventHandler<T>> {
+pub trait IntoEventHandler<T: 'static>: Into<EventHandler<T>> {
     fn into_event_handler(self) -> EventHandler<T> {
         self.into()
     }
@@ -47,9 +32,27 @@ pub trait IntoEventHandler<T>: Into<EventHandler<T>> {
         t.options.passive = val;
         t
     }
+
+    fn cast<U>(self) -> EventHandler<U>
+    where
+        U: 'static + Into<T>,
+    {
+        self.cast_with(U::into)
+    }
+
+    fn cast_with<U>(self, f: fn(U) -> T) -> EventHandler<U>
+    where
+        U: 'static,
+    {
+        let mut handler = self.into_event_handler();
+        EventHandler {
+            handler: Box::new(move |ev: U| (handler.handler)(f(ev))),
+            options: handler.options,
+        }
+    }
 }
 
-impl<T, U: Into<EventHandler<T>>> IntoEventHandler<T> for U {}
+impl<T: 'static, U: Into<EventHandler<T>>> IntoEventHandler<T> for U {}
 
 impl<T, F> From<F> for EventHandler<T>
 where

@@ -1,39 +1,38 @@
 mod dom_node;
 
 pub mod elements {
-    pub(crate) mod text;
+    #[path = "text.rs"]
+    pub(crate) mod text_;
 
     #[doc(inline)]
-    pub use text::text;
+    pub use text_::text;
 }
-pub mod element_types {
-    #[doc(inline)]
-    pub use crate::elements::text::Text;
-}
+
+pub mod element_types {}
 
 #[doc(inline)]
 pub use dom_node::DomNode;
-use xframe_core::GenericElement;
+use xframe_core::IntoComponent;
 
 thread_local! {
     static WINDOW: web_sys::Window = web_sys::window().unwrap();
     static DOCUMENT: web_sys::Document = WINDOW.with(web_sys::Window::document).unwrap();
 }
 
-pub fn render_to_body<E>(f: impl FnOnce(xframe_reactive::Scope) -> E)
+pub fn render_to_body<C>(f: impl FnOnce(xframe_reactive::Scope) -> C)
 where
-    E: GenericElement<Node = DomNode>,
+    C: IntoComponent<Node = DomNode>,
 {
     let body = DOCUMENT.with(|docuemt| docuemt.body().unwrap());
     render(&body, f);
 }
 
-pub fn render<E>(root: &web_sys::Node, f: impl FnOnce(xframe_reactive::Scope) -> E)
+pub fn render<C>(root: &web_sys::Node, f: impl FnOnce(xframe_reactive::Scope) -> C)
 where
-    E: GenericElement<Node = DomNode>,
+    C: IntoComponent<Node = DomNode>,
 {
     xframe_reactive::create_root(|cx| {
-        let node = f(cx).into_node();
+        let node = f(cx).render();
         root.append_child(node.as_ref()).unwrap();
     })
     .leak();

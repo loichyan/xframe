@@ -11,6 +11,18 @@ pub struct DomNode {
     node: web_sys::Node,
 }
 
+impl From<web_sys::Node> for DomNode {
+    fn from(node: web_sys::Node) -> Self {
+        Self { node }
+    }
+}
+
+impl From<DomNode> for web_sys::Node {
+    fn from(t: DomNode) -> Self {
+        t.node
+    }
+}
+
 impl AsRef<web_sys::Node> for DomNode {
     fn as_ref(&self) -> &web_sys::Node {
         &self.node
@@ -32,6 +44,18 @@ impl GenericNode for DomNode {
     fn create_text_node(data: &str) -> Self {
         Self {
             node: DOCUMENT.with(|docuement| docuement.create_text_node(data).into()),
+        }
+    }
+
+    fn create_fragment() -> Self {
+        Self {
+            node: DOCUMENT.with(|docuemnt| docuemnt.create_document_fragment().into()),
+        }
+    }
+
+    fn deep_clone(&self) -> Self {
+        Self {
+            node: self.node.clone_node_with_deep(true).unwrap(),
         }
     }
 
@@ -76,5 +100,13 @@ impl GenericNode for DomNode {
 
     fn append_child(&self, child: Self) {
         self.node.append_child(&child.node).unwrap();
+    }
+
+    fn first_child(&self) -> Option<Self> {
+        self.node.first_child().map(Self::from)
+    }
+
+    fn next_sibling(&self) -> Option<Self> {
+        self.node.next_sibling().map(Self::from)
     }
 }

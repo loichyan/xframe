@@ -1,5 +1,5 @@
 fn main() {
-    use xframe::{element::prelude::*, view};
+    use xframe::view;
 
     xframe::render_to_body(|cx| {
         let counter = cx.create_signal(0);

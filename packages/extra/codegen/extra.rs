@@ -21,6 +21,8 @@ macro_rules! new_type_quote {
 new_type_quote!(INPUT(super::input));
 new_type_quote!(WEB_SYS(#INPUT::web_sys));
 new_type_quote!(XFRAME(#INPUT::xframe));
+new_type_quote!(SCOPE(#XFRAME::Scope));
+new_type_quote!(BASE_ELEMENT(#INPUT::BaseElement));
 new_type_quote!(GENERIC_NODE(#INPUT::core::GenericNode));
 new_type_quote!(GENERIC_ELEMENT(#INPUT::core::GenericElement));
 new_type_quote!(ATTRIBUTE(#INPUT::core::Attribute));
@@ -77,18 +79,17 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
         }
         elements.push(element);
     }
-    let element_types = element_types.iter().map(QuoteElementType);
     let attr_types = attr_types.iter().map(QuoteAttrType);
     let event_types = event_types.iter().map(QuoteEventType);
-    let element_fns = elements.iter().map(Element::quote_fn);
-    let element_structs = elements.iter().map(Element::quote_struct);
+    let element_definitions = elements.iter().map(Element::quote);
+    let element_types = element_types.iter().map(QuoteElementType);
     quote!(
         #[cfg(feature = "elements")]
         #[allow(clippy::all)]
         pub mod output {
             use super::input;
-            pub mod elements { #(#element_fns)* }
-            pub mod element_types { #(#element_structs)* #(#element_types)* }
+            pub mod elements { #(#element_definitions)* }
+            pub mod element_types { #(#element_types)* }
             #[cfg(feature = "attributes")]
             pub mod attr_types {
                 pub(super) type JsBoolean = #INPUT::JsBoolean;
@@ -106,7 +107,6 @@ struct Element<'a> {
     key: LitStr,
     ty: Ident,
     fn_: Ident,
-    struct_: Ident,
     attributes: Vec<Attribute<'a>>,
     events: Vec<Event<'a>>,
 }
@@ -129,7 +129,6 @@ impl<'a> Element<'a> {
             key: name.to_kebab_case().to_lit_str(),
             ty,
             fn_: name.to_ident(),
-            struct_: name.to_pascal_case().to_ident(),
             attributes: attributes
                 .iter()
                 .filter_map(|attr| {
@@ -144,56 +143,66 @@ impl<'a> Element<'a> {
         }
     }
 
-    fn quote_fn(&self) -> TokenStream {
-        let Self {
-            key, fn_, struct_, ..
-        } = self;
-        quote!(
-            pub fn #fn_<N: #GENERIC_NODE>(cx: #XFRAME::Scope) -> #ELEMENT_TYPES::#struct_<N> {
-                #ELEMENT_TYPES::#struct_::<N>(#INPUT::BaseElement::create(#key, cx))
-            }
-        )
-    }
-
-    fn quote_struct(&self) -> TokenStream {
+    fn quote(&self) -> TokenStream {
         let Self {
             ty,
-            struct_,
+            fn_,
             attributes,
             events,
+            key,
             ..
         } = self;
         let attr_fns = attributes.iter().map(Attribute::quote_fn);
         let event_fns = events.iter().map(Event::quote_fn);
         let default_methods = self.quote_default_methods();
         quote!(
-            pub struct #struct_<N>(pub(crate) #INPUT::BaseElement<N>);
+            #[allow(non_camel_case_types)]
+            pub struct #fn_<N> {
+                inner: #BASE_ELEMENT<N>
+            }
+
+            pub fn #fn_<N: #GENERIC_NODE>(cx: #SCOPE) -> #fn_<N> {
+                #GENERIC_ELEMENT::create(cx)
+            }
 
             impl<N: #GENERIC_NODE> #GENERIC_ELEMENT
-            for #struct_<N>
+            for #fn_<N>
             {
                 type Node = N;
-                fn into_node(self) -> Self::Node {
-                    #GENERIC_ELEMENT::into_node(self.0)
+
+                fn create(cx: #SCOPE) -> Self {
+                    #fn_ {
+                        inner: #BASE_ELEMENT::create(#key, cx)
+                    }
+                }
+
+                fn create_with_node(cx: #SCOPE, node: N) -> Self {
+                    #fn_ {
+                        inner: #BASE_ELEMENT::create_with_node(cx, node)
+                    }
+                }
+
+                fn into_node(self) -> N {
+                    self.inner.into_node()
                 }
             }
 
-            impl<N> AsRef<#ELEMENT_TYPES::#ty> for #struct_<N>
+            impl<N> AsRef<#ELEMENT_TYPES::#ty> for #fn_<N>
             where
                 N: #GENERIC_NODE + AsRef<#WEB_SYS::Node>,
             {
                 fn as_ref(&self) -> &#ELEMENT_TYPES::#ty {
-                    self.0.as_web_sys_element()
+                    self.inner.as_web_sys_element()
                 }
             }
 
-            impl<N: #GENERIC_NODE> #struct_<N> { #default_methods }
+            impl<N: #GENERIC_NODE> #fn_<N> { #default_methods }
 
             #[cfg(feature = "attributes")]
-            impl<N: #GENERIC_NODE> #struct_<N> { #(#attr_fns)* }
+            impl<N: #GENERIC_NODE> #fn_<N> { #(#attr_fns)* }
 
             #[cfg(feature = "events")]
-            impl<N: #GENERIC_NODE<Event = #WEB_SYS::Event>> #struct_<N> { #(#event_fns)* }
+            impl<N: #GENERIC_NODE<Event = #WEB_SYS::Event>> #fn_<N> { #(#event_fns)* }
         )
     }
 
@@ -204,13 +213,13 @@ impl<'a> Element<'a> {
                 name: K,
                 val: V,
             ) -> Self {
-                self.0.set_property(name.into(), val);
+                self.inner.set_property(name.into(), val);
                 self
             }
 
             /// Add a class to this element.
             pub fn class<T: Into<#COW_STR>>(self, name: T) -> Self {
-                self.0.node().add_class(name.into());
+                self.inner.node().add_class(name.into());
                 self
             }
 
@@ -218,7 +227,7 @@ impl<'a> Element<'a> {
             where
                 E: #GENERIC_ELEMENT<Node = N>,
             {
-                self.0.node().append_child(element.into_node());
+                self.inner.node().append_child(element.into_node());
                 self
             }
 
@@ -226,7 +235,7 @@ impl<'a> Element<'a> {
             where
                 I: IntoIterator<Item = N>,
             {
-                let node = self.0.node();
+                let node = self.inner.node();
                 for child in nodes {
                     node.append_child(child);
                 }
@@ -271,7 +280,7 @@ impl<'a> Attribute<'a> {
         let Self { key, ty, fn_, .. } = self;
         quote!(
             pub fn #fn_<T: #INTO_REACTIVE<#ATTR_TYPES::#ty>>(self, val: T) -> Self {
-                self.0.set_property_literal(#key, val);
+                self.inner.set_property_literal(#key, val);
                 self
             }
         )
@@ -308,7 +317,7 @@ impl<'a> Event<'a> {
                 self,
                 handler: impl #INTO_EVENT_HANDLER<#EVENT_TYPES::#ty>,
             ) -> Self {
-                self.0.listen_event(#key, handler);
+                self.inner.listen_event(#key, handler);
                 self
             }
         )

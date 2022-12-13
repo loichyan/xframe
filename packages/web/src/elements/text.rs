@@ -1,39 +1,45 @@
-use std::marker::PhantomData;
-use xframe_core::{Attribute, GenericElement, GenericNode, Reactive, IntoReactive};
+use xframe_core::{Attribute, GenericElement, GenericNode, IntoReactive};
 use xframe_reactive::Scope;
 
-pub struct Text<N, Data = Reactive<Attribute>> {
+#[allow(non_camel_case_types)]
+pub struct text<N> {
     cx: Scope,
-    node: PhantomData<N>,
-    data: Data,
+    node: N,
 }
 
-impl<N> Text<N, ()> {
-    pub fn data<A: IntoReactive<Attribute>>(self, data: A) -> Text<N, Reactive<Attribute>> {
-        Text {
+impl<N: GenericNode> text<N> {
+    pub fn data<A: IntoReactive<Attribute>>(self, data: A) -> Self {
+        let data = data.into_reactive();
+        self.cx.create_effect({
+            let node = self.node.clone();
+            move |_| node.set_inner_text(data.clone().into_value().into_string_only().as_str())
+        });
+        text {
             cx: self.cx,
-            node: PhantomData,
-            data: data.into(),
+            node: self.node,
         }
     }
 }
 
-impl<N: GenericNode> GenericElement for Text<N> {
+impl<N: GenericNode> GenericElement for text<N> {
     type Node = N;
+
+    fn create(cx: Scope) -> Self {
+        Self {
+            cx,
+            node: N::create_text_node(""),
+        }
+    }
+
+    fn create_with_node(cx: Scope, node: Self::Node) -> Self {
+        Self { cx, node }
+    }
+
     fn into_node(self) -> Self::Node {
-        let node = N::create_text_node("");
-        self.cx.create_effect({
-            let node = node.clone();
-            move |_| node.set_inner_text(self.data.clone().into_value().into_string_only().as_str())
-        });
-        node
+        self.node
     }
 }
 
-pub fn text<N: GenericNode>(cx: Scope) -> Text<N, ()> {
-    Text {
-        cx,
-        node: PhantomData,
-        data: (),
-    }
+pub fn text<N: GenericNode>(cx: Scope) -> text<N> {
+    text::create(cx)
 }

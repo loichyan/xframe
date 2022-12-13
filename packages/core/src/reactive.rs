@@ -1,10 +1,19 @@
-use std::rc::Rc;
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 use xframe_reactive::{ReadSignal, Signal};
 
 #[doc(inline)]
 pub use Reactive::Value;
 
-pub trait IntoReactive<T>: Into<Reactive<T>> {
+#[derive(Clone)]
+pub enum Reactive<T: 'static> {
+    Value(T),
+    Fn(Rc<dyn Fn() -> Reactive<T>>),
+}
+
+pub trait IntoReactive<T: 'static>: Into<Reactive<T>> {
     fn into_reactive(self) -> Reactive<T> {
         self.into()
     }
@@ -21,22 +30,20 @@ pub trait IntoReactive<T>: Into<Reactive<T>> {
 
     fn cast<U>(self) -> Reactive<U>
     where
-        T: 'static + Into<U>,
+        T: Into<U>,
     {
+        self.cast_with(T::into)
+    }
+
+    fn cast_with<U>(self, f: fn(T) -> U) -> Reactive<U> {
         match self.into_reactive() {
-            Value(t) => Value(t.into()),
-            Reactive::Fn(t) => Reactive::Fn(Rc::new(move || Value(t().into_value().into()))),
+            Value(t) => Value(f(t)),
+            Reactive::Fn(t) => Reactive::Fn(Rc::new(move || Value(f(t().into_value())))),
         }
     }
 }
 
-impl<T, U: Into<Reactive<T>>> IntoReactive<T> for U {}
-
-#[derive(Clone)]
-pub enum Reactive<T> {
-    Value(T),
-    Fn(Rc<dyn Fn() -> Reactive<T>>),
-}
+impl<T: 'static, U: Into<Reactive<T>>> IntoReactive<T> for U {}
 
 impl<T, F, U> From<F> for Reactive<T>
 where
@@ -90,4 +97,4 @@ macro_rules! impl_into_reactive_generic {
     )*};
 }
 
-impl_into_reactive_generic!(Rc, Option, Vec);
+impl_into_reactive_generic!(Rc, Option, Vec, RefCell, Cell);

@@ -12,7 +12,12 @@ trait Empty {}
 impl<T> Empty for T {}
 
 #[doc(inline)]
-pub use self::{effect::*, scope::*, signal::*, variable::*};
+pub use self::{
+    effect::Effect,
+    scope::{create_root, Scope, ScopeDisposer},
+    signal::{ReadSignal, Signal},
+    variable::Variable,
+};
 
 #[test]
 fn readme_example() {
