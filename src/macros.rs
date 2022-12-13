@@ -14,8 +14,7 @@ macro_rules! __view {
         );
         $($children)*
         $root
-    }
-    };
+    }};
     // Builder methods.
     (
         cx=($cx:expr)
@@ -50,22 +49,17 @@ macro_rules! __view {
     // Text nodes.
     (
         cx=($cx:expr)
-        root=($root:ident)
+        root=$root:tt
         render=$render:tt
-        children={ $($children:tt)* }
+        children=$children:tt
         rest={ $text:literal $($rest:tt)* }
     ) => {
         $crate::__view! {
             cx=($cx)
-            root=($root)
+            root=$root
             render=$render
-            children={
-                $($children)*
-                let $root = $crate::Component::child($root,
-                    $crate::view!($cx, text { .data($text) })
-                );
-            }
-            rest={ $($rest)* }
+            children=$children
+            rest={ ($text) $($rest)* }
         }
     };
     (
@@ -81,8 +75,8 @@ macro_rules! __view {
             render=$render
             children={
                 $($children)*
-                let $root = $crate::Component::child($root,
-                    $crate::view!($cx, text { .data($text) })
+                let $root = $crate::Component::child_element($root,
+                    move |text: $crate::element::text<_>| { text.data($text); },
                 );
             }
             rest={ $($rest)* }

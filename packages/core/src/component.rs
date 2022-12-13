@@ -22,27 +22,19 @@ pub trait Component: 'static + Into<ComponentNode<Self::Init, Self::Render>> {
     type Node: GenericNode;
     type Init: InitChain<Node = Self::Node>;
     type Render: RenderChain<Node = Self::Node>;
-    type ChainTo<C: Component<Node = Self::Node>>: Component<Node = Self::Node>;
+    type ChildOutput<C: Component<Node = Self::Node>>: Component<Node = Self::Node>;
+    type ChildElementOutput<E: GenericElement<Node = Self::Node>, F: 'static + FnOnce(E)>: Component<
+        Node = Self::Node,
+    >;
 
     fn render(self) -> Self::Node;
-    fn child<C>(self, component: C) -> Self::ChainTo<C>
+    fn child<C>(self, component: C) -> Self::ChildOutput<C>
     where
         C: Component<Node = Self::Node>;
-}
-
-pub fn create_component<N, E>(
-    cx: Scope,
-    render: impl 'static + FnOnce(E),
-) -> impl Component<Node = N>
-where
-    N: GenericNode,
-    E: GenericElement<Node = N>,
-{
-    ComponentImpl {
-        cx,
-        init: InitElement::<E>(PhantomData),
-        render: RenderElement::<E, _>(PhantomData, render),
-    }
+    fn child_element<E, F>(self, render: F) -> Self::ChildElementOutput<E, F>
+    where
+        E: GenericElement<Node = Self::Node>,
+        F: 'static + FnOnce(E);
 }
 
 struct ComponentImpl<Init, Render> {
@@ -69,7 +61,9 @@ where
     type Node = N;
     type Init = Init;
     type Render = Render;
-    type ChainTo<C: Component<Node = Self::Node>> =
+    type ChildElementOutput<E: GenericElement<Node = Self::Node>, F: 'static + FnOnce(E)> =
+        ComponentImpl<InitChain2<Init, InitElement<E>>, RenderChain2<Render, RenderElement<E, F>>>;
+    type ChildOutput<C: Component<Node = Self::Node>> =
         ComponentImpl<InitChain2<Init, C::Init>, RenderChain2<Render, C::Render>>;
 
     fn render(self) -> Self::Node {
@@ -92,7 +86,7 @@ where
         node
     }
 
-    fn child<C>(self, component: C) -> Self::ChainTo<C>
+    fn child<C>(self, component: C) -> Self::ChildOutput<C>
     where
         C: Component<Node = Self::Node>,
     {
@@ -101,6 +95,18 @@ where
             cx: self.cx,
             init: InitChain2(self.init, component.init),
             render: RenderChain2(self.render, component.render),
+        }
+    }
+
+    fn child_element<E, F>(self, render: F) -> Self::ChildElementOutput<E, F>
+    where
+        E: GenericElement<Node = Self::Node>,
+        F: 'static + FnOnce(E),
+    {
+        ComponentImpl {
+            cx: self.cx,
+            init: InitChain2(self.init, InitElement(PhantomData)),
+            render: RenderChain2(self.render, RenderElement(PhantomData, render)),
         }
     }
 }
@@ -172,5 +178,20 @@ where
         let next = node.next_sibling();
         self.1.render_and_return_next(cx, node);
         next
+    }
+}
+
+pub fn create_component<N, E>(
+    cx: Scope,
+    render: impl 'static + FnOnce(E),
+) -> impl Component<Node = N>
+where
+    N: GenericNode,
+    E: GenericElement<Node = N>,
+{
+    ComponentImpl {
+        cx,
+        init: InitElement::<E>(PhantomData),
+        render: RenderElement::<E, _>(PhantomData, render),
     }
 }
