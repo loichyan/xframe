@@ -12,7 +12,7 @@ pub mod element_types {}
 
 #[doc(inline)]
 pub use dom_node::DomNode;
-use xframe_core::Component;
+use xframe_core::GenericComponent;
 
 thread_local! {
     static WINDOW: web_sys::Window = web_sys::window().unwrap();
@@ -21,7 +21,7 @@ thread_local! {
 
 pub fn render_to_body<C>(f: impl FnOnce(xframe_reactive::Scope) -> C)
 where
-    C: Component<Node = DomNode>,
+    C: GenericComponent<Node = DomNode>,
 {
     let body = DOCUMENT.with(|docuemt| docuemt.body().unwrap());
     render(&body, f);
@@ -29,7 +29,7 @@ where
 
 pub fn render<C>(root: &web_sys::Node, f: impl FnOnce(xframe_reactive::Scope) -> C)
 where
-    C: Component<Node = DomNode>,
+    C: GenericComponent<Node = DomNode>,
 {
     xframe_reactive::create_root(|cx| {
         let node = f(cx).render();

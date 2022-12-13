@@ -8,7 +8,7 @@ mod reactive;
 #[doc(inline)]
 pub use self::{
     attr::Attribute,
-    component::{create_component, Component},
+    component::{create_component, Component, GenericComponent},
     element::GenericElement,
     event::{EventHandler, EventOptions, IntoEventHandler},
     node::GenericNode,

@@ -8,12 +8,11 @@ macro_rules! __view {
         children={ $($children:tt)* }
         rest={}
     ) => {{
-        let $root = $crate::create_component(
+        $crate::create_component(
             $cx,
             move |root: $crate::element::$root<_>| { root $($render)*; },
-        );
+        )
         $($children)*
-        $root
     }};
     // Builder methods.
     (
@@ -59,46 +58,39 @@ macro_rules! __view {
             root=$root
             render=$render
             children=$children
-            rest={ ($text) $($rest)* }
+            rest={ text { .data($text) } $($rest)* }
         }
     };
     (
         cx=($cx:expr)
-        root=($root:ident)
+        root=$root:tt
         render=$render:tt
-        children={ $($children:tt)* }
+        children=$children:tt
         rest={ ($text:expr) $($rest:tt)* }
     ) => {
         $crate::__view! {
             cx=($cx)
-            root=($root)
+            root=$root
             render=$render
-            children={
-                $($children)*
-                let $root = $crate::Component::child_element($root,
-                    move |text: $crate::element::text<_>| { text.data($text); },
-                );
-            }
-            rest={ $($rest)* }
+            children=$children
+            rest={ text { .data($text) } $($rest)* }
         }
     };
     // Child nodes.
     (
         cx=($cx:expr)
-        root=($root:ident)
+        root=$root:tt
         render=$render:tt
         children={ $($children:tt)* }
         rest={ $child:ident $args:tt $($rest:tt)* }
     ) => {
         $crate::__view! {
             cx=($cx)
-            root=($root)
+            root=$root
             render=$render
             children={
                 $($children)*
-                let $root = $crate::Component::child($root,
-                    $crate::view!($cx, $child $args)
-                );
+                .child($crate::view!($cx, $child $args))
             }
             rest={ $($rest)* }
         }
