@@ -1,15 +1,44 @@
 use crate::create_component;
+use smallvec::SmallVec;
 use std::marker::PhantomData;
 use wasm_bindgen::UnwrapThrowExt;
 use xframe_core::{GenericComponent, GenericElement, GenericNode, IntoReactive, Reactive};
 use xframe_reactive::Scope;
 
-pub struct Show<N, When = Reactive<bool>, Fallback = Option<N>, Child = N> {
+const INITIAL_BRANCH_SLOTS: usize = 2;
+
+#[allow(non_snake_case)]
+pub fn Show<N: GenericNode>(cx: Scope) -> Show<N> {
+    Show {
+        cx,
+        branches: Default::default(),
+        default: None,
+        marker: PhantomData,
+    }
+}
+
+pub struct Show<N> {
     cx: Scope,
-    when: When,
-    fallback: Fallback,
-    child: Child,
+    branches: SmallVec<[If<N>; INITIAL_BRANCH_SLOTS]>,
+    default: Option<Else<N>>,
     marker: PhantomData<N>,
+}
+
+pub enum ShowChild<N> {
+    If(If<N>),
+    Else(Else<N>),
+}
+
+impl<N> From<If<N>> for ShowChild<N> {
+    fn from(t: If<N>) -> Self {
+        Self::If(t)
+    }
+}
+
+impl<N> From<Else<N>> for ShowChild<N> {
+    fn from(t: Else<N>) -> Self {
+        Self::Else(t)
+    }
 }
 
 impl<N> Show<N>
@@ -19,9 +48,8 @@ where
     pub fn build(self) -> impl GenericComponent<Node = N> {
         let Self {
             cx,
-            when,
-            fallback,
-            child,
+            branches,
+            default,
             ..
         } = self;
         create_component(cx, move |placeholder: crate::elements::placeholder<N>| {
@@ -30,15 +58,17 @@ where
                 .parent()
                 .expect_throw("`Show` component must have a parent");
             cx.create_effect(move || {
-                if when.clone().into_value() {
-                    if current.ne(&child) {
-                        parent.replace_child(&child, &current);
-                        current = child.clone();
+                for branch in branches.iter() {
+                    if branch.when.clone().into_value() && current.ne(&branch.child) {
+                        parent.replace_child(&branch.child, &current);
+                        current = branch.child.clone();
+                        return;
                     }
-                } else if let Some(fallback) = fallback.as_ref() {
-                    if current.ne(fallback) {
-                        parent.replace_child(fallback, &current);
-                        current = fallback.clone();
+                }
+                if let Some(default) = default.as_ref() {
+                    if current.ne(&default.child) {
+                        parent.replace_child(&default.child, &current);
+                        current = default.child.clone();
                     }
                 }
             });
@@ -46,56 +76,54 @@ where
     }
 }
 
-impl<N, When, Fallback, Child> Show<N, When, Fallback, Child> {
-    pub fn when<T: IntoReactive<bool>>(self, when: T) -> Show<N, Reactive<bool>, Fallback, Child> {
-        let Self {
-            cx,
-            fallback,
-            child,
-            marker,
-            ..
-        } = self;
-        Show {
-            cx,
+impl<N> Show<N> {
+    pub fn child<C: Into<ShowChild<N>>>(mut self, child: C) -> Show<N> {
+        match child.into() {
+            ShowChild::If(case) => self.branches.push(case),
+            ShowChild::Else(default) => self.default = Some(default),
+        }
+        self
+    }
+}
+
+#[allow(non_snake_case)]
+pub fn If<N: GenericNode>(_: Scope) -> If<N, (), ()> {
+    If {
+        marker: PhantomData,
+        when: (),
+        child: (),
+    }
+}
+
+pub struct If<N, When = Reactive<bool>, Child = N> {
+    when: When,
+    child: Child,
+    marker: PhantomData<N>,
+}
+
+impl<N: GenericNode> If<N> {
+    pub fn build(self) -> Self {
+        self
+    }
+}
+
+impl<N, When, Child> If<N, When, Child>
+where
+    N: GenericNode,
+{
+    pub fn when<T: IntoReactive<bool>>(self, when: T) -> If<N, Reactive<bool>, Child> {
+        let Self { child, marker, .. } = self;
+        If {
             when: when.into_reactive(),
-            fallback,
             child,
             marker,
         }
     }
 
-    pub fn fallback<C: GenericComponent<Node = N>>(
-        self,
-        fallback: C,
-    ) -> Show<N, When, Option<N>, Child> {
-        let Self {
-            cx,
+    pub fn child<C: GenericComponent<Node = N>>(self, child: C) -> If<N, When, N> {
+        let Self { when, marker, .. } = self;
+        If {
             when,
-            child,
-            marker,
-            ..
-        } = self;
-        Show {
-            cx,
-            when,
-            fallback: Some(fallback.render()),
-            child,
-            marker,
-        }
-    }
-
-    pub fn child<C: GenericComponent<Node = N>>(self, child: C) -> Show<N, When, Fallback, N> {
-        let Self {
-            cx,
-            when,
-            fallback,
-            marker,
-            ..
-        } = self;
-        Show {
-            cx,
-            when,
-            fallback,
             child: child.render(),
             marker,
         }
@@ -103,13 +131,33 @@ impl<N, When, Fallback, Child> Show<N, When, Fallback, Child> {
 }
 
 #[allow(non_snake_case)]
-#[allow(clippy::type_complexity)]
-pub fn Show<N: GenericNode>(cx: Scope) -> Show<N, (), Option<fn() -> N>, ()> {
-    Show {
-        cx,
-        when: (),
-        fallback: None,
+pub fn Else<N: GenericNode>(_: Scope) -> Else<N, ()> {
+    Else {
         child: (),
         marker: PhantomData,
+    }
+}
+
+pub struct Else<N, Child = N> {
+    child: Child,
+    marker: PhantomData<N>,
+}
+
+impl<N: GenericNode> Else<N> {
+    pub fn build(self) -> Self {
+        self
+    }
+}
+
+impl<N, Child> Else<N, Child>
+where
+    N: GenericNode,
+{
+    pub fn child<C: GenericComponent<Node = N>>(self, child: C) -> Else<N, N> {
+        let Self { marker, .. } = self;
+        Else {
+            child: child.render(),
+            marker,
+        }
     }
 }

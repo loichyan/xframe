@@ -1,5 +1,5 @@
 use std::marker::PhantomData;
-use xframe::{view, GenericComponent, GenericNode, Scope, Show};
+use xframe::{view, Else, GenericComponent, GenericNode, If, Scope, Show};
 
 struct Counter<N> {
     cx: Scope,
@@ -17,9 +17,8 @@ impl<N: GenericNode> Counter<N> {
                 div {
                     "Number " (counter) " is "
                     Show {
-                        .when(is_even)
-                        .fallback(view!(cx, "odd"))
-                        "even"
+                        If { .when(is_even) "even" }
+                        Else { "odd" }
                     }
                     "."
                 }

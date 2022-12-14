@@ -5,7 +5,7 @@ pub mod components {
     mod show;
 
     #[doc(inline)]
-    pub use show::Show;
+    pub use show::{Else, If, Show};
 }
 
 pub mod elements {
