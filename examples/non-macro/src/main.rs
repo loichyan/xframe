@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use xframe::element::prelude::*;
 use xframe::{view, GenericComponent, GenericNode, Scope};
 
 struct Counter<N> {
@@ -11,15 +12,14 @@ impl<N: GenericNode> Counter<N> {
         let Self { cx, .. } = self;
         let counter = cx.create_signal(0);
         let increment = move |_| counter.update(|x| *x + 1);
-        view! { cx,
-            div {
-                button {
-                    .type_("button")
-                    .on_click(increment)
-                    "Click me: " (counter) " times!"
-                }
-            }
-        }
+        view(cx, move |_: div<_>| {}).child(
+            view(cx, move |e: button<_>| {
+                e.on_click(increment);
+            })
+            .child_text("Click me: ")
+            .child_text(counter)
+            .child_text(" times!"),
+        )
     }
 }
 

@@ -1,0 +1,8 @@
+[package]
+name = "show"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies.xframe]
+path = "../.."
+features = ["extra"]
