@@ -1,3 +1,4 @@
+mod component;
 mod dom_node;
 
 pub mod elements {
@@ -9,6 +10,9 @@ pub mod elements {
 }
 
 pub mod element_types {}
+
+#[doc(inline)]
+pub use component::{create_component, Component};
 
 #[doc(inline)]
 pub use dom_node::DomNode;

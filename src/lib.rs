@@ -29,13 +29,18 @@ pub mod event {
 }
 
 #[doc(inline)]
-pub use xframe_core::*;
+pub use xframe_core::{
+    Attribute, EventOptions, GenericComponent, GenericElement, IntoEventHandler, IntoReactive,
+    Reactive, Value,
+};
 
 #[doc(inline)]
 pub use xframe_reactive::*;
 
 #[doc(inline)]
-pub use xframe_web::{render, render_to_body, Event};
+pub use xframe_web::{
+    create_component, create_component as view, render, render_to_body, Component,
+};
 
 #[doc(inline)]
 pub use xframe_macros::view;

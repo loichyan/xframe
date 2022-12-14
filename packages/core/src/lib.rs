@@ -1,14 +1,15 @@
 mod attr;
-mod component;
 mod element;
 mod event;
 mod node;
 mod reactive;
 
+pub mod component;
+
 #[doc(inline)]
 pub use self::{
     attr::Attribute,
-    component::{create_component, Component, GenericComponent},
+    component::GenericComponent,
     element::GenericElement,
     event::{EventHandler, EventOptions, IntoEventHandler},
     node::GenericNode,
