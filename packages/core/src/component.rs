@@ -34,7 +34,7 @@ pub trait GenericComponent: 'static + Into<ComponentNode<Self::Init, Self::Rende
                 .entry(TypeId::of::<Self::Identifier>())
                 .or_insert_with(|| {
                     let fragment = Self::Node::create_fragment();
-                    fragment.append_child(component.init.init());
+                    fragment.append_child(&component.init.init());
                     Box::new(fragment)
                 })
                 .downcast_ref::<Self::Node>()

@@ -7,13 +7,10 @@ pub mod element {
         pub use xframe_web::elements::*;
     }
     #[doc(inline)]
-    pub use prelude::*;
-
     #[cfg(feature = "extra-elements")]
-    #[doc(inline)]
     pub use xframe_extra::element_types::*;
     #[doc(inline)]
-    pub use xframe_web::element_types::*;
+    pub use {prelude::*, xframe_web::element_types::*};
 }
 
 pub mod attr {
@@ -29,22 +26,19 @@ pub mod event {
 }
 
 #[doc(inline)]
-pub use xframe_core::{
-    Attribute, EventOptions, GenericComponent, GenericElement, IntoEventHandler, IntoReactive,
-    Reactive, Value,
+pub use {
+    xframe_core::{
+        Attribute, EventOptions, GenericComponent, GenericElement, IntoEventHandler, IntoReactive,
+        Reactive, Value,
+    },
+    xframe_macros::view,
+    xframe_reactive::*,
+    xframe_web::{
+        components::*, create_component, create_component as view, render, render_to_body,
+        Component,
+    },
 };
 
 /// A trait alias of [`xframe_core::GenericNode`].
 pub trait GenericNode: xframe_core::GenericNode<Event = xframe_web::Event> {}
 impl<T: xframe_core::GenericNode<Event = xframe_web::Event>> GenericNode for T {}
-
-#[doc(inline)]
-pub use xframe_reactive::*;
-
-#[doc(inline)]
-pub use xframe_web::{
-    create_component, create_component as view, render, render_to_body, Component,
-};
-
-#[doc(inline)]
-pub use xframe_macros::view;

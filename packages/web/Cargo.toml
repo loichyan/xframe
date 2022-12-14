@@ -13,6 +13,7 @@ version = "0.3"
 features = [
     "AddEventListenerOptions",
     "CharacterData",
+    "Comment",
     "Document",
     "DocumentFragment",
     "DomTokenList",

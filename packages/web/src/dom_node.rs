@@ -6,7 +6,7 @@ use xframe_core::{Attribute, EventHandler, GenericNode};
 
 type Str = std::borrow::Cow<'static, str>;
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct DomNode {
     node: web_sys::Node,
 }
@@ -32,10 +32,16 @@ impl AsRef<web_sys::Node> for DomNode {
 impl GenericNode for DomNode {
     type Event = web_sys::Event;
 
+    fn root() -> Self {
+        Self {
+            node: DOCUMENT.with(Clone::clone).into(),
+        }
+    }
+
     fn create(tag: Str) -> Self {
         Self {
             node: DOCUMENT
-                .with(|document| document.create_element(&tag))
+                .with(|doc| doc.create_element(&tag))
                 .unwrap()
                 .into(),
         }
@@ -43,13 +49,19 @@ impl GenericNode for DomNode {
 
     fn create_text_node(data: &str) -> Self {
         Self {
-            node: DOCUMENT.with(|docuement| docuement.create_text_node(data).into()),
+            node: DOCUMENT.with(|doc| doc.create_text_node(data).into()),
         }
     }
 
     fn create_fragment() -> Self {
         Self {
-            node: DOCUMENT.with(|docuemnt| docuemnt.create_document_fragment().into()),
+            node: DOCUMENT.with(|doc| doc.create_document_fragment().into()),
+        }
+    }
+
+    fn create_placeholder(desc: &str) -> Self {
+        Self {
+            node: DOCUMENT.with(|doc| doc.create_comment(desc).into()),
         }
     }
 
@@ -98,7 +110,7 @@ impl GenericNode for DomNode {
             .unwrap();
     }
 
-    fn append_child(&self, child: Self) {
+    fn append_child(&self, child: &Self) {
         self.node.append_child(&child.node).unwrap();
     }
 
@@ -108,5 +120,11 @@ impl GenericNode for DomNode {
 
     fn next_sibling(&self) -> Option<Self> {
         self.node.next_sibling().map(Self::from)
+    }
+
+    fn replace_child(&self, new_node: &Self, old_node: &Self) {
+        self.node
+            .replace_child(&new_node.node, &old_node.node)
+            .unwrap();
     }
 }

@@ -12,7 +12,7 @@ trait Empty {}
 impl<T> Empty for T {}
 
 #[doc(inline)]
-pub use self::{
+pub use {
     effect::Effect,
     scope::{create_root, Scope, ScopeDisposer},
     signal::{ReadSignal, Signal},

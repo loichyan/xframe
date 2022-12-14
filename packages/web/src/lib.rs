@@ -1,23 +1,32 @@
 mod component;
 mod dom_node;
 
-pub mod elements {
-    #[path = "text.rs"]
-    pub(crate) mod text_;
+pub mod components {
+    mod show;
 
     #[doc(inline)]
-    pub use text_::text;
+    pub use show::Show;
+}
+
+pub mod elements {
+    #[path = "placeholder.rs"]
+    mod placeholder_;
+    #[path = "text.rs"]
+    mod text_;
+
+    #[doc(inline)]
+    pub use {placeholder_::placeholder, text_::text};
 }
 
 pub mod element_types {}
 
 #[doc(inline)]
-pub use component::{create_component, Component};
+pub use {
+    ::web_sys::Event,
+    component::{create_component, Component},
+    dom_node::DomNode,
+};
 
-#[doc(inline)]
-pub use dom_node::DomNode;
-#[doc(inline)]
-pub use web_sys::Event;
 use xframe_core::GenericComponent;
 
 thread_local! {

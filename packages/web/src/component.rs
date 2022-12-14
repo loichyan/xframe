@@ -31,7 +31,7 @@ where
             cx: self.cx,
             init: InitImpl(PhantomData, move || {
                 let root = self.init.init_and_return_root();
-                root.append_child(component.init.init());
+                root.append_child(&component.init.init());
                 root
             }),
             render: RenderImpl(PhantomData, move |prev: N| {

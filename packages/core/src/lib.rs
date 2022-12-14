@@ -7,7 +7,7 @@ mod reactive;
 pub mod component;
 
 #[doc(inline)]
-pub use self::{
+pub use {
     attr::Attribute,
     component::GenericComponent,
     element::GenericElement,

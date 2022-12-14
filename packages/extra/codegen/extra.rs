@@ -219,7 +219,7 @@ impl<'a> Element<'a> {
 
             /// Add a class to this element.
             pub fn class<T: Into<#COW_STR>>(self, name: T) -> Self {
-                self.inner.node().add_class(name.into());
+                self.inner.add_class(name);
                 self
             }
 
@@ -227,18 +227,15 @@ impl<'a> Element<'a> {
             where
                 E: #GENERIC_ELEMENT<Node = N>,
             {
-                self.inner.node().append_child(element.into_node());
+                self.inner.append_child(element);
                 self
             }
 
             pub fn children<I>(self, nodes: I) -> Self
             where
-                I: IntoIterator<Item = N>,
+                I: for<'a> IntoIterator<Item = N>,
             {
-                let node = self.inner.node();
-                for child in nodes {
-                    node.append_child(child);
-                }
+                self.inner.append_children(nodes);
                 self
             }
         )
