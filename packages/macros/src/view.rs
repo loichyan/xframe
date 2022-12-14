@@ -89,7 +89,12 @@ impl ViewRoot {
                 #children
             })
         } else {
-            quote!()
+            quote!({
+                #path::<_>(#VAR_CX)
+                #props
+                #children
+                .render()
+            })
         }
     }
 }

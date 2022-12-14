@@ -35,7 +35,7 @@ pub use xframe_core::*;
 pub use xframe_reactive::*;
 
 #[doc(inline)]
-pub use xframe_web::{render, render_to_body};
+pub use xframe_web::{render, render_to_body, Event};
 
 #[doc(inline)]
 pub use xframe_macros::view;

@@ -12,6 +12,8 @@ pub mod element_types {}
 
 #[doc(inline)]
 pub use dom_node::DomNode;
+#[doc(inline)]
+pub use web_sys::Event;
 use xframe_core::GenericComponent;
 
 thread_local! {
