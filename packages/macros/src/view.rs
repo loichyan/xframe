@@ -25,7 +25,7 @@ pub fn expand(input: ParseStream) -> Result<TokenStream> {
 pub struct View {
     pub cx: Expr,
     pub comma_token: Token![,],
-    pub root: ViewRoot,
+    pub root: ViewChild,
 }
 
 impl Parse for View {
@@ -46,56 +46,6 @@ impl View {
             let #VAR_CX = #cx;
             #root
         })
-    }
-}
-
-pub struct ViewRoot {
-    pub path: Path,
-    pub brace_token: token::Brace,
-    pub args: ViewArgs,
-}
-
-impl Parse for ViewRoot {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let content;
-        Ok(Self {
-            path: input.parse()?,
-            brace_token: braced!(content in input),
-            args: content.parse()?,
-        })
-    }
-}
-
-impl ViewRoot {
-    pub fn quote(&self) -> TokenStream {
-        let Self { path, args, .. } = self;
-        let is_builtin = if let Some(ident) = path.get_ident() {
-            ident
-                .to_string()
-                .trim_end_matches('_')
-                .chars()
-                .all(|c| c.is_ascii_lowercase())
-        } else {
-            false
-        };
-        let props = args.quote_props();
-        let children = args.quote_children();
-        if is_builtin {
-            quote!({
-                #FN_CREATE_COMPONENT(
-                    #VAR_CX,
-                    move |#VAR_ELEMENT: #M_ELEMENT::#path::<_>| { #VAR_ELEMENT #props; },
-                )
-                #children
-            })
-        } else {
-            quote!({
-                #path::<_>(#VAR_CX)
-                #props
-                #children
-                .render()
-            })
-        }
     }
 }
 
@@ -174,7 +124,7 @@ pub enum ViewChild {
         brace_token: token::Brace,
         value: Expr,
     },
-    View(ViewRoot),
+    View(ViewComponent),
 }
 
 impl Parse for ViewChild {
@@ -217,6 +167,56 @@ impl ViewChild {
             }
             Self::Expr { value, .. } => value.to_token_stream(),
             Self::View(view) => view.quote(),
+        }
+    }
+}
+
+pub struct ViewComponent {
+    pub path: Path,
+    pub brace_token: token::Brace,
+    pub args: ViewArgs,
+}
+
+impl Parse for ViewComponent {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let content;
+        Ok(Self {
+            path: input.parse()?,
+            brace_token: braced!(content in input),
+            args: content.parse()?,
+        })
+    }
+}
+
+impl ViewComponent {
+    pub fn quote(&self) -> TokenStream {
+        let Self { path, args, .. } = self;
+        let is_builtin = if let Some(ident) = path.get_ident() {
+            ident
+                .to_string()
+                .trim_end_matches('_')
+                .chars()
+                .all(|c| c.is_ascii_lowercase())
+        } else {
+            false
+        };
+        let props = args.quote_props();
+        let children = args.quote_children();
+        if is_builtin {
+            quote!({
+                #FN_CREATE_COMPONENT(
+                    #VAR_CX,
+                    move |#VAR_ELEMENT: #M_ELEMENT::#path::<_>| { #VAR_ELEMENT #props; },
+                )
+                #children
+            })
+        } else {
+            quote!({
+                #path::<_>(#VAR_CX)
+                #props
+                #children
+                .render()
+            })
         }
     }
 }

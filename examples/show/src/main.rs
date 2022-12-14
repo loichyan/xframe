@@ -16,13 +16,13 @@ impl<N: GenericNode> Counter<N> {
         view! { cx,
             div {
                 div {
+                    "Number " (counter) " is "
                     Show {
                         .when(is_even)
-                        .fallback(view! { cx,
-                            span { "Number " (counter) " is odd." }
-                        })
-                        span {  "Number " (counter) " is even." }
+                        .fallback(view!(cx, "odd"))
+                        "even"
                     }
+                    "."
                 }
                 button {
                     .type_("button")
