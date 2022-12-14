@@ -1,6 +1,3 @@
-#[macro_use]
-mod macros;
-
 pub mod element {
     pub mod prelude {
         #[cfg(feature = "extra-elements")]
@@ -39,3 +36,6 @@ pub use xframe_reactive::*;
 
 #[doc(inline)]
 pub use xframe_web::{render, render_to_body};
+
+#[doc(inline)]
+pub use xframe_macros::view;

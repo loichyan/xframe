@@ -21,6 +21,9 @@ path = "packages/extra"
 optional = true
 default-features = false
 
+[dependencies.xframe-macros]
+path = "packages/macros"
+
 [dependencies.xframe-reactive]
 path = "packages/reactive"
 
