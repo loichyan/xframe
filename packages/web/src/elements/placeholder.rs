@@ -12,7 +12,7 @@ impl<N: GenericNode> placeholder<N> {
         let desc = desc.into_reactive();
         self.cx.create_effect({
             let node = self.node.clone();
-            move |_| node.set_inner_text(desc.clone().into_value().into_string_only().as_str())
+            move || node.set_inner_text(desc.clone().into_value().into_string_only().as_str())
         });
         placeholder {
             cx: self.cx,

@@ -55,7 +55,7 @@ impl<N: GenericNode> BaseElement<N> {
         let attr = val.into();
         let name = name.into();
         let node = self.node.clone();
-        self.cx.create_effect(move |_| {
+        self.cx.create_effect(move || {
             node.set_property(name.clone(), attr.clone().into_value());
         });
     }

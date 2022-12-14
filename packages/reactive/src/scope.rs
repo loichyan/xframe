@@ -224,7 +224,7 @@ mod tests {
             let trigger1 = cx.create_signal(());
             let counter = cx.create_signal(0);
 
-            cx.create_effect(move |_| {
+            cx.create_effect(move || {
                 trigger1.track();
                 cx.untrack(|| {
                     trigger2.track();
@@ -318,7 +318,7 @@ mod tests {
             let child = {
                 let disposer = disposer.clone();
                 cx.create_child(move |cx| {
-                    cx.create_effect(move |_| {
+                    cx.create_effect(move || {
                         trigger.track();
                         if let Some(disposer) = disposer.take() {
                             // Current effect is running, this panics to dispose it.

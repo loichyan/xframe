@@ -29,7 +29,7 @@ where
             let parent = current
                 .parent()
                 .expect_throw("`Show` component must have a parent");
-            cx.create_effect(move |_| {
+            cx.create_effect(move || {
                 if when.clone().into_value() {
                     if current.ne(&child) {
                         parent.replace_child(&child, &current);

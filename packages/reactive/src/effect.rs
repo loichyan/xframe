@@ -45,17 +45,14 @@ pub(crate) trait AnyEffect {
     fn run_untracked(&mut self);
 }
 
-struct AnyEffectImpl<T, F> {
-    prev: Option<T>,
-    func: F,
-}
+struct AnyEffectImpl<F>(F);
 
-impl<T, F> AnyEffect for AnyEffectImpl<T, F>
+impl<F> AnyEffect for AnyEffectImpl<F>
 where
-    F: FnMut(Option<T>) -> T,
+    F: FnMut(),
 {
     fn run_untracked(&mut self) {
-        self.prev = Some((self.func)(self.prev.take()));
+        (self.0)();
     }
 }
 
@@ -126,22 +123,19 @@ impl Scope {
         })
     }
 
-    /// Constructs an [`Effect`] which accepts its previous returned value as
-    /// the parameter and automatically reruns whenever tracked signals update.
-    pub fn create_effect<T: 'static>(&self, f: impl 'static + FnMut(Option<T>) -> T) -> Effect {
-        self.create_effect_dyn(Rc::new(RefCell::new(AnyEffectImpl {
-            prev: None,
-            func: f,
-        })))
+    /// Constructs an [`Effect`] which automatically reruns whenever tracked signals update.
+    pub fn create_effect(&self, f: impl 'static + FnMut()) -> Effect {
+        self.create_effect_dyn(Rc::new(RefCell::new(AnyEffectImpl(f))))
     }
 
     /// Constructs an [`Effect`] that run with a new child scope each time. The
     /// created [`Scope`] will not be disposed until the next run.
     pub fn create_effect_scoped(&self, mut f: impl 'static + FnMut(Scope)) {
         let cx = *self;
-        self.create_effect(move |disposer| {
-            drop(disposer);
-            cx.create_child(&mut f)
+        let mut disposer = None;
+        self.create_effect(move || {
+            drop(disposer.take());
+            disposer = Some(cx.create_child(&mut f));
         });
     }
 }
@@ -157,7 +151,7 @@ mod tests {
             let state = cx.create_signal(0);
             let double = cx.create_variable(-1);
 
-            cx.create_effect(move |_| {
+            cx.create_effect(move || {
                 double.set(state.get() * 2);
             });
             assert_eq!(double.get(), 0);
@@ -171,32 +165,10 @@ mod tests {
     }
 
     #[test]
-    fn previous_returned_value_in_effect() {
-        create_root(|cx| {
-            let state = cx.create_signal(0);
-            let prev_state = cx.create_signal(-1);
-
-            cx.create_effect(move |prev| {
-                if let Some(prev) = prev {
-                    prev_state.set(prev)
-                }
-                state.get()
-            });
-            assert_eq!(prev_state.get(), -1);
-
-            state.set(1);
-            assert_eq!(prev_state.get(), 0);
-
-            state.set(2);
-            assert_eq!(prev_state.get(), 1);
-        });
-    }
-
-    #[test]
     fn no_infinite_loop_in_effect() {
         create_root(|cx| {
             let state = cx.create_signal(());
-            cx.create_effect(move |_| {
+            cx.create_effect(move || {
                 state.track();
                 state.trigger();
             });
@@ -208,10 +180,14 @@ mod tests {
     fn no_infinite_loop_in_nested_effect() {
         create_root(|cx| {
             let state = cx.create_signal(());
-            cx.create_effect(move |prev| {
-                if prev.is_none() {
-                    state.track();
-                    state.trigger();
+            cx.create_effect({
+                let mut first = true;
+                move || {
+                    if first {
+                        state.track();
+                        state.trigger();
+                    }
+                    first = false;
                 }
             });
             state.trigger();
@@ -226,7 +202,7 @@ mod tests {
             let state2 = cx.create_signal(0);
             let counter = cx.create_signal(0);
 
-            cx.create_effect(move |_| {
+            cx.create_effect(move || {
                 counter.update(|x| *x + 1);
 
                 if cond.get() {
@@ -263,11 +239,11 @@ mod tests {
             let inner_counter = cx.create_variable(0);
             let outer_counter = cx.create_variable(0);
 
-            cx.create_effect(move |_| {
+            cx.create_effect(move || {
                 state.track();
                 if inner_counter.get() < 2 {
                     cx.create_effect_scoped(move |cx| {
-                        cx.create_effect(move |_| {
+                        cx.create_effect(move || {
                             state.track();
                             inner_counter.update(|x| x + 1);
                         });
@@ -293,12 +269,16 @@ mod tests {
     #[test]
     fn cannot_access_disposed_dependencies() {
         create_root(|cx| {
-            let eff = cx.create_effect(move |prev| {
-                if prev.is_none() {
-                    cx.create_child(|cx| {
-                        let state = cx.create_signal(0);
-                        state.track();
-                    });
+            let eff = cx.create_effect({
+                let mut first = true;
+                move || {
+                    if first {
+                        cx.create_child(|cx| {
+                            let state = cx.create_signal(0);
+                            state.track();
+                        });
+                    }
+                    first = false;
                 }
             });
             let (total, active) = SHARED.with(|shared| {
@@ -335,7 +315,7 @@ mod tests {
         create_root(|cx| {
             let var = cx.create_variable(DropAndRead(None));
             // Last creadted drop first.
-            let eff = cx.create_effect(|_| ());
+            let eff = cx.create_effect(|| ());
             var.write(|v| v.0 = Some(eff));
         });
     }

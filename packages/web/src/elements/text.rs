@@ -12,7 +12,7 @@ impl<N: GenericNode> text<N> {
         let data = data.into_reactive();
         self.cx.create_effect({
             let node = self.node.clone();
-            move |_| node.set_inner_text(data.clone().into_value().into_string_only().as_str())
+            move || node.set_inner_text(data.clone().into_value().into_string_only().as_str())
         });
         text {
             cx: self.cx,

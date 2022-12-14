@@ -14,7 +14,7 @@ impl Scope {
         let cx = *self;
         self.create_effect({
             let memo = memo.clone();
-            move |_| {
+            move || {
                 let new_val = f();
                 if let Some(signal) = memo.get() {
                     update(new_val, signal);
@@ -133,7 +133,7 @@ mod tests {
             let double = cx.create_seletor(move || state.get() * 2);
 
             let counter2 = cx.create_signal(0);
-            cx.create_effect(move |_| {
+            cx.create_effect(move || {
                 double.track();
                 counter2.update(|x| x + 1);
             });
