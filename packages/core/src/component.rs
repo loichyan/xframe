@@ -20,6 +20,7 @@ pub trait GenericComponent: 'static + Into<ComponentNode<Self::Init, Self::Rende
     type Node: GenericNode;
     type Init: ComponentInit<Node = Self::Node>;
     type Render: ComponentRender<Node = Self::Node>;
+    type Identifier: 'static;
 
     fn into_component_node(self) -> ComponentNode<Self::Init, Self::Render> {
         self.into()
@@ -30,7 +31,7 @@ pub trait GenericComponent: 'static + Into<ComponentNode<Self::Init, Self::Rende
         let node = TEMPLATES.with(|templates| {
             templates
                 .borrow_mut()
-                .entry(TypeId::of::<Self>())
+                .entry(TypeId::of::<Self::Identifier>())
                 .or_insert_with(|| {
                     let fragment = Self::Node::create_fragment();
                     fragment.append_child(component.init.init());

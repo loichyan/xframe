@@ -5,22 +5,24 @@ use xframe_core::{
 };
 use xframe_reactive::Scope;
 
-pub struct Component<Init, Render> {
+pub struct Component<Init, Render, Identifier> {
     cx: Scope,
     init: Init,
     render: Render,
+    identifier: PhantomData<Identifier>,
 }
 
-impl<N, Init, Render> Component<Init, Render>
+impl<N, Init, Render, Identifier> Component<Init, Render, Identifier>
 where
     N: GenericNode,
     Init: InitChain<Node = N>,
     Render: RenderChain<Node = N>,
+    Identifier: 'static,
 {
     pub fn child<C>(
         self,
         component: C,
-    ) -> Component<impl InitChain<Node = N>, impl RenderChain<Node = N>>
+    ) -> Component<impl InitChain<Node = N>, impl RenderChain<Node = N>, (Identifier, C::Identifier)>
     where
         C: GenericComponent<Node = N>,
     {
@@ -38,13 +40,14 @@ where
                 component.render.render(node);
                 next
             }),
+            identifier: PhantomData,
         }
     }
 
     pub fn child_element<E, F>(
         self,
         render: F,
-    ) -> Component<impl InitChain<Node = N>, impl RenderChain<Node = N>>
+    ) -> Component<impl InitChain<Node = N>, impl RenderChain<Node = N>, (Identifier, E)>
     where
         E: GenericElement<Node = N>,
         F: 'static + FnOnce(E),
@@ -56,7 +59,11 @@ where
     pub fn child_text<A: IntoReactive<Attribute>>(
         self,
         data: A,
-    ) -> Component<impl InitChain<Node = N>, impl RenderChain<Node = N>> {
+    ) -> Component<
+        impl InitChain<Node = N>,
+        impl RenderChain<Node = N>,
+        (Identifier, crate::elements::text<N>),
+    > {
         let data = data.into_reactive();
         self.child_element(move |text: crate::elements::text<_>| {
             text.data(data);
@@ -64,8 +71,10 @@ where
     }
 }
 
-impl<Init, Render> From<Component<Init, Render>> for ComponentNode<Init, Render> {
-    fn from(t: Component<Init, Render>) -> Self {
+impl<Init, Render, Identifier> From<Component<Init, Render, Identifier>>
+    for ComponentNode<Init, Render>
+{
+    fn from(t: Component<Init, Render, Identifier>) -> Self {
         Self {
             init: t.init,
             render: t.render,
@@ -73,15 +82,17 @@ impl<Init, Render> From<Component<Init, Render>> for ComponentNode<Init, Render>
     }
 }
 
-impl<N, Init, Render> GenericComponent for Component<Init, Render>
+impl<N, Init, Render, Identifier> GenericComponent for Component<Init, Render, Identifier>
 where
     N: GenericNode,
     Init: ComponentInit<Node = N>,
     Render: ComponentRender<Node = N>,
+    Identifier: 'static,
 {
     type Node = N;
     type Init = Init;
     type Render = Render;
+    type Identifier = Identifier;
 }
 
 pub trait InitChain: 'static + ComponentInit {
@@ -141,7 +152,7 @@ where
 pub fn create_component<N, E>(
     cx: Scope,
     render: impl 'static + FnOnce(E),
-) -> Component<impl InitChain<Node = N>, impl RenderChain<Node = N>>
+) -> Component<impl InitChain<Node = N>, impl RenderChain<Node = N>, E>
 where
     N: GenericNode,
     E: GenericElement<Node = N>,
@@ -154,5 +165,6 @@ where
             render(E::create_with_node(cx, root));
             next
         }),
+        identifier: PhantomData,
     }
 }
