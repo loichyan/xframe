@@ -34,6 +34,10 @@ pub use xframe_core::{
     Reactive, Value,
 };
 
+/// A trait alias of [`xframe_core::GenericNode`].
+pub trait GenericNode: xframe_core::GenericNode<Event = xframe_web::Event> {}
+impl<T: xframe_core::GenericNode<Event = xframe_web::Event>> GenericNode for T {}
+
 #[doc(inline)]
 pub use xframe_reactive::*;
 
