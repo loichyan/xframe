@@ -55,6 +55,5 @@ pub trait ComponentInit: 'static {
 
 pub trait ComponentRender: 'static {
     type Node: GenericNode;
-    // FIXME: requires root node
     fn render(self, node: Self::Node);
 }

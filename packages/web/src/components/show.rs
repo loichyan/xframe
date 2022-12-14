@@ -1,5 +1,6 @@
 use crate::create_component;
 use std::marker::PhantomData;
+use wasm_bindgen::UnwrapThrowExt;
 use xframe_core::{GenericComponent, GenericElement, GenericNode, IntoReactive, Reactive};
 use xframe_reactive::Scope;
 
@@ -23,18 +24,20 @@ where
             child,
             ..
         } = self;
-        let root = N::root();
         create_component(cx, move |placeholder: crate::elements::placeholder<N>| {
             let mut current = placeholder.into_node();
+            let parent = current
+                .parent()
+                .expect_throw("`Show` component must have a parent");
             cx.create_effect(move |_| {
                 if when.clone().into_value() {
                     if current.ne(&child) {
-                        root.replace_child(&child, &current);
+                        parent.replace_child(&child, &current);
                         current = child.clone();
                     }
                 } else if let Some(fallback) = fallback.as_ref() {
                     if current.ne(fallback) {
-                        root.replace_child(fallback, &current);
+                        parent.replace_child(fallback, &current);
                         current = fallback.clone();
                     }
                 }

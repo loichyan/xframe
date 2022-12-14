@@ -19,15 +19,15 @@ impl<N: GenericNode> Counter<N> {
                     Show {
                         .when(is_even)
                         .fallback(view! { cx,
-                            span { "Number" (counter) "is odd." }
+                            span { "Number " (counter) " is odd." }
                         })
-                        span {  "Number" (counter) "is even." }
+                        span {  "Number " (counter) " is even." }
                     }
                 }
                 button {
                     .type_("button")
                     .on_click(increment)
-                    "Click me:" (counter) "times!"
+                    "Click me: " (counter) " times!"
                 }
             }
         }

@@ -3,7 +3,6 @@ use crate::{attr::Attribute, event::EventHandler, Str};
 pub trait GenericNode: 'static + Clone + Eq {
     type Event;
 
-    fn root() -> Self;
     fn create(tag: Str) -> Self;
     fn create_text_node(data: &str) -> Self;
     fn create_fragment() -> Self;
@@ -17,5 +16,6 @@ pub trait GenericNode: 'static + Clone + Eq {
     fn append_child(&self, child: &Self);
     fn first_child(&self) -> Option<Self>;
     fn next_sibling(&self) -> Option<Self>;
+    fn parent(&self) -> Option<Self>;
     fn replace_child(&self, new_node: &Self, old_node: &Self);
 }

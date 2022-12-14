@@ -32,12 +32,6 @@ impl AsRef<web_sys::Node> for DomNode {
 impl GenericNode for DomNode {
     type Event = web_sys::Event;
 
-    fn root() -> Self {
-        Self {
-            node: DOCUMENT.with(Clone::clone).into(),
-        }
-    }
-
     fn create(tag: Str) -> Self {
         Self {
             node: DOCUMENT
@@ -121,6 +115,10 @@ impl GenericNode for DomNode {
 
     fn next_sibling(&self) -> Option<Self> {
         self.node.next_sibling().map(Self::from)
+    }
+
+    fn parent(&self) -> Option<Self> {
+        self.node.parent_node().map(Self::from)
     }
 
     fn replace_child(&self, new_node: &Self, old_node: &Self) {
