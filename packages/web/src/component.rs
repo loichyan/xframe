@@ -35,7 +35,10 @@ where
                 root
             }),
             render: RenderImpl(PhantomData, move |prev: N| {
-                let node = self.render.render_and_return_next(prev).unwrap();
+                let node = self
+                    .render
+                    .render_and_return_next(prev)
+                    .unwrap_or_else(|| unreachable!());
                 let next = node.next_sibling();
                 component.render.render(node);
                 next

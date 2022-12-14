@@ -2,7 +2,7 @@ use crate::DOCUMENT;
 use js_sys::Reflect;
 use wasm_bindgen::{prelude::*, JsCast};
 use web_sys::AddEventListenerOptions;
-use xframe_core::{Attribute, EventHandler, GenericNode};
+use xframe_core::{Attribute, EventHandler, GenericNode, UnwrapThrowValExt};
 
 type Str = std::borrow::Cow<'static, str>;
 
@@ -42,7 +42,7 @@ impl GenericNode for DomNode {
         Self {
             node: DOCUMENT
                 .with(|doc| doc.create_element(&tag))
-                .unwrap()
+                .unwrap_throw_val()
                 .into(),
         }
     }
@@ -67,7 +67,7 @@ impl GenericNode for DomNode {
 
     fn deep_clone(&self) -> Self {
         Self {
-            node: self.node.clone_node_with_deep(true).unwrap(),
+            node: self.node.clone_node_with_deep(true).unwrap_throw_val(),
         }
     }
 
@@ -76,14 +76,15 @@ impl GenericNode for DomNode {
     }
 
     fn set_property(&self, name: Str, attr: Attribute) {
-        Reflect::set(&self.node, &JsValue::from_str(&name), &attr.into_js_value()).unwrap();
+        Reflect::set(&self.node, &JsValue::from_str(&name), &attr.into_js_value())
+            .unwrap_throw_val();
     }
 
     fn set_attribute(&self, name: Str, val: Attribute) {
         self.node
             .unchecked_ref::<web_sys::Element>()
             .set_attribute(&name, val.into_string_only().as_str())
-            .unwrap();
+            .unwrap_throw_val();
     }
 
     fn add_class(&self, name: Str) {
@@ -91,7 +92,7 @@ impl GenericNode for DomNode {
             .unchecked_ref::<web_sys::Element>()
             .class_list()
             .add_1(&name)
-            .unwrap();
+            .unwrap_throw_val();
     }
 
     fn listen_event(&self, event: Str, handler: EventHandler<Self::Event>) {
@@ -107,11 +108,11 @@ impl GenericNode for DomNode {
                     .unchecked_into(),
                 &options,
             )
-            .unwrap();
+            .unwrap_throw_val();
     }
 
     fn append_child(&self, child: &Self) {
-        self.node.append_child(&child.node).unwrap();
+        self.node.append_child(&child.node).unwrap_throw_val();
     }
 
     fn first_child(&self) -> Option<Self> {
@@ -125,6 +126,6 @@ impl GenericNode for DomNode {
     fn replace_child(&self, new_node: &Self, old_node: &Self) {
         self.node
             .replace_child(&new_node.node, &old_node.node)
-            .unwrap();
+            .unwrap_throw_val();
     }
 }
