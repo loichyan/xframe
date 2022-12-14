@@ -8,7 +8,7 @@ struct Counter<N> {
 }
 
 impl<N: GenericNode> Counter<N> {
-    pub fn render(self) -> impl GenericComponent<Node = N> {
+    pub fn build(self) -> impl GenericComponent<Node = N> {
         let Self { cx, .. } = self;
         let counter = cx.create_signal(0);
         let increment = move |_| counter.update(|x| *x + 1);

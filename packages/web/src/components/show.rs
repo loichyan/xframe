@@ -16,7 +16,7 @@ impl<N> Show<N>
 where
     N: GenericNode,
 {
-    pub fn render(self) -> impl GenericComponent<Node = N> {
+    pub fn build(self) -> impl GenericComponent<Node = N> {
         let Self {
             cx,
             when,

@@ -15,6 +15,7 @@ new_type_quote! {
     VAR_ELEMENT(__element);
     VAR_CX(__cx);
     FN_CHILD(child);
+    FN_BUILD(build);
     FN_CREATE_COMPONENT(#XFRAME::create_component);
 }
 
@@ -215,7 +216,9 @@ impl ViewComponent {
                 #path::<_>(#VAR_CX)
                 #props
                 #children
-                .render()
+                // TODO: we can remove this requirement when RFC 2515 is implemented
+                // issue: https://github.com/rust-lang/rust/issues/63063
+                .#FN_BUILD()
             })
         }
     }
