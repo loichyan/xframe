@@ -1,20 +1,9 @@
-use ahash::AHashMap;
-use std::{
-    any::{Any, TypeId},
-    cell::RefCell,
-    marker::PhantomData,
-};
+use std::marker::PhantomData;
 use xframe_core::{
     component::{ComponentInit, ComponentNode, ComponentRender, GenericComponent},
     Attribute, GenericElement, GenericNode, IntoReactive,
 };
 use xframe_reactive::Scope;
-
-type Templates = RefCell<AHashMap<TypeId, Box<dyn Any>>>;
-
-thread_local! {
-    static TEMPLATES: Templates = Templates::default();
-}
 
 pub struct Component<Init, Render> {
     cx: Scope,
@@ -25,13 +14,13 @@ pub struct Component<Init, Render> {
 impl<N, Init, Render> Component<Init, Render>
 where
     N: GenericNode,
-    Init: ComponentInit<Node = N>,
-    Render: ComponentRender<Node = N>,
+    Init: InitChain<Node = N>,
+    Render: RenderChain<Node = N>,
 {
     pub fn child<C>(
         self,
         component: C,
-    ) -> Component<impl ComponentInit<Node = N>, impl ComponentRender<Node = N>>
+    ) -> Component<impl InitChain<Node = N>, impl RenderChain<Node = N>>
     where
         C: GenericComponent<Node = N>,
     {
@@ -40,14 +29,13 @@ where
             cx: self.cx,
             init: InitImpl(PhantomData, move || {
                 let root = self.init.init_and_return_root();
-                root.append_child(component.init.init_and_return_root());
+                root.append_child(component.init.init());
                 root
             }),
             render: RenderImpl(PhantomData, move |prev: N| {
                 let node = self.render.render_and_return_next(prev).unwrap();
                 let next = node.next_sibling();
-                let child_next = component.render.render_and_return_next(node);
-                debug_assert!(child_next.is_none());
+                component.render.render(node);
                 next
             }),
         }
@@ -56,7 +44,7 @@ where
     pub fn child_element<E, F>(
         self,
         render: F,
-    ) -> Component<impl ComponentInit<Node = N>, impl ComponentRender<Node = N>>
+    ) -> Component<impl InitChain<Node = N>, impl RenderChain<Node = N>>
     where
         E: GenericElement<Node = N>,
         F: 'static + FnOnce(E),
@@ -68,7 +56,7 @@ where
     pub fn child_text<A: IntoReactive<Attribute>>(
         self,
         data: A,
-    ) -> Component<impl ComponentInit<Node = N>, impl ComponentRender<Node = N>> {
+    ) -> Component<impl InitChain<Node = N>, impl RenderChain<Node = N>> {
         let data = data.into_reactive();
         self.child_element(move |text: crate::elements::text<_>| {
             text.data(data);
@@ -94,49 +82,58 @@ where
     type Node = N;
     type Init = Init;
     type Render = Render;
+}
 
-    fn render(self) -> Self::Node {
-        let node = TEMPLATES.with(|templates| {
-            templates
-                .borrow_mut()
-                .entry(TypeId::of::<Self>())
-                .or_insert_with(|| {
-                    let fragment = Self::Node::create_fragment();
-                    fragment.append_child(self.init.init_and_return_root());
-                    Box::new(fragment)
-                })
-                .downcast_ref::<Self::Node>()
-                .unwrap_or_else(|| unreachable!())
-                .first_child()
-                .unwrap_or_else(|| unreachable!())
-                .deep_clone()
-        });
-        let child_next = self.render.render_and_return_next(node.clone());
-        debug_assert!(child_next.is_none());
-        node
-    }
+pub trait InitChain: 'static + ComponentInit {
+    fn init_and_return_root(self) -> Self::Node;
 }
 
 struct InitImpl<N, F>(PhantomData<N>, F);
+
 impl<N, F> ComponentInit for InitImpl<N, F>
 where
     N: GenericNode,
     F: 'static + FnOnce() -> N,
 {
     type Node = N;
+    fn init(self) -> Self::Node {
+        (self.1)()
+    }
+}
+
+impl<N, F> InitChain for InitImpl<N, F>
+where
+    N: GenericNode,
+    F: 'static + FnOnce() -> N,
+{
     fn init_and_return_root(self) -> Self::Node {
         (self.1)()
     }
 }
 
+pub trait RenderChain: 'static + ComponentRender {
+    fn render_and_return_next(self, node: Self::Node) -> Option<Self::Node>;
+}
+
 struct RenderImpl<N, F>(PhantomData<N>, F);
+
 impl<N, F> ComponentRender for RenderImpl<N, F>
 where
     N: GenericNode,
     F: 'static + FnOnce(N) -> Option<N>,
 {
     type Node = N;
-    fn render_and_return_next(self, node: Self::Node) -> Option<N> {
+    fn render(self, node: Self::Node) {
+        (self.1)(node);
+    }
+}
+
+impl<N, F> RenderChain for RenderImpl<N, F>
+where
+    N: GenericNode,
+    F: 'static + FnOnce(N) -> Option<N>,
+{
+    fn render_and_return_next(self, node: Self::Node) -> Option<Self::Node> {
         (self.1)(node)
     }
 }
@@ -144,7 +141,7 @@ where
 pub fn create_component<N, E>(
     cx: Scope,
     render: impl 'static + FnOnce(E),
-) -> Component<impl ComponentInit<Node = N>, impl ComponentRender<Node = N>>
+) -> Component<impl InitChain<Node = N>, impl RenderChain<Node = N>>
 where
     N: GenericNode,
     E: GenericElement<Node = N>,
