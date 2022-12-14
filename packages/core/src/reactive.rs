@@ -13,7 +13,7 @@ pub enum Reactive<T: 'static> {
     Fn(Rc<dyn Fn() -> Reactive<T>>),
 }
 
-pub trait IntoReactive<T: 'static>: 'static + Into<Reactive<T>> {
+pub trait IntoReactive<T: 'static>: Into<Reactive<T>> {
     fn into_reactive(self) -> Reactive<T> {
         self.into()
     }

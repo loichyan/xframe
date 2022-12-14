@@ -69,6 +69,7 @@ where
         self,
         data: A,
     ) -> Component<impl ComponentInit<Node = N>, impl ComponentRender<Node = N>> {
+        let data = data.into_reactive();
         self.child_element(move |text: crate::elements::text<_>| {
             text.data(data);
         })
