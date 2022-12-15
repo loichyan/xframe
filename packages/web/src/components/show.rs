@@ -50,17 +50,21 @@ where
             mut branches,
             default,
         } = self;
-        if let Some(default) = default {
-            branches.push(If {
-                when: Value(true),
-                children: default.children,
-                marker: PhantomData,
-            });
-        }
         view(cx, move |placeholder: crate::elements::placeholder<N>| {
-            let placeholder = placeholder.into_node();
+            let placeholder = placeholder
+                .desc("placeholder for the `xframe::Show` component")
+                .into_node();
             let parent = placeholder.parent().unwrap_or_else(|| unreachable!());
             let mut current = Component::Node(placeholder.clone());
+            branches.push(If {
+                when: Value(true),
+                children: if let Some(default) = default {
+                    default.children
+                } else {
+                    current.clone()
+                },
+                marker: PhantomData,
+            });
             cx.create_effect(move || {
                 for branch in branches.iter() {
                     // TODO: figure out why rust-analyzer cannot infer the type of branch

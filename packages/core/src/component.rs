@@ -117,6 +117,10 @@ pub enum Component<N> {
 }
 
 impl<N: GenericNode> Component<N> {
+    pub fn empty() -> Self {
+        Self::Fragment(Rc::new([]))
+    }
+
     pub fn len(&self) -> usize {
         match self {
             Self::Node(_) => 1,

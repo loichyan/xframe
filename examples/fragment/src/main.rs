@@ -7,22 +7,19 @@ fn main() {
         let is_even = move || counter.get() % 2 == 0;
         view! { cx,
             div {
-                div {
-                    // FIXME: remove children when condition is false
-                    Show {
-                        If {
-                            .when(is_even)
-                            Fragment {
-                                "I'm only visible when " (counter) " is even."
-                            }
-                        }
-                    }
-                }
                 button {
                     .type_("button")
                     .on_click(increment)
                     "Click me!"
                 }
+                div { Show {
+                    If {
+                        .when(is_even)
+                        Fragment {
+                            "I'm only visible when " (counter) " is even."
+                        }
+                    }
+                } }
             }
         }
     });
