@@ -39,5 +39,5 @@ fn main() {
                 Counter {}
             }
         }
-    })
+    });
 }

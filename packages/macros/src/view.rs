@@ -16,7 +16,7 @@ new_type_quote! {
     VAR_CX(__cx);
     FN_CHILD(child);
     FN_BUILD(build);
-    FN_CREATE_COMPONENT(#XFRAME::create_component);
+    FN_VIEW(#XFRAME::view);
 }
 
 pub fn expand(input: ParseStream) -> Result<TokenStream> {
@@ -154,14 +154,14 @@ impl ViewChild {
     pub fn quote(&self) -> TokenStream {
         match self {
             Self::Literal(lit) => {
-                quote!(#FN_CREATE_COMPONENT(
+                quote!(#FN_VIEW(
                         #VAR_CX,
                         move |#VAR_ELEMENT: #T_TEXT::<_>| { #VAR_ELEMENT.data(#lit); },
                 ))
             }
             Self::Text { paren_token, value } => {
                 let value = QuoteSurround(paren_token, value);
-                quote!(#FN_CREATE_COMPONENT(
+                quote!(#FN_VIEW(
                     #VAR_CX,
                     move |#VAR_ELEMENT: #T_TEXT::<_>| { #VAR_ELEMENT.data #value; },
                 ))
@@ -205,7 +205,7 @@ impl ViewComponent {
         let children = args.quote_children();
         if is_builtin {
             quote!({
-                #FN_CREATE_COMPONENT(
+                #FN_VIEW(
                     #VAR_CX,
                     move |#VAR_ELEMENT: #M_ELEMENT::#path::<_>| { #VAR_ELEMENT #props; },
                 )

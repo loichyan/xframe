@@ -1,11 +1,15 @@
-mod component;
 mod dom_node;
 
 pub mod components {
+    pub(crate) mod element;
+    mod fragment;
     mod show;
 
     #[doc(inline)]
-    pub use show::{Else, If, Show};
+    pub use {
+        element::Element,
+        show::{Else, If, Show},
+    };
 }
 
 pub mod elements {
@@ -21,11 +25,7 @@ pub mod elements {
 pub mod element_types {}
 
 #[doc(inline)]
-pub use {
-    ::web_sys::Event,
-    component::{create_component, Component},
-    dom_node::DomNode,
-};
+pub use {::web_sys::Event, components::element::view, dom_node::DomNode};
 
 use xframe_core::GenericComponent;
 
@@ -47,8 +47,7 @@ where
     C: GenericComponent<DomNode>,
 {
     xframe_reactive::create_root(|cx| {
-        let node = f(cx).render();
-        root.append_child(node.as_ref()).unwrap();
+        f(cx).render().append_to(&DomNode::from(root.clone()));
     })
     .leak();
 }

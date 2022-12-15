@@ -21,6 +21,7 @@ impl CowStrExt for CowStr {
     }
 }
 
+// TODO: use global IDs to check euqality
 #[derive(Clone, Eq, PartialEq)]
 pub struct DomNode {
     node: web_sys::Node,
@@ -126,6 +127,16 @@ impl GenericNode for DomNode {
     fn replace_child(&self, new_node: &Self, old_node: &Self) {
         self.node
             .replace_child(&new_node.node, &old_node.node)
+            .unwrap_throw_val();
+    }
+
+    fn remove_child(&self, node: &Self) {
+        self.node.remove_child(&node.node).unwrap_throw_val();
+    }
+
+    fn insert_before(&self, new_node: &Self, ref_node: &Self) {
+        self.node
+            .insert_before(&new_node.node, Some(&ref_node.node))
             .unwrap_throw_val();
     }
 }

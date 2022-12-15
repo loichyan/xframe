@@ -7,5 +7,5 @@
     "outDir": "dist",
     "plugins": [{ "transform": "./codegen/transformer.ts" }]
   },
-  "include": ["scripts/*"]
+  "include": ["codegen/*"]
 }

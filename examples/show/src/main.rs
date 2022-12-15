@@ -40,6 +40,7 @@ fn Counter<N: GenericNode>(cx: Scope) -> Counter<N> {
     }
 }
 
+// FIXME: empty page in debug build
 fn main() {
     xframe::render_to_body(|cx| {
         view! { cx,
@@ -47,5 +48,5 @@ fn main() {
                 Counter {}
             }
         }
-    })
+    });
 }

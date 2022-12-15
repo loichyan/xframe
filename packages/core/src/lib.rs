@@ -9,7 +9,7 @@ pub mod component;
 #[doc(inline)]
 pub use {
     attr::Attribute,
-    component::GenericComponent,
+    component::{Component, GenericComponent},
     element::GenericElement,
     event::{EventHandler, EventOptions, IntoEventHandler},
     node::{GenericNode, NodeType},

@@ -33,10 +33,7 @@ pub use {
     },
     xframe_macros::view,
     xframe_reactive::*,
-    xframe_web::{
-        components::*, create_component, create_component as view, render, render_to_body,
-        Component,
-    },
+    xframe_web::{components::*, render, render_to_body, view},
 };
 
 /// A trait alias of [`xframe_core::GenericNode`].

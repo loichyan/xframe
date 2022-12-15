@@ -1,8 +1,9 @@
-use crate::create_component;
+use crate::view;
 use smallvec::SmallVec;
 use std::marker::PhantomData;
-use wasm_bindgen::UnwrapThrowExt;
-use xframe_core::{GenericComponent, GenericElement, GenericNode, IntoReactive, Reactive};
+use xframe_core::{
+    Component, GenericComponent, GenericElement, GenericNode, IntoReactive, Reactive, Value,
+};
 use xframe_reactive::Scope;
 
 const INITIAL_BRANCH_SLOTS: usize = 2;
@@ -13,7 +14,6 @@ pub fn Show<N: GenericNode>(cx: Scope) -> Show<N> {
         cx,
         branches: Default::default(),
         default: None,
-        marker: PhantomData,
     }
 }
 
@@ -21,7 +21,6 @@ pub struct Show<N> {
     cx: Scope,
     branches: SmallVec<[If<N>; INITIAL_BRANCH_SLOTS]>,
     default: Option<Else<N>>,
-    marker: PhantomData<N>,
 }
 
 pub enum ShowChild<N> {
@@ -48,27 +47,32 @@ where
     pub fn build(self) -> impl GenericComponent<N> {
         let Self {
             cx,
-            branches,
+            mut branches,
             default,
-            ..
         } = self;
-        create_component(cx, move |placeholder: crate::elements::placeholder<N>| {
-            let mut current = placeholder.into_node();
-            let parent = current
-                .parent()
-                .expect_throw("`Show` component must have a parent");
+        if let Some(default) = default {
+            branches.push(If {
+                when: Value(true),
+                children: default.children,
+                marker: PhantomData,
+            });
+        }
+        view(cx, move |placeholder: crate::elements::placeholder<N>| {
+            let placeholder = placeholder.into_node();
+            let parent = placeholder.parent().unwrap_or_else(|| unreachable!());
+            let mut current = Component::Node(placeholder.clone());
             cx.create_effect(move || {
                 for branch in branches.iter() {
-                    if branch.when.clone().into_value() && current.ne(&branch.child) {
-                        parent.replace_child(&branch.child, &current);
-                        current = branch.child.clone();
-                        return;
-                    }
-                }
-                if let Some(default) = default.as_ref() {
-                    if current.ne(&default.child) {
-                        parent.replace_child(&default.child, &current);
-                        current = default.child.clone();
+                    // TODO: figure out why rust-analyzer cannot infer the type of branch
+                    let branch: &If<N> = branch;
+                    if branch.when.clone().into_value() {
+                        let old_node = current.first().unwrap_or(&placeholder);
+                        let new_node = branch.children.first().unwrap_or(&placeholder);
+                        if old_node.ne(new_node) {
+                            current.replace_with(&parent, &branch.children);
+                            current = branch.children.clone();
+                        }
+                        break;
                     }
                 }
             });
@@ -91,13 +95,13 @@ pub fn If<N: GenericNode>(_: Scope) -> If<N, (), ()> {
     If {
         marker: PhantomData,
         when: (),
-        child: (),
+        children: (),
     }
 }
 
-pub struct If<N, When = Reactive<bool>, Child = N> {
+pub struct If<N, When = Reactive<bool>, Children = Component<N>> {
     when: When,
-    child: Child,
+    children: Children,
     marker: PhantomData<N>,
 }
 
@@ -107,24 +111,33 @@ impl<N: GenericNode> If<N> {
     }
 }
 
-impl<N, When, Child> If<N, When, Child>
+impl<N, Children> If<N, (), Children>
 where
     N: GenericNode,
 {
-    pub fn when<T: IntoReactive<bool>>(self, when: T) -> If<N, Reactive<bool>, Child> {
-        let Self { child, marker, .. } = self;
+    pub fn when<T: IntoReactive<bool>>(self, when: T) -> If<N, Reactive<bool>, Children> {
+        let Self {
+            children: child,
+            marker,
+            ..
+        } = self;
         If {
             when: when.into_reactive(),
-            child,
+            children: child,
             marker,
         }
     }
+}
 
-    pub fn child<C: GenericComponent<N>>(self, child: C) -> If<N, When, N> {
+impl<N, When> If<N, When, ()>
+where
+    N: GenericNode,
+{
+    pub fn child<C: GenericComponent<N>>(self, child: C) -> If<N, When, Component<N>> {
         let Self { when, marker, .. } = self;
         If {
             when,
-            child: child.render(),
+            children: child.render(),
             marker,
         }
     }
@@ -133,13 +146,13 @@ where
 #[allow(non_snake_case)]
 pub fn Else<N: GenericNode>(_: Scope) -> Else<N, ()> {
     Else {
-        child: (),
+        children: (),
         marker: PhantomData,
     }
 }
 
-pub struct Else<N, Child = N> {
-    child: Child,
+pub struct Else<N, Children = Component<N>> {
+    children: Children,
     marker: PhantomData<N>,
 }
 
@@ -149,14 +162,14 @@ impl<N: GenericNode> Else<N> {
     }
 }
 
-impl<N, Child> Else<N, Child>
+impl<N> Else<N, ()>
 where
     N: GenericNode,
 {
-    pub fn child<C: GenericComponent<N>>(self, child: C) -> Else<N, N> {
+    pub fn child<C: GenericComponent<N>>(self, child: C) -> Else<N, Component<N>> {
         let Self { marker, .. } = self;
         Else {
-            child: child.render(),
+            children: child.render(),
             marker,
         }
     }
