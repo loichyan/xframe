@@ -1,4 +1,4 @@
-use xframe_core::{Attribute, GenericElement, GenericNode, IntoReactive};
+use xframe_core::{Attribute, GenericElement, GenericNode, IntoReactive, NodeType};
 use xframe_reactive::Scope;
 
 #[allow(non_camel_case_types)]
@@ -22,12 +22,7 @@ impl<N: GenericNode> text<N> {
 }
 
 impl<N: GenericNode> GenericElement<N> for text<N> {
-    fn create(cx: Scope) -> Self {
-        Self {
-            cx,
-            node: N::create_text_node(""),
-        }
-    }
+    const TYPE: NodeType = NodeType::Text;
 
     fn create_with_node(cx: Scope, node: N) -> Self {
         Self { cx, node }

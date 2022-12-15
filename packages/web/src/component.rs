@@ -15,7 +15,7 @@ where
 {
     Component {
         cx,
-        init: InitImpl(PhantomData, move || E::create(cx).into_node()),
+        init: InitImpl(PhantomData, move || N::create(E::TYPE)),
         render: RenderImpl(PhantomData, move |root: N| {
             let next = root.first_child();
             render(E::create_with_node(cx, root));

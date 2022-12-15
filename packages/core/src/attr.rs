@@ -15,7 +15,7 @@ impl Attribute {
         match self {
             Self::Boolean(t) => JsValue::from_bool(t),
             Self::Number(t) => JsValue::from_f64(t),
-            Self::String(t) => JsValue::from_str(t),
+            Self::String(t) => JsValue::from_str(intern(t)),
             Self::Shared(t) => JsValue::from_str(&t),
         }
     }
@@ -23,15 +23,7 @@ impl Attribute {
     pub fn into_string_only(self) -> Attribute {
         match self {
             Self::Boolean(t) => intern(if t { "true" } else { "false" }).into(),
-            Self::Number(t) => {
-                if t == 0.0 {
-                    intern("0").into()
-                } else if t == 1.0 {
-                    intern("1").into()
-                } else {
-                    t.to_string().into()
-                }
-            }
+            Self::Number(t) => t.to_string().into(),
             _ => self,
         }
     }
@@ -39,13 +31,9 @@ impl Attribute {
     pub fn as_str(&self) -> &str {
         match self {
             Self::Shared(s) => s,
-            Self::String(s) => s,
+            Self::String(s) => intern(s),
             _ => panic!("expected a string value"),
         }
-    }
-
-    pub fn from_literal(literal: &'static str) -> Self {
-        Self::String(intern(literal))
     }
 }
 

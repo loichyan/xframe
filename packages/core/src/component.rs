@@ -1,4 +1,4 @@
-use crate::GenericNode;
+use crate::{node::NodeType, GenericNode};
 use ahash::AHashMap;
 use std::{
     any::{Any, TypeId},
@@ -34,7 +34,7 @@ pub trait GenericComponent<N: GenericNode>:
                 .borrow_mut()
                 .entry(TypeId::of::<Self::Identifier>())
                 .or_insert_with(|| {
-                    let fragment = N::create_fragment();
+                    let fragment = N::create(NodeType::Fragment);
                     fragment.append_child(&component.init.init());
                     Box::new(fragment)
                 })

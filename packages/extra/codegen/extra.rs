@@ -23,13 +23,15 @@ new_type_quote!(WEB_SYS(#INPUT::web_sys));
 new_type_quote!(XFRAME(#INPUT::xframe));
 new_type_quote!(SCOPE(#XFRAME::Scope));
 new_type_quote!(BASE_ELEMENT(#INPUT::BaseElement));
-new_type_quote!(GENERIC_NODE(#INPUT::core::GenericNode));
-new_type_quote!(GENERIC_ELEMENT(#INPUT::core::GenericElement));
-new_type_quote!(ATTRIBUTE(#INPUT::core::Attribute));
-new_type_quote!(REACTIVE(#INPUT::core::Reactive));
-new_type_quote!(INTO_REACTIVE(#INPUT::core::IntoReactive));
-new_type_quote!(INTO_EVENT_HANDLER(#INPUT::core::IntoEventHandler));
-new_type_quote!(COW_STR(::std::borrow::Cow<'static, str>));
+new_type_quote!(CORE(#INPUT::core));
+new_type_quote!(GENERIC_NODE(#CORE::GenericNode));
+new_type_quote!(NODE_TYPE(#CORE::NodeType));
+new_type_quote!(GENERIC_ELEMENT(#CORE::GenericElement));
+new_type_quote!(ATTRIBUTE(#CORE::Attribute));
+new_type_quote!(REACTIVE(#CORE::Reactive));
+new_type_quote!(INTO_REACTIVE(#CORE::IntoReactive));
+new_type_quote!(INTO_EVENT_HANDLER(#CORE::IntoEventHandler));
+new_type_quote!(COW_STR(::std::borrow::Cow::<'static, str>));
 new_type_quote!(ELEMENT_TYPES(super::element_types));
 new_type_quote!(ATTR_TYPES(super::attr_types));
 new_type_quote!(EVENT_TYPES(super::event_types));
@@ -168,11 +170,7 @@ impl<'a> Element<'a> {
             impl<N: #GENERIC_NODE> #GENERIC_ELEMENT<N>
             for #fn_<N>
             {
-                fn create(cx: #SCOPE) -> Self {
-                    #fn_ {
-                        inner: #BASE_ELEMENT::create(#key, cx)
-                    }
-                }
+                const TYPE: #NODE_TYPE = #NODE_TYPE::Tag(#COW_STR::Borrowed(#key));
 
                 fn create_with_node(cx: #SCOPE, node: N) -> Self {
                     #fn_ {
@@ -396,7 +394,7 @@ impl ToTokens for QuoteAttrType<'_> {
 
             impl From<#name> for #ATTRIBUTE {
                 fn from(t: #name) -> Self {
-                    #ATTRIBUTE::from_literal(t.into())
+                    #ATTRIBUTE::String(t.into())
                 }
             }
 

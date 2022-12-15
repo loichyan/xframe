@@ -12,11 +12,11 @@ pub use {
     component::GenericComponent,
     element::GenericElement,
     event::{EventHandler, EventOptions, IntoEventHandler},
-    node::GenericNode,
+    node::{GenericNode, NodeType},
     reactive::{IntoReactive, Reactive, Value},
 };
 
-type Str = std::borrow::Cow<'static, str>;
+type CowStr = std::borrow::Cow<'static, str>;
 
 pub trait UnwrapThrowValExt<T> {
     fn unwrap_throw_val(self) -> T;
