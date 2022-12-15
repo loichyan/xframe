@@ -16,28 +16,29 @@ pub struct ComponentNode<Init, Render> {
     pub render: Render,
 }
 
-pub trait GenericComponent: 'static + Into<ComponentNode<Self::Init, Self::Render>> {
-    type Node: GenericNode;
-    type Init: ComponentInit<Node = Self::Node>;
-    type Render: ComponentRender<Node = Self::Node>;
+pub trait GenericComponent<N: GenericNode>:
+    'static + Into<ComponentNode<Self::Init, Self::Render>>
+{
+    type Init: ComponentInit<N>;
+    type Render: ComponentRender<N>;
     type Identifier: 'static;
 
     fn into_component_node(self) -> ComponentNode<Self::Init, Self::Render> {
         self.into()
     }
 
-    fn render(self) -> Self::Node {
+    fn render(self) -> N {
         let component = self.into_component_node();
         let node = TEMPLATES.with(|templates| {
             templates
                 .borrow_mut()
                 .entry(TypeId::of::<Self::Identifier>())
                 .or_insert_with(|| {
-                    let fragment = Self::Node::create_fragment();
+                    let fragment = N::create_fragment();
                     fragment.append_child(&component.init.init());
                     Box::new(fragment)
                 })
-                .downcast_ref::<Self::Node>()
+                .downcast_ref::<N>()
                 .unwrap_or_else(|| unreachable!())
                 .first_child()
                 .unwrap_or_else(|| unreachable!())
@@ -48,12 +49,10 @@ pub trait GenericComponent: 'static + Into<ComponentNode<Self::Init, Self::Rende
     }
 }
 
-pub trait ComponentInit: 'static {
-    type Node: GenericNode;
-    fn init(self) -> Self::Node;
+pub trait ComponentInit<N: GenericNode>: 'static {
+    fn init(self) -> N;
 }
 
-pub trait ComponentRender: 'static {
-    type Node: GenericNode;
-    fn render(self, node: Self::Node);
+pub trait ComponentRender<N: GenericNode>: 'static {
+    fn render(self, node: N);
 }

@@ -45,7 +45,7 @@ impl<N> Show<N>
 where
     N: GenericNode,
 {
-    pub fn build(self) -> impl GenericComponent<Node = N> {
+    pub fn build(self) -> impl GenericComponent<N> {
         let Self {
             cx,
             branches,
@@ -120,7 +120,7 @@ where
         }
     }
 
-    pub fn child<C: GenericComponent<Node = N>>(self, child: C) -> If<N, When, N> {
+    pub fn child<C: GenericComponent<N>>(self, child: C) -> If<N, When, N> {
         let Self { when, marker, .. } = self;
         If {
             when,
@@ -153,7 +153,7 @@ impl<N, Child> Else<N, Child>
 where
     N: GenericNode,
 {
-    pub fn child<C: GenericComponent<Node = N>>(self, child: C) -> Else<N, N> {
+    pub fn child<C: GenericComponent<N>>(self, child: C) -> Else<N, N> {
         let Self { marker, .. } = self;
         Else {
             child: child.render(),

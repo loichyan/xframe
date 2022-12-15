@@ -21,9 +21,7 @@ impl<N: GenericNode> text<N> {
     }
 }
 
-impl<N: GenericNode> GenericElement for text<N> {
-    type Node = N;
-
+impl<N: GenericNode> GenericElement<N> for text<N> {
     fn create(cx: Scope) -> Self {
         Self {
             cx,
@@ -31,11 +29,11 @@ impl<N: GenericNode> GenericElement for text<N> {
         }
     }
 
-    fn create_with_node(cx: Scope, node: Self::Node) -> Self {
+    fn create_with_node(cx: Scope, node: N) -> Self {
         Self { cx, node }
     }
 
-    fn into_node(self) -> Self::Node {
+    fn into_node(self) -> N {
         self.node
     }
 }

@@ -1,9 +1,8 @@
 use crate::node::GenericNode;
 use xframe_reactive::Scope;
 
-pub trait GenericElement: 'static + Sized {
-    type Node: GenericNode;
+pub trait GenericElement<N: GenericNode>: 'static + Sized {
     fn create(cx: Scope) -> Self;
-    fn create_with_node(cx: Scope, node: Self::Node) -> Self;
-    fn into_node(self) -> Self::Node;
+    fn create_with_node(cx: Scope, node: N) -> Self;
+    fn into_node(self) -> N;
 }

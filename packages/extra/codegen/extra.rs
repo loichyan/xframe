@@ -165,11 +165,9 @@ impl<'a> Element<'a> {
                 #GENERIC_ELEMENT::create(cx)
             }
 
-            impl<N: #GENERIC_NODE> #GENERIC_ELEMENT
+            impl<N: #GENERIC_NODE> #GENERIC_ELEMENT<N>
             for #fn_<N>
             {
-                type Node = N;
-
                 fn create(cx: #SCOPE) -> Self {
                     #fn_ {
                         inner: #BASE_ELEMENT::create(#key, cx)
@@ -225,7 +223,7 @@ impl<'a> Element<'a> {
 
             pub fn child<E>(self, element: E) -> Self
             where
-                E: #GENERIC_ELEMENT<Node = N>,
+                E: #GENERIC_ELEMENT<N>,
             {
                 self.inner.append_child(element);
                 self

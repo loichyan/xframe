@@ -79,7 +79,7 @@ impl<N: GenericNode> BaseElement<N> {
 
     pub fn append_child<E>(&self, element: E)
     where
-        E: GenericElement<Node = N>,
+        E: GenericElement<N>,
     {
         self.node.append_child(&element.into_node());
     }

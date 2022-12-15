@@ -36,7 +36,7 @@ thread_local! {
 
 pub fn render_to_body<C>(f: impl FnOnce(xframe_reactive::Scope) -> C)
 where
-    C: GenericComponent<Node = DomNode>,
+    C: GenericComponent<DomNode>,
 {
     let body = DOCUMENT.with(|docuemt| docuemt.body().unwrap());
     render(&body, f);
@@ -44,7 +44,7 @@ where
 
 pub fn render<C>(root: &web_sys::Node, f: impl FnOnce(xframe_reactive::Scope) -> C)
 where
-    C: GenericComponent<Node = DomNode>,
+    C: GenericComponent<DomNode>,
 {
     xframe_reactive::create_root(|cx| {
         let node = f(cx).render();

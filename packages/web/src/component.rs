@@ -5,26 +5,48 @@ use xframe_core::{
 };
 use xframe_reactive::Scope;
 
-pub struct Component<Init, Render, Identifier> {
+pub fn create_component<N, E>(
+    cx: Scope,
+    render: impl 'static + FnOnce(E),
+) -> Component<N, impl InitChain<N>, impl RenderChain<N>, E>
+where
+    N: GenericNode,
+    E: GenericElement<N>,
+{
+    Component {
+        cx,
+        init: InitImpl(PhantomData, move || E::create(cx).into_node()),
+        render: RenderImpl(PhantomData, move |root: N| {
+            let next = root.first_child();
+            render(E::create_with_node(cx, root));
+            next
+        }),
+        node: PhantomData,
+        identifier: PhantomData,
+    }
+}
+
+pub struct Component<N, Init, Render, Identifier> {
     cx: Scope,
     init: Init,
     render: Render,
+    node: PhantomData<N>,
     identifier: PhantomData<Identifier>,
 }
 
-impl<N, Init, Render, Identifier> Component<Init, Render, Identifier>
+impl<N, Init, Render, Identifier> Component<N, Init, Render, Identifier>
 where
     N: GenericNode,
-    Init: InitChain<Node = N>,
-    Render: RenderChain<Node = N>,
+    Init: InitChain<N>,
+    Render: RenderChain<N>,
     Identifier: 'static,
 {
     pub fn child<C>(
         self,
         component: C,
-    ) -> Component<impl InitChain<Node = N>, impl RenderChain<Node = N>, (Identifier, C::Identifier)>
+    ) -> Component<N, impl InitChain<N>, impl RenderChain<N>, (Identifier, C::Identifier)>
     where
-        C: GenericComponent<Node = N>,
+        C: GenericComponent<N>,
     {
         let component = component.into_component_node();
         Component {
@@ -43,6 +65,7 @@ where
                 component.render.render(node);
                 next
             }),
+            node: PhantomData,
             identifier: PhantomData,
         }
     }
@@ -50,9 +73,9 @@ where
     pub fn child_element<E, F>(
         self,
         render: F,
-    ) -> Component<impl InitChain<Node = N>, impl RenderChain<Node = N>, (Identifier, E)>
+    ) -> Component<N, impl InitChain<N>, impl RenderChain<N>, (Identifier, E)>
     where
-        E: GenericElement<Node = N>,
+        E: GenericElement<N>,
         F: 'static + FnOnce(E),
     {
         let cx = self.cx;
@@ -62,11 +85,8 @@ where
     pub fn child_text<A: IntoReactive<Attribute>>(
         self,
         data: A,
-    ) -> Component<
-        impl InitChain<Node = N>,
-        impl RenderChain<Node = N>,
-        (Identifier, crate::elements::text<N>),
-    > {
+    ) -> Component<N, impl InitChain<N>, impl RenderChain<N>, (Identifier, crate::elements::text<N>)>
+    {
         let data = data.into_reactive();
         self.child_element(move |text: crate::elements::text<_>| {
             text.data(data);
@@ -74,10 +94,10 @@ where
     }
 }
 
-impl<Init, Render, Identifier> From<Component<Init, Render, Identifier>>
+impl<N, Init, Render, Identifier> From<Component<N, Init, Render, Identifier>>
     for ComponentNode<Init, Render>
 {
-    fn from(t: Component<Init, Render, Identifier>) -> Self {
+    fn from(t: Component<N, Init, Render, Identifier>) -> Self {
         Self {
             init: t.init,
             render: t.render,
@@ -85,89 +105,66 @@ impl<Init, Render, Identifier> From<Component<Init, Render, Identifier>>
     }
 }
 
-impl<N, Init, Render, Identifier> GenericComponent for Component<Init, Render, Identifier>
+impl<N, Init, Render, Identifier> GenericComponent<N> for Component<N, Init, Render, Identifier>
 where
     N: GenericNode,
-    Init: ComponentInit<Node = N>,
-    Render: ComponentRender<Node = N>,
+    Init: ComponentInit<N>,
+    Render: ComponentRender<N>,
     Identifier: 'static,
 {
-    type Node = N;
     type Init = Init;
     type Render = Render;
     type Identifier = Identifier;
 }
 
-pub trait InitChain: 'static + ComponentInit {
-    fn init_and_return_root(self) -> Self::Node;
+pub trait InitChain<N: GenericNode>: ComponentInit<N> {
+    fn init_and_return_root(self) -> N;
 }
 
 struct InitImpl<N, F>(PhantomData<N>, F);
 
-impl<N, F> ComponentInit for InitImpl<N, F>
+impl<N, F> ComponentInit<N> for InitImpl<N, F>
 where
     N: GenericNode,
     F: 'static + FnOnce() -> N,
 {
-    type Node = N;
-    fn init(self) -> Self::Node {
+    fn init(self) -> N {
         (self.1)()
     }
 }
 
-impl<N, F> InitChain for InitImpl<N, F>
+impl<N, F> InitChain<N> for InitImpl<N, F>
 where
     N: GenericNode,
     F: 'static + FnOnce() -> N,
 {
-    fn init_and_return_root(self) -> Self::Node {
+    fn init_and_return_root(self) -> N {
         (self.1)()
     }
 }
 
-pub trait RenderChain: 'static + ComponentRender {
-    fn render_and_return_next(self, node: Self::Node) -> Option<Self::Node>;
+pub trait RenderChain<N: GenericNode>: ComponentRender<N> {
+    fn render_and_return_next(self, node: N) -> Option<N>;
 }
 
 struct RenderImpl<N, F>(PhantomData<N>, F);
 
-impl<N, F> ComponentRender for RenderImpl<N, F>
+impl<N, F> ComponentRender<N> for RenderImpl<N, F>
 where
     N: GenericNode,
     F: 'static + FnOnce(N) -> Option<N>,
 {
-    type Node = N;
-    fn render(self, node: Self::Node) {
+    fn render(self, node: N) {
         (self.1)(node);
     }
 }
 
-impl<N, F> RenderChain for RenderImpl<N, F>
+impl<N, F> RenderChain<N> for RenderImpl<N, F>
 where
     N: GenericNode,
     F: 'static + FnOnce(N) -> Option<N>,
 {
-    fn render_and_return_next(self, node: Self::Node) -> Option<Self::Node> {
+    fn render_and_return_next(self, node: N) -> Option<N> {
         (self.1)(node)
-    }
-}
-
-pub fn create_component<N, E>(
-    cx: Scope,
-    render: impl 'static + FnOnce(E),
-) -> Component<impl InitChain<Node = N>, impl RenderChain<Node = N>, E>
-where
-    N: GenericNode,
-    E: GenericElement<Node = N>,
-{
-    Component {
-        cx,
-        init: InitImpl(PhantomData, move || E::create(cx).into_node()),
-        render: RenderImpl(PhantomData, move |root: N| {
-            let next = root.first_child();
-            render(E::create_with_node(cx, root));
-            next
-        }),
-        identifier: PhantomData,
     }
 }
