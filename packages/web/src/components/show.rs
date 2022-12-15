@@ -56,22 +56,24 @@ where
                 .into_node();
             let parent = placeholder.parent().unwrap_or_else(|| unreachable!());
             let mut current = Component::Node(placeholder.clone());
+            // Replace empty fragments with the placeholder.
+            branches
+                .iter_mut()
+                .for_each(|branch: &mut If<N>| branch.children.insert_with(|| placeholder.clone()));
+            // Add a default branch.
             branches.push(If {
                 when: Value(true),
-                children: if let Some(default) = default {
-                    default.children
-                } else {
-                    current.clone()
-                },
+                children: default
+                    .map(|default| default.children)
+                    .unwrap_or_else(|| current.clone()),
                 marker: PhantomData,
             });
             cx.create_effect(move || {
                 for branch in branches.iter() {
-                    // TODO: figure out why rust-analyzer cannot infer the type of branch
                     let branch: &If<N> = branch;
                     if branch.when.clone().into_value() {
-                        let old_node = current.first().unwrap_or(&placeholder);
-                        let new_node = branch.children.first().unwrap_or(&placeholder);
+                        let old_node = current.first().unwrap_or_else(|| unreachable!());
+                        let new_node = branch.children.first().unwrap_or_else(|| unreachable!());
                         if old_node.ne(new_node) {
                             current.replace_with(&parent, &branch.children);
                             current = branch.children.clone();

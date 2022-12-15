@@ -34,6 +34,7 @@ pub trait GenericComponent<N: GenericNode>:
         self.into()
     }
 
+    // TODO: Use dyn to reduce code bloat
     fn render(self) -> Component<N> {
         let component = self.into_component_node();
         let TemplateNode { length, container } = TEMPLATES.with(|templates| {
@@ -147,6 +148,12 @@ impl<N: GenericNode> Component<N> {
         match self {
             Self::Node(n) => Some(n),
             Self::Fragment(nodes) => nodes.first(),
+        }
+    }
+
+    pub fn insert_with(&mut self, f: impl FnOnce() -> N) {
+        if self.is_empty() {
+            *self = Self::Node(f())
         }
     }
 
