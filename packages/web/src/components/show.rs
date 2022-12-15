@@ -2,7 +2,8 @@ use crate::view;
 use smallvec::SmallVec;
 use std::marker::PhantomData;
 use xframe_core::{
-    Component, GenericComponent, GenericElement, GenericNode, IntoReactive, Reactive, Value,
+    component::DynComponent, Component, GenericComponent, GenericElement, GenericNode,
+    IntoReactive, Reactive, Value,
 };
 use xframe_reactive::Scope;
 
@@ -45,9 +46,14 @@ where
     N: GenericNode,
 {
     pub fn build(self) -> impl GenericComponent<N> {
+        struct Branch<N> {
+            when: Reactive<bool>,
+            children: Component<N>,
+        }
+
         let Self {
             cx,
-            mut branches,
+            branches,
             default,
         } = self;
         view(cx, move |placeholder: crate::elements::placeholder<N>| {
@@ -56,21 +62,28 @@ where
                 .into_node();
             let parent = placeholder.parent().unwrap_or_else(|| unreachable!());
             let mut current = Component::Node(placeholder.clone());
-            // Replace empty fragments with the placeholder.
-            branches
-                .iter_mut()
-                .for_each(|branch: &mut If<N>| branch.children.insert_with(|| placeholder.clone()));
-            // Add a default branch.
-            branches.push(If {
-                when: Value(true),
-                children: default
-                    .map(|default| default.children)
-                    .unwrap_or_else(|| current.clone()),
-                marker: PhantomData,
-            });
+            let branches = branches
+                .into_iter()
+                .map(|If::<N> { when, children, .. }| Branch {
+                    when,
+                    children: {
+                        // Replace empty fragments with the placeholder.
+                        let mut children = children.render();
+                        children.insert_with(|| placeholder.clone());
+                        children
+                    },
+                })
+                // Add a default branch.
+                .chain(std::iter::once(Branch {
+                    when: Value(true),
+                    children: default
+                        .map(|default| default.children.render())
+                        .unwrap_or_else(|| current.clone()),
+                }))
+                .collect::<SmallVec<[Branch<N>; INITIAL_BRANCH_SLOTS]>>();
             cx.create_effect(move || {
                 for branch in branches.iter() {
-                    let branch: &If<N> = branch;
+                    let branch: &Branch<N> = branch;
                     if branch.when.clone().into_value() {
                         let old_node = current.first().unwrap_or_else(|| unreachable!());
                         let new_node = branch.children.first().unwrap_or_else(|| unreachable!());
@@ -105,7 +118,7 @@ pub fn If<N: GenericNode>(_: Scope) -> If<N, (), ()> {
     }
 }
 
-pub struct If<N, When = Reactive<bool>, Children = Component<N>> {
+pub struct If<N, When = Reactive<bool>, Children = DynComponent<N>> {
     when: When,
     children: Children,
     marker: PhantomData<N>,
@@ -139,11 +152,11 @@ impl<N, When> If<N, When, ()>
 where
     N: GenericNode,
 {
-    pub fn child<C: GenericComponent<N>>(self, child: C) -> If<N, When, Component<N>> {
+    pub fn child<C: GenericComponent<N>>(self, child: C) -> If<N, When, DynComponent<N>> {
         let Self { when, marker, .. } = self;
         If {
             when,
-            children: child.render(),
+            children: child.into_dyn_component(),
             marker,
         }
     }
@@ -157,7 +170,7 @@ pub fn Else<N: GenericNode>(_: Scope) -> Else<N, ()> {
     }
 }
 
-pub struct Else<N, Children = Component<N>> {
+pub struct Else<N, Children = DynComponent<N>> {
     children: Children,
     marker: PhantomData<N>,
 }
@@ -172,10 +185,10 @@ impl<N> Else<N, ()>
 where
     N: GenericNode,
 {
-    pub fn child<C: GenericComponent<N>>(self, child: C) -> Else<N, Component<N>> {
+    pub fn child<C: GenericComponent<N>>(self, child: C) -> Else<N, DynComponent<N>> {
         let Self { marker, .. } = self;
         Else {
-            children: child.render(),
+            children: child.into_dyn_component(),
             marker,
         }
     }
