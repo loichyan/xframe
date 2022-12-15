@@ -23,6 +23,57 @@ pub struct ComponentNode<Init, Render> {
     pub render: Render,
 }
 
+fn render_component_node<N, Init, Render>(
+    component: ComponentNode<Init, Render>,
+    id: TypeId,
+) -> Component<N>
+where
+    N: GenericNode,
+    Init: ComponentInit<N>,
+    Render: ComponentRender<N>,
+{
+    let TemplateNode { length, container } = TEMPLATES.with(|templates| {
+        templates
+            .borrow_mut()
+            .entry(id)
+            .or_insert_with(|| {
+                let container = N::create(NodeType::Template);
+                let component = component.init.init();
+                component.append_to(&container);
+                Box::new(TemplateNode {
+                    length: component.len(),
+                    container,
+                })
+            })
+            .downcast_ref::<TemplateNode<N>>()
+            .map(|tmpl| TemplateNode {
+                length: tmpl.length,
+                container: tmpl.container.deep_clone(),
+            })
+            .unwrap_or_else(|| unreachable!())
+    });
+    if let Some(first) = container.first_child() {
+        let last_child = component.render.render(first.clone());
+        debug_assert!(last_child.is_none());
+        if length == 1 {
+            Component::Node(first)
+        } else {
+            let mut fragment = Vec::with_capacity(length);
+            let mut current = first.clone();
+            fragment.push(first);
+            while let Some(next) = current.next_sibling() {
+                fragment.push(next.clone());
+                current = next;
+            }
+            debug_assert_eq!(fragment.len(), length);
+            Component::Fragment(Rc::from(fragment.into_boxed_slice()))
+        }
+    } else {
+        debug_assert_eq!(length, 0);
+        Component::Fragment(Rc::new([]))
+    }
+}
+
 pub trait GenericComponent<N: GenericNode>:
     'static + Into<ComponentNode<Self::Init, Self::Render>>
 {
@@ -34,51 +85,16 @@ pub trait GenericComponent<N: GenericNode>:
         self.into()
     }
 
-    // TODO: Use dyn to reduce code bloat
     fn render(self) -> Component<N> {
         let component = self.into_component_node();
-        let TemplateNode { length, container } = TEMPLATES.with(|templates| {
-            templates
-                .borrow_mut()
-                .entry(TypeId::of::<Self::Identifier>())
-                .or_insert_with(|| {
-                    let container = N::create(NodeType::Template);
-                    let component = component.init.init();
-                    component.append_to(&container);
-                    Box::new(TemplateNode {
-                        length: component.len(),
-                        container,
-                    })
-                })
-                .downcast_ref::<TemplateNode<N>>()
-                .map(|tmpl| TemplateNode {
-                    length: tmpl.length,
-                    container: tmpl.container.deep_clone(),
-                })
-                .unwrap_or_else(|| unreachable!())
-        });
-        if let Some(first) = container.first_child() {
-            let last_child = component.render.render(first.clone());
-            debug_assert!(last_child.is_none());
-            if length == 1 {
-                Component::Node(first)
-            } else {
-                let mut fragment = Vec::with_capacity(length);
-                let mut current = first.clone();
-                fragment.push(first);
-                while let Some(next) = current.next_sibling() {
-                    fragment.push(next.clone());
-                    current = next;
-                }
-                debug_assert_eq!(fragment.len(), length);
-                Component::Fragment(Rc::from(fragment.into_boxed_slice()))
-            }
-        } else {
-            debug_assert_eq!(length, 0);
-            todo!()
-            // Uncomment this will lead a empty page in debug build
-            // Component::Fragment(Rc::new([]))
-        }
+        render_component_node(
+            ComponentNode {
+                init: Box::new(move || component.init.init()) as Box<dyn FnOnce() -> Component<N>>,
+                render: Box::new(move |node| component.render.render(node))
+                    as Box<dyn FnOnce(N) -> Option<N>>,
+            },
+            TypeId::of::<Self::Identifier>(),
+        )
     }
 }
 

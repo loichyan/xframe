@@ -216,8 +216,6 @@ impl ViewComponent {
                 #path::<_>(#VAR_CX)
                 #props
                 #children
-                // TODO: we can remove this requirement when RFC 2515 is implemented
-                // issue: https://github.com/rust-lang/rust/issues/63063
                 .#FN_BUILD()
             })
         }
