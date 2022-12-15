@@ -41,7 +41,7 @@ pub trait GenericComponent<N: GenericNode>:
                 .borrow_mut()
                 .entry(TypeId::of::<Self::Identifier>())
                 .or_insert_with(|| {
-                    let container = N::create(NodeType::Fragment);
+                    let container = N::create(NodeType::Template);
                     let component = component.init.init();
                     component.append_to(&container);
                     Box::new(TemplateNode {
@@ -74,7 +74,9 @@ pub trait GenericComponent<N: GenericNode>:
             }
         } else {
             debug_assert_eq!(length, 0);
-            Component::Fragment(Rc::new([]))
+            todo!()
+            // Uncomment this will lead a empty page in debug build
+            // Component::Fragment(Rc::new([]))
         }
     }
 }
@@ -122,6 +124,17 @@ impl<N: GenericNode> Component<N> {
         }
     }
 
+    pub fn iter(&self) -> Iter<N> {
+        match self {
+            Self::Node(n) => Iter {
+                inner: IterImpl::Node(Some(n)),
+            },
+            Self::Fragment(nodes) => Iter {
+                inner: IterImpl::Fragment(nodes.iter()),
+            },
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -144,10 +157,46 @@ impl<N: GenericNode> Component<N> {
         }
     }
 
-    pub fn replace_with(&self, parent: &N, new: &Self) {
-        match (self, new) {
+    pub fn remove_from(&self, parent: &N) {
+        for node in self.iter() {
+            parent.remove_child(node);
+        }
+    }
+
+    pub fn move_before(&self, parent: &N, ref_node: &N) {
+        for node in self.iter() {
+            parent.insert_before(node, ref_node);
+        }
+    }
+
+    pub fn replace_with(&self, parent: &N, new_component: &Self) {
+        match (self, new_component) {
             (Self::Node(old), Self::Node(new)) => parent.replace_child(new, old),
-            _ => todo!(),
+            _ => {
+                if let Some(first) = self.first() {
+                    new_component.move_before(parent, first);
+                    self.remove_from(parent);
+                }
+            }
+        }
+    }
+}
+
+pub struct Iter<'a, N> {
+    inner: IterImpl<'a, N>,
+}
+
+enum IterImpl<'a, N> {
+    Node(Option<&'a N>),
+    Fragment(std::slice::Iter<'a, N>),
+}
+
+impl<'a, N> Iterator for Iter<'a, N> {
+    type Item = &'a N;
+    fn next(&mut self) -> Option<Self::Item> {
+        match &mut self.inner {
+            IterImpl::Node(n) => n.take(),
+            IterImpl::Fragment(nodes) => nodes.next(),
         }
     }
 }

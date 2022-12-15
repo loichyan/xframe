@@ -30,8 +30,8 @@ pub fn Element<N: GenericNode>(cx: Scope) -> Element<N, (), (), ()> {
         cx,
         init: (),
         render: (),
-        node: PhantomData,
         identifier: PhantomData,
+        marker: PhantomData,
     }
 }
 
@@ -39,8 +39,8 @@ pub struct Element<N, Init, Render, Identifier> {
     cx: Scope,
     init: Init,
     render: Render,
-    node: PhantomData<N>,
     identifier: PhantomData<Identifier>,
+    marker: PhantomData<N>,
 }
 
 impl<N: GenericNode> Element<N, (), (), ()> {
@@ -58,8 +58,8 @@ impl<N: GenericNode> Element<N, (), (), ()> {
                 render(E::create_with_node(cx, node));
                 (next_sibling, last_child)
             }),
-            node: PhantomData,
             identifier: PhantomData,
+            marker: PhantomData,
         }
     }
 }
@@ -75,27 +75,29 @@ where
         self
     }
 
-    pub fn child<C>(self, component: C) -> Element!(N, (Identifier, C::Identifier))
+    pub fn child<C>(self, child: C) -> Element!(N, (Identifier, C::Identifier))
     where
         C: GenericComponent<N>,
     {
-        let component = component.into_component_node();
+        let child = child.into_component_node();
         Element {
             cx: self.cx,
             init: ElementInitImpl(move || {
                 let root = self.init.init_element();
-                component.init.init().append_to(&root);
+                child.init.init().append_to(&root);
                 root
             }),
             render: ElementRenderImpl(move |node: N| {
-                let (root_sibling, mut last_child) = self.render.render_element(node);
-                last_child = component
-                    .render
-                    .render(last_child.unwrap_or_else(|| unreachable!()));
-                (root_sibling, last_child)
+                let (root_sibling, last_child) = self.render.render_element(node);
+                (
+                    root_sibling,
+                    child
+                        .render
+                        .render(last_child.unwrap_or_else(|| unreachable!())),
+                )
             }),
-            node: PhantomData,
             identifier: PhantomData,
+            marker: PhantomData,
         }
     }
 

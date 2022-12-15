@@ -4,8 +4,7 @@ pub enum NodeType {
     Tag(CowStr),
     Text,
     Placeholder,
-    // TODO: rename to template
-    Fragment,
+    Template,
 }
 
 pub trait GenericNode: 'static + Clone + Eq {

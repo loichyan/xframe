@@ -1,6 +1,5 @@
-use xframe::{view, Else, If, Show};
+use xframe::{view, Fragment, If, Show};
 
-// FIXME: empty page in debug build
 fn main() {
     xframe::render_to_body(|cx| {
         let counter = cx.create_signal(0);
@@ -9,17 +8,20 @@ fn main() {
         view! { cx,
             div {
                 div {
-                    "Number " (counter) " is "
+                    // FIXME: remove children when condition is false
                     Show {
-                        If { .when(is_even) "even" }
-                        Else { "odd" }
+                        If {
+                            .when(is_even)
+                            Fragment {
+                                "I'm only visible when " (counter) " is even."
+                            }
+                        }
                     }
-                    "."
                 }
                 button {
                     .type_("button")
                     .on_click(increment)
-                    "Click me: " (counter) " times!"
+                    "Click me!"
                 }
             }
         }

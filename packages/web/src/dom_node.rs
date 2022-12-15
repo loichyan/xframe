@@ -53,7 +53,7 @@ impl GenericNode for DomNode {
             NodeType::Tag(tag) => doc.create_element(tag.intern()).unwrap_throw_val().into(),
             NodeType::Text => doc.create_text_node("").into(),
             NodeType::Placeholder => doc.create_comment("").into(),
-            NodeType::Fragment => doc.create_document_fragment().into(),
+            NodeType::Template => doc.create_document_fragment().into(),
         });
         Self { node }
     }

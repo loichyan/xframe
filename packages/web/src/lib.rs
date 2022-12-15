@@ -8,6 +8,7 @@ pub mod components {
     #[doc(inline)]
     pub use {
         element::Element,
+        fragment::Fragment,
         show::{Else, If, Show},
     };
 }
