@@ -8,7 +8,6 @@ fn main() {
         view! { cx,
             div {
                 div {
-                    // FIXME: empty page if there are nodes before `Show`
                     "Number " (counter) " is "
                     Show {
                         If { .when(is_even) "even" }

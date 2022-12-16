@@ -1,6 +1,5 @@
 use crate::view;
 use smallvec::SmallVec;
-use std::marker::PhantomData;
 use xframe_core::{
     component::DynComponent, Component, GenericComponent, GenericElement, GenericNode,
     IntoReactive, Reactive, Value,
@@ -14,31 +13,17 @@ pub fn Show<N: GenericNode>(cx: Scope) -> Show<N> {
     Show {
         cx,
         branches: Default::default(),
-        default: None,
     }
 }
 
 pub struct Show<N> {
     cx: Scope,
-    branches: SmallVec<[If<N>; INITIAL_BRANCH_SLOTS]>,
-    default: Option<Else<N>>,
+    branches: SmallVec<[ShowChild<N>; INITIAL_BRANCH_SLOTS]>,
 }
 
-pub enum ShowChild<N> {
-    If(If<N>),
-    Else(Else<N>),
-}
-
-impl<N> From<If<N>> for ShowChild<N> {
-    fn from(t: If<N>) -> Self {
-        Self::If(t)
-    }
-}
-
-impl<N> From<Else<N>> for ShowChild<N> {
-    fn from(t: Else<N>) -> Self {
-        Self::Else(t)
-    }
+pub struct ShowChild<N> {
+    when: Reactive<bool>,
+    children: DynComponent<N>,
 }
 
 impl<N> Show<N>
@@ -51,11 +36,7 @@ where
             children: Component<N>,
         }
 
-        let Self {
-            cx,
-            branches,
-            default,
-        } = self;
+        let Self { cx, branches } = self;
         view(cx, move |placeholder: crate::elements::placeholder<N>| {
             let placeholder = placeholder
                 .desc("placeholder for the `xframe::Show` component")
@@ -64,7 +45,7 @@ where
             let mut current = Component::Node(placeholder.clone());
             let branches = branches
                 .into_iter()
-                .map(|If::<N> { when, children, .. }| Branch {
+                .map(|ShowChild { when, children }| Branch {
                     when,
                     children: {
                         // Replace empty fragments with the placeholder.
@@ -76,11 +57,9 @@ where
                 // Add a default branch.
                 .chain(std::iter::once(Branch {
                     when: Value(true),
-                    children: default
-                        .map(|default| default.children.render())
-                        .unwrap_or_else(|| current.clone()),
+                    children: current.clone(),
                 }))
-                .collect::<SmallVec<[Branch<N>; INITIAL_BRANCH_SLOTS]>>();
+                .collect::<SmallVec<[_; INITIAL_BRANCH_SLOTS]>>();
             cx.create_effect(move || {
                 for branch in branches.iter() {
                     let branch: &Branch<N> = branch;
@@ -100,96 +79,76 @@ where
 }
 
 impl<N> Show<N> {
-    pub fn child<C: Into<ShowChild<N>>>(mut self, child: C) -> Show<N> {
-        match child.into() {
-            ShowChild::If(case) => self.branches.push(case),
-            ShowChild::Else(default) => self.default = Some(default),
-        }
+    pub fn child(mut self, child: ShowChild<N>) -> Show<N> {
+        self.branches.push(child);
         self
     }
 }
 
 #[allow(non_snake_case)]
-pub fn If<N: GenericNode>(_: Scope) -> If<N, (), ()> {
+pub fn If<N: GenericNode>(_: Scope) -> If<N> {
     If {
-        marker: PhantomData,
-        when: (),
-        children: (),
+        when: None,
+        children: None,
     }
 }
 
-pub struct If<N, When = Reactive<bool>, Children = DynComponent<N>> {
-    when: When,
-    children: Children,
-    marker: PhantomData<N>,
+pub struct If<N> {
+    when: Option<Reactive<bool>>,
+    children: Option<DynComponent<N>>,
 }
 
 impl<N: GenericNode> If<N> {
-    pub fn build(self) -> Self {
+    pub fn build(self) -> ShowChild<N> {
+        ShowChild {
+            when: self.when.expect("no `when` was provided"),
+            children: self.children.expect("no `child` was provided"),
+        }
+    }
+}
+
+impl<N: GenericNode> If<N> {
+    pub fn when<T: IntoReactive<bool>>(mut self, when: T) -> If<N> {
+        if self.when.is_some() {
+            panic!("`when` has been already provided");
+        }
+        self.when = Some(when.into_reactive());
         self
     }
-}
 
-impl<N, Children> If<N, (), Children>
-where
-    N: GenericNode,
-{
-    pub fn when<T: IntoReactive<bool>>(self, when: T) -> If<N, Reactive<bool>, Children> {
-        let Self {
-            children: child,
-            marker,
-            ..
-        } = self;
-        If {
-            when: when.into_reactive(),
-            children: child,
-            marker,
+    pub fn child<C: GenericComponent<N>>(mut self, child: C) -> If<N> {
+        if self.children.is_some() {
+            panic!("only one `child` should be provided");
         }
-    }
-}
-
-impl<N, When> If<N, When, ()>
-where
-    N: GenericNode,
-{
-    pub fn child<C: GenericComponent<N>>(self, child: C) -> If<N, When, DynComponent<N>> {
-        let Self { when, marker, .. } = self;
-        If {
-            when,
-            children: child.into_dyn_component(),
-            marker,
-        }
+        self.children = Some(child.into_dyn_component());
+        self
     }
 }
 
 #[allow(non_snake_case)]
-pub fn Else<N: GenericNode>(_: Scope) -> Else<N, ()> {
-    Else {
-        children: (),
-        marker: PhantomData,
-    }
+pub fn Else<N: GenericNode>(_: Scope) -> Else<N> {
+    Else { children: None }
 }
 
-pub struct Else<N, Children = DynComponent<N>> {
-    children: Children,
-    marker: PhantomData<N>,
+pub struct Else<N> {
+    children: Option<DynComponent<N>>,
 }
 
 impl<N: GenericNode> Else<N> {
-    pub fn build(self) -> Self {
-        self
+    pub fn build(self) -> ShowChild<N> {
+        ShowChild {
+            when: Value(true),
+            children: self.children.expect("no `child` was provided"),
+        }
     }
 }
 
-impl<N> Else<N, ()>
-where
-    N: GenericNode,
-{
-    pub fn child<C: GenericComponent<N>>(self, child: C) -> Else<N, DynComponent<N>> {
-        let Self { marker, .. } = self;
-        Else {
-            children: child.into_dyn_component(),
-            marker,
+impl<N: GenericNode> Else<N> {
+    pub fn child<C: GenericComponent<N>>(mut self, child: C) -> Else<N> {
+        if self.children.is_some() {
+            panic!("only one `child` should be provided");
         }
+        self.children = Some(child.into_dyn_component());
+        self
     }
 }

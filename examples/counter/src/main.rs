@@ -6,11 +6,19 @@ struct Counter<N> {
     marker: PhantomData<N>,
 }
 
-impl<N: GenericNode> Counter<N> {
-    pub fn build(self) -> impl GenericComponent<N> {
+impl<N: GenericNode> GenericComponent<N> for Counter<N> {
+    fn id() -> Option<xframe::TemplateId> {
+        thread_local! {
+            static ID: xframe::TemplateId = xframe::TemplateId::new();
+        }
+        Some(ID.with(Clone::clone))
+    }
+
+    fn build_template(self) -> xframe::Template<N> {
         let Self { cx, .. } = self;
         let counter = cx.create_signal(0);
         let increment = move |_| counter.update(|x| *x + 1);
+
         view! { cx,
             div {
                 button {
@@ -20,6 +28,13 @@ impl<N: GenericNode> Counter<N> {
                 }
             }
         }
+        .build_template()
+    }
+}
+
+impl<N: GenericNode> Counter<N> {
+    pub fn build(self) -> impl GenericComponent<N> {
+        self
     }
 }
 

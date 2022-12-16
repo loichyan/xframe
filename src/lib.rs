@@ -27,10 +27,7 @@ pub mod event {
 
 #[doc(inline)]
 pub use {
-    xframe_core::{
-        Attribute, EventOptions, GenericComponent, GenericElement, IntoEventHandler, IntoReactive,
-        Reactive, Value,
-    },
+    xframe_core::prelude::*,
     xframe_macros::view,
     xframe_reactive::*,
     xframe_web::{components::*, render, render_to_body, view},

@@ -1,9 +1,17 @@
-use crate::{node::NodeType, GenericNode};
 use ahash::AHashMap;
-use std::{any::TypeId, cell::RefCell, rc::Rc};
+
+use crate::{GenericNode, NodeType};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
+
+thread_local! {
+    static GLOBAL_ID: Cell<usize> = Cell::new(0);
+}
 
 pub struct Templates<N> {
-    inner: Rc<RefCell<AHashMap<TypeId, TemplateNode<N>>>>,
+    inner: Rc<RefCell<AHashMap<TemplateId, TemplateNode<N>>>>,
 }
 
 impl<N> Default for Templates<N> {
@@ -22,72 +30,100 @@ impl<N> Clone for Templates<N> {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct TemplateId {
+    id: usize,
+}
+
+impl Default for TemplateId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TemplateId {
+    pub fn new() -> Self {
+        Self {
+            id: GLOBAL_ID.with(|id| {
+                let current = id.get();
+                id.set(current + 1);
+                current
+            }),
+        }
+    }
+}
+
 #[derive(Clone)]
 struct TemplateNode<N> {
     length: usize,
     container: N,
 }
 
-pub struct ComponentNode<Init, Render> {
-    pub init: Init,
-    pub render: Render,
-}
-
-pub trait GenericComponent<N: GenericNode>:
-    'static + Into<ComponentNode<Self::Init, Self::Render>>
-{
-    type Init: ComponentInit<N>;
-    type Render: ComponentRender<N>;
-    type Identifier: 'static;
-
-    fn into_component_node(self) -> ComponentNode<Self::Init, Self::Render> {
-        self.into()
+pub trait GenericComponent<N: GenericNode>: 'static + Sized {
+    fn build_template(self) -> Template<N>;
+    fn id() -> Option<TemplateId> {
+        None
     }
-
     fn render(self) -> Component<N> {
         self.into_dyn_component().render()
     }
-
+    fn render_to(self, root: &N) {
+        self.render().append_to(root);
+    }
     fn into_dyn_component(self) -> DynComponent<N> {
-        let ComponentNode { init, render } = self.into_component_node();
         DynComponent {
-            id: TypeId::of::<Self::Identifier>(),
-            init: Box::new(|| init.init()),
-            render: Box::new(|node| render.render(node)),
+            id: Self::id().unwrap_or_default(),
+            template: self.build_template(),
         }
     }
 }
 
-type DynInit<N> = Box<dyn FnOnce() -> Component<N>>;
-type DynRender<N> = Box<dyn FnOnce(Option<N>) -> Option<N>>;
+pub struct Template<N> {
+    pub init: TemplateInit<N>,
+    pub render: TemplateRender<N>,
+}
+
+pub struct TemplateInit<N>(Box<dyn FnOnce() -> Component<N>>);
+
+impl<N> TemplateInit<N> {
+    pub fn new(f: impl 'static + FnOnce() -> Component<N>) -> Self {
+        Self(Box::new(f))
+    }
+
+    pub fn init(self) -> Component<N> {
+        (self.0)()
+    }
+}
+
+pub struct TemplateRender<N>(Box<dyn FnOnce(Option<N>) -> Option<N>>);
+
+impl<N> TemplateRender<N> {
+    pub fn new(f: impl 'static + FnOnce(Option<N>) -> Option<N>) -> Self {
+        Self(Box::new(f))
+    }
+
+    pub fn render(self, node: Option<N>) -> Option<N> {
+        (self.0)(node)
+    }
+}
 
 pub struct DynComponent<N> {
-    id: TypeId,
-    init: DynInit<N>,
-    render: DynRender<N>,
+    id: TemplateId,
+    template: Template<N>,
 }
 
-impl<N> From<DynComponent<N>> for ComponentNode<DynInit<N>, DynRender<N>> {
-    fn from(t: DynComponent<N>) -> Self {
-        ComponentNode {
-            init: t.init,
-            render: t.render,
-        }
-    }
-}
-
-impl<N: GenericNode> GenericComponent<N> for DynComponent<N> {
-    type Init = DynInit<N>;
-    type Render = DynRender<N>;
-    type Identifier = ();
-
-    fn render(self) -> Component<N> {
+impl<N: GenericNode> DynComponent<N> {
+    pub fn render(self) -> Component<N> {
+        let Self {
+            id,
+            template: Template { init, render },
+        } = self;
         let TemplateNode { length, container } = {
             let templates = N::global_templates();
             let mut templates = templates.inner.borrow_mut();
-            let tmpl = templates.entry(self.id).or_insert_with(|| {
+            let tmpl = templates.entry(id).or_insert_with(|| {
                 let container = N::create(NodeType::Template);
-                let component = self.init.init();
+                let component = init.init();
                 component.append_to(&container);
                 TemplateNode {
                     length: component.len(),
@@ -100,7 +136,7 @@ impl<N: GenericNode> GenericComponent<N> for DynComponent<N> {
             }
         };
         if let Some(first) = container.first_child() {
-            let last_child = self.render.render(Some(first.clone()));
+            let last_child = render.render(Some(first.clone()));
             debug_assert!(last_child.is_none());
             if length == 1 {
                 Component::Node(first)
@@ -117,41 +153,8 @@ impl<N: GenericNode> GenericComponent<N> for DynComponent<N> {
             }
         } else {
             debug_assert_eq!(length, 0);
-            Component::Fragment(Rc::new([]))
+            Component::empty()
         }
-    }
-
-    fn into_dyn_component(self) -> DynComponent<N> {
-        self
-    }
-}
-
-pub trait ComponentInit<N: GenericNode>: 'static {
-    fn init(self) -> Component<N>;
-}
-
-impl<N, F> ComponentInit<N> for F
-where
-    N: GenericNode,
-    F: 'static + FnOnce() -> Component<N>,
-{
-    fn init(self) -> Component<N> {
-        (self)()
-    }
-}
-
-pub trait ComponentRender<N: GenericNode>: 'static {
-    /// Render and return **the next sibling**.
-    fn render(self, node: Option<N>) -> Option<N>;
-}
-
-impl<N, F> ComponentRender<N> for F
-where
-    N: GenericNode,
-    F: 'static + FnOnce(Option<N>) -> Option<N>,
-{
-    fn render(self, node: Option<N>) -> Option<N> {
-        (self)(node)
     }
 }
 

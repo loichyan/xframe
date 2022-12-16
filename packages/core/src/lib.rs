@@ -7,14 +7,19 @@ mod reactive;
 pub mod component;
 
 #[doc(inline)]
-pub use {
-    attr::Attribute,
-    component::{Component, GenericComponent},
-    element::GenericElement,
-    event::{EventHandler, EventOptions, IntoEventHandler},
-    node::{GenericNode, NodeType},
-    reactive::{IntoReactive, Reactive, Value},
-};
+pub use prelude::*;
+
+pub mod prelude {
+    #[doc(inline)]
+    pub use crate::{
+        attr::Attribute,
+        component::{Component, GenericComponent, Template, TemplateId},
+        element::GenericElement,
+        event::{EventHandler, EventOptions, IntoEventHandler},
+        node::{GenericNode, NodeType},
+        reactive::{IntoReactive, Reactive, Value},
+    };
+}
 
 type CowStr = std::borrow::Cow<'static, str>;
 
