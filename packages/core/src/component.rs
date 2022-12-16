@@ -171,6 +171,16 @@ impl<N: GenericNode> DynComponent<N> {
     }
 }
 
+impl<N: GenericNode> GenericComponent<N> for DynComponent<N> {
+    fn build_template(self) -> Template<N> {
+        self.template
+    }
+
+    fn into_dyn_component(self) -> DynComponent<N> {
+        self
+    }
+}
+
 #[derive(Clone)]
 pub enum Component<N> {
     Node(N),

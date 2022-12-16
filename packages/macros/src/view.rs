@@ -14,6 +14,10 @@ new_type_quote! {
     T_TEXT(#M_ELEMENT::text);
     VAR_ELEMENT(__element);
     VAR_CX(__cx);
+    T_COMPONENT(__Component);
+    T_GENERIC_COMPONENT(#XFRAME::GenericComponent);
+    T_TEMPLATE(#XFRAME::Template);
+    T_TEMPLATE_ID(#XFRAME::TemplateId);
     FN_CHILD(child);
     FN_BUILD(build);
     FN_VIEW(#XFRAME::view);
@@ -44,8 +48,30 @@ impl View {
         let View { cx, root, .. } = self;
         let root = root.quote();
         quote!({
-            let #VAR_CX = #cx;
-            #root
+            struct #T_COMPONENT<F>(F);
+
+            impl<N, F> #T_GENERIC_COMPONENT<N>
+            for #T_COMPONENT<F>
+            where
+                N: #XFRAME::GenericNode,
+                F: 'static + FnOnce() -> #T_TEMPLATE<N>,
+            {
+                fn id() -> Option<#T_TEMPLATE_ID> {
+                    thread_local! {
+                        static __ID: #T_TEMPLATE_ID = #T_TEMPLATE_ID::new();
+                    }
+                    Some(__ID.with(Clone::clone))
+                }
+
+                fn build_template(self) -> #T_TEMPLATE<N> {
+                    (self.0)()
+                }
+            }
+
+            #T_COMPONENT(move || {
+                let #VAR_CX = #cx;
+                #T_GENERIC_COMPONENT::build_template(#root)
+            })
         })
     }
 }
