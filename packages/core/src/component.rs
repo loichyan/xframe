@@ -1,21 +1,31 @@
 use crate::{node::NodeType, GenericNode};
 use ahash::AHashMap;
-use std::{
-    any::{Any, TypeId},
-    cell::RefCell,
-    rc::Rc,
-};
+use std::{any::TypeId, cell::RefCell, rc::Rc};
 
-type Templates = RefCell<AHashMap<TypeId, Box<dyn Any>>>;
+pub struct Templates<N> {
+    inner: Rc<RefCell<AHashMap<TypeId, TemplateNode<N>>>>,
+}
+
+impl<N> Default for Templates<N> {
+    fn default() -> Self {
+        Self {
+            inner: Default::default(),
+        }
+    }
+}
+
+impl<N> Clone for Templates<N> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
 
 #[derive(Clone)]
 struct TemplateNode<N> {
     length: usize,
     container: N,
-}
-
-thread_local! {
-    static TEMPLATES: Templates = Templates::default();
 }
 
 pub struct ComponentNode<Init, Render> {
@@ -72,26 +82,23 @@ impl<N: GenericNode> GenericComponent<N> for DynComponent<N> {
     type Identifier = ();
 
     fn render(self) -> Component<N> {
-        let TemplateNode { length, container } = TEMPLATES.with(|templates| {
-            templates
-                .borrow_mut()
-                .entry(self.id)
-                .or_insert_with(|| {
-                    let container = N::create(NodeType::Template);
-                    let component = self.init.init();
-                    component.append_to(&container);
-                    Box::new(TemplateNode {
-                        length: component.len(),
-                        container,
-                    })
-                })
-                .downcast_ref::<TemplateNode<N>>()
-                .map(|tmpl| TemplateNode {
-                    length: tmpl.length,
-                    container: tmpl.container.deep_clone(),
-                })
-                .unwrap_or_else(|| unreachable!())
-        });
+        let TemplateNode { length, container } = {
+            let templates = N::global_templates();
+            let mut templates = templates.inner.borrow_mut();
+            let tmpl = templates.entry(self.id).or_insert_with(|| {
+                let container = N::create(NodeType::Template);
+                let component = self.init.init();
+                component.append_to(&container);
+                TemplateNode {
+                    length: component.len(),
+                    container,
+                }
+            });
+            TemplateNode {
+                length: tmpl.length,
+                container: tmpl.container.deep_clone(),
+            }
+        };
         if let Some(first) = container.first_child() {
             let last_child = self.render.render(Some(first.clone()));
             debug_assert!(last_child.is_none());

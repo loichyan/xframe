@@ -1,4 +1,4 @@
-use crate::{attr::Attribute, event::EventHandler, CowStr};
+use crate::{attr::Attribute, component::Templates, event::EventHandler, CowStr};
 
 pub enum NodeType {
     Tag(CowStr),
@@ -10,6 +10,7 @@ pub enum NodeType {
 pub trait GenericNode: 'static + Clone + Eq {
     type Event;
 
+    fn global_templates() -> Templates<Self>;
     fn create(ty: NodeType) -> Self;
     fn deep_clone(&self) -> Self;
     fn set_inner_text(&self, data: &str);

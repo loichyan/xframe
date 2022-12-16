@@ -4,7 +4,9 @@ use crate::DOCUMENT;
 use js_sys::Reflect;
 use wasm_bindgen::{intern, prelude::*, JsCast};
 use web_sys::AddEventListenerOptions;
-use xframe_core::{Attribute, EventHandler, GenericNode, NodeType, UnwrapThrowValExt};
+use xframe_core::{
+    component::Templates, Attribute, EventHandler, GenericNode, NodeType, UnwrapThrowValExt,
+};
 
 type CowStr = std::borrow::Cow<'static, str>;
 
@@ -45,8 +47,16 @@ impl AsRef<web_sys::Node> for DomNode {
     }
 }
 
+thread_local! {
+    static TEMPLATES: Templates<DomNode> = Templates::default();
+}
+
 impl GenericNode for DomNode {
     type Event = web_sys::Event;
+
+    fn global_templates() -> Templates<Self> {
+        TEMPLATES.with(Clone::clone)
+    }
 
     fn create(ty: NodeType) -> Self {
         let node: web_sys::Node = DOCUMENT.with(|doc| match ty {
