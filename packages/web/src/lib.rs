@@ -14,13 +14,11 @@ pub mod components {
 }
 
 pub mod elements {
-    #[path = "placeholder.rs"]
-    mod placeholder_;
     #[path = "text.rs"]
     mod text_;
 
     #[doc(inline)]
-    pub use {placeholder_::placeholder, text_::text};
+    pub use text_::text;
 }
 
 pub mod element_types {}

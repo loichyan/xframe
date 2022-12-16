@@ -1,10 +1,10 @@
-use crate::{attr::Attribute, component::Templates, event::EventHandler, CowStr};
+use crate::{attr::Attribute, component::Templates, event::EventHandler, CowStr, TemplateId};
 
 pub enum NodeType {
     Tag(CowStr),
-    Text,
-    Placeholder,
-    Template,
+    Text(CowStr),
+    Placeholder(CowStr),
+    Template(Option<TemplateId>),
 }
 
 pub trait GenericNode: 'static + Clone + Eq {

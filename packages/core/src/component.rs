@@ -1,8 +1,8 @@
-use ahash::AHashMap;
-
 use crate::{GenericNode, NodeType};
+use ahash::AHashMap;
 use std::{
     cell::{Cell, RefCell},
+    fmt,
     rc::Rc,
 };
 
@@ -53,6 +53,12 @@ impl TemplateId {
     }
 }
 
+impl fmt::Display for TemplateId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.id.fmt(f)
+    }
+}
+
 #[derive(Clone)]
 struct TemplateNode<N> {
     length: usize,
@@ -72,7 +78,7 @@ pub trait GenericComponent<N: GenericNode>: 'static + Sized {
     }
     fn into_dyn_component(self) -> DynComponent<N> {
         DynComponent {
-            id: Self::id().unwrap_or_default(),
+            id: Self::id(),
             template: self.build_template(),
         }
     }
@@ -108,7 +114,7 @@ impl<N> TemplateRender<N> {
 }
 
 pub struct DynComponent<N> {
-    id: TemplateId,
+    id: Option<TemplateId>,
     template: Template<N>,
 }
 
@@ -119,20 +125,27 @@ impl<N: GenericNode> DynComponent<N> {
             template: Template { init, render },
         } = self;
         let TemplateNode { length, container } = {
-            let templates = N::global_templates();
-            let mut templates = templates.inner.borrow_mut();
-            let tmpl = templates.entry(id).or_insert_with(|| {
-                let container = N::create(NodeType::Template);
+            let create_template_node = move || {
+                let container = N::create(NodeType::Template(id));
                 let component = init.init();
                 component.append_to(&container);
                 TemplateNode {
                     length: component.len(),
                     container,
                 }
-            });
-            TemplateNode {
-                length: tmpl.length,
-                container: tmpl.container.deep_clone(),
+            };
+            if let Some(id) = id {
+                // Initialize or reuse existing templates.
+                let templates = N::global_templates();
+                let mut templates = templates.inner.borrow_mut();
+                let template = templates.entry(id).or_insert_with(create_template_node);
+                TemplateNode {
+                    length: template.length,
+                    container: template.container.deep_clone(),
+                }
+            } else {
+                // Initialize directly.
+                create_template_node()
             }
         };
         if let Some(first) = container.first_child() {

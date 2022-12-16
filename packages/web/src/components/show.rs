@@ -1,12 +1,32 @@
+use std::borrow::Cow;
+
 use crate::view;
 use smallvec::SmallVec;
 use xframe_core::{
     component::DynComponent, Component, GenericComponent, GenericElement, GenericNode,
-    IntoReactive, Reactive, Value,
+    IntoReactive, NodeType, Reactive, Value,
 };
 use xframe_reactive::Scope;
 
 const INITIAL_BRANCH_SLOTS: usize = 4;
+
+#[allow(non_camel_case_types)]
+pub struct Placeholder<N> {
+    node: N,
+}
+
+impl<N: GenericNode> GenericElement<N> for Placeholder<N> {
+    const TYPE: NodeType =
+        NodeType::Placeholder(Cow::Borrowed("Placeholder for `xframe::Show` Component"));
+
+    fn create_with_node(_: Scope, node: N) -> Self {
+        Self { node }
+    }
+
+    fn into_node(self) -> N {
+        self.node
+    }
+}
 
 #[allow(non_snake_case)]
 pub fn Show<N: GenericNode>(cx: Scope) -> Show<N> {
@@ -37,10 +57,8 @@ where
         }
 
         let Self { cx, branches } = self;
-        view(cx, move |placeholder: crate::elements::placeholder<N>| {
-            let placeholder = placeholder
-                .desc("placeholder for the `xframe::Show` component")
-                .into_node();
+        view(cx, move |placeholder: Placeholder<N>| {
+            let placeholder = placeholder.into_node();
             let parent = placeholder.parent().unwrap_or_else(|| unreachable!());
             let mut current = Component::Node(placeholder.clone());
             let branches = branches

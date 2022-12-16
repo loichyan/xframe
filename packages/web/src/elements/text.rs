@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use xframe_core::{Attribute, GenericElement, GenericNode, IntoReactive, NodeType};
 use xframe_reactive::Scope;
 
@@ -22,7 +23,7 @@ impl<N: GenericNode> text<N> {
 }
 
 impl<N: GenericNode> GenericElement<N> for text<N> {
-    const TYPE: NodeType = NodeType::Text;
+    const TYPE: NodeType = NodeType::Text(Cow::Borrowed(""));
 
     fn create_with_node(cx: Scope, node: N) -> Self {
         Self { cx, node }

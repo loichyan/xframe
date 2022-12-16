@@ -1,7 +1,6 @@
-use std::borrow::Cow;
-
 use crate::DOCUMENT;
 use js_sys::Reflect;
+use std::borrow::Cow;
 use wasm_bindgen::{intern, prelude::*, JsCast};
 use web_sys::AddEventListenerOptions;
 use xframe_core::{
@@ -61,9 +60,24 @@ impl GenericNode for DomNode {
     fn create(ty: NodeType) -> Self {
         let node: web_sys::Node = DOCUMENT.with(|doc| match ty {
             NodeType::Tag(tag) => doc.create_element(tag.intern()).unwrap_throw_val().into(),
-            NodeType::Text => doc.create_text_node("").into(),
-            NodeType::Placeholder => doc.create_comment("").into(),
-            NodeType::Template => doc.create_document_fragment().into(),
+            NodeType::Text(data) => doc.create_text_node(data.intern()).into(),
+            NodeType::Placeholder(desc) => doc.create_comment(desc.intern()).into(),
+            NodeType::Template(id) => {
+                let template = doc.create_element("template").unwrap_throw_val();
+                if cfg!(debug_assertions) {
+                    if let Some(id) = id {
+                        template
+                            .set_attribute("data-xframe-template-id", &id.to_string())
+                            .unwrap_throw_val();
+                        DOCUMENT.with(|doc| {
+                            let body = doc.body().unwrap_throw();
+                            body.insert_before(&template, body.first_child().as_ref())
+                                .unwrap_throw_val();
+                        });
+                    }
+                }
+                template.into()
+            }
         });
         Self { node }
     }

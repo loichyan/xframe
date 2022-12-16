@@ -49,10 +49,7 @@ fn Counter<N: GenericNode>(cx: Scope) -> Counter<N> {
 fn main() {
     xframe::render_to_body(|cx| {
         view! { cx,
-             div {
-                Counter {}
-                Counter {}
-            }
+            Counter {}
         }
     });
 }
