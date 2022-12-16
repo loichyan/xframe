@@ -22,7 +22,7 @@ pub fn Fragment<N: GenericNode>(cx: Scope) -> Fragment!(N, ()) {
     Fragment {
         cx,
         init: FragmentInitImpl(move || Vec::new()),
-        render: FragmentRenderImpl(move |node: N| Some(node)),
+        render: FragmentRenderImpl(move |node: Option<N>| node),
         identifier: PhantomData,
         marker: PhantomData,
     }
@@ -59,11 +59,9 @@ where
                 fragment.extend(child.init.init().iter().cloned());
                 fragment
             }),
-            render: FragmentRenderImpl(move |node: N| {
+            render: FragmentRenderImpl(move |node: Option<N>| {
                 let next_sibling = self.render.render_fragment(node);
-                child
-                    .render
-                    .render(next_sibling.unwrap_or_else(|| unreachable!()))
+                child.render.render(next_sibling)
             }),
             identifier: PhantomData,
             marker: PhantomData,
@@ -142,7 +140,7 @@ where
 
 pub trait FragmentRender<N: GenericNode>: ComponentRender<N> {
     /// Render and return the next sibling and the last child of root node.
-    fn render_fragment(self, node: N) -> Option<N>;
+    fn render_fragment(self, node: Option<N>) -> Option<N>;
 }
 
 struct FragmentRenderImpl<F>(F);
@@ -150,9 +148,9 @@ struct FragmentRenderImpl<F>(F);
 impl<N, F> FragmentRender<N> for FragmentRenderImpl<F>
 where
     N: GenericNode,
-    F: 'static + FnOnce(N) -> Option<N>,
+    F: 'static + FnOnce(Option<N>) -> Option<N>,
 {
-    fn render_fragment(self, node: N) -> Option<N> {
+    fn render_fragment(self, node: Option<N>) -> Option<N> {
         (self.0)(node)
     }
 }
@@ -162,7 +160,7 @@ where
     N: GenericNode,
     FragmentRenderImpl<F>: FragmentRender<N>,
 {
-    fn render(self, node: N) -> Option<N> {
+    fn render(self, node: Option<N>) -> Option<N> {
         self.render_fragment(node)
     }
 }

@@ -49,7 +49,7 @@ pub trait GenericComponent<N: GenericNode>:
 }
 
 type DynInit<N> = Box<dyn FnOnce() -> Component<N>>;
-type DynRender<N> = Box<dyn FnOnce(N) -> Option<N>>;
+type DynRender<N> = Box<dyn FnOnce(Option<N>) -> Option<N>>;
 
 pub struct DynComponent<N> {
     id: TypeId,
@@ -93,7 +93,7 @@ impl<N: GenericNode> GenericComponent<N> for DynComponent<N> {
                 .unwrap_or_else(|| unreachable!())
         });
         if let Some(first) = container.first_child() {
-            let last_child = self.render.render(first.clone());
+            let last_child = self.render.render(Some(first.clone()));
             debug_assert!(last_child.is_none());
             if length == 1 {
                 Component::Node(first)
@@ -135,15 +135,15 @@ where
 
 pub trait ComponentRender<N: GenericNode>: 'static {
     /// Render and return **the next sibling**.
-    fn render(self, node: N) -> Option<N>;
+    fn render(self, node: Option<N>) -> Option<N>;
 }
 
 impl<N, F> ComponentRender<N> for F
 where
     N: GenericNode,
-    F: 'static + FnOnce(N) -> Option<N>,
+    F: 'static + FnOnce(Option<N>) -> Option<N>,
 {
-    fn render(self, node: N) -> Option<N> {
+    fn render(self, node: Option<N>) -> Option<N> {
         (self)(node)
     }
 }

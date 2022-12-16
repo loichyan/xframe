@@ -7,7 +7,7 @@ use xframe_core::{
 };
 use xframe_reactive::Scope;
 
-const INITIAL_BRANCH_SLOTS: usize = 2;
+const INITIAL_BRANCH_SLOTS: usize = 4;
 
 #[allow(non_snake_case)]
 pub fn Show<N: GenericNode>(cx: Scope) -> Show<N> {

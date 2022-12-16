@@ -89,12 +89,7 @@ where
             }),
             render: ElementRenderImpl(move |node: N| {
                 let (root_sibling, last_child) = self.render.render_element(node);
-                (
-                    root_sibling,
-                    child
-                        .render
-                        .render(last_child.unwrap_or_else(|| unreachable!())),
-                )
+                (root_sibling, child.render.render(last_child))
             }),
             identifier: PhantomData,
             marker: PhantomData,
@@ -193,8 +188,9 @@ where
     N: GenericNode,
     ElementRenderImpl<F>: ElementRender<N>,
 {
-    fn render(self, node: N) -> Option<N> {
-        let (next_sibling, last_child) = self.render_element(node);
+    fn render(self, node: Option<N>) -> Option<N> {
+        let (next_sibling, last_child) =
+            self.render_element(node.unwrap_or_else(|| unreachable!()));
         debug_assert!(last_child.is_none());
         next_sibling
     }
