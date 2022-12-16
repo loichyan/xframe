@@ -63,20 +63,20 @@ impl GenericNode for DomNode {
             NodeType::Text(data) => doc.create_text_node(data.intern()).into(),
             NodeType::Placeholder(desc) => doc.create_comment(desc.intern()).into(),
             NodeType::Template(id) => {
-                let template = doc.create_element("template").unwrap_throw_val();
                 if cfg!(debug_assertions) {
+                    let template = doc.create_element("template").unwrap_throw_val();
                     if let Some(id) = id {
                         template
                             .set_attribute("data-xframe-template-id", &id.to_string())
                             .unwrap_throw_val();
-                        DOCUMENT.with(|doc| {
-                            let body = doc.body().unwrap_throw();
-                            body.insert_before(&template, body.first_child().as_ref())
-                                .unwrap_throw_val();
-                        });
+                        let body = doc.body().unwrap_throw();
+                        body.insert_before(&template, body.first_child().as_ref())
+                            .unwrap_throw_val();
                     }
+                    template.into()
+                } else {
+                    doc.create_document_fragment().into()
                 }
-                template.into()
             }
         });
         Self { node }
