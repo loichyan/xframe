@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 #[macro_use]
 mod utils;
 mod dom_node;

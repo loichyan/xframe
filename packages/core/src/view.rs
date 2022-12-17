@@ -101,23 +101,16 @@ impl<N: GenericNode> View<N> {
         self.visit(|node| parent.remove_child(node));
     }
 
-    pub fn move_before(&self, parent: &N, ref_node: &N) {
+    pub fn move_before(&self, parent: &N, ref_node: Option<&N>) {
         self.debug_ensure_not_empty();
-        self.visit(|node| parent.insert_before(node, Some(ref_node)));
-    }
-
-    pub fn move_after(&self, parent: &N, ref_node: &N) {
-        self.debug_ensure_not_empty();
-        let ref_node = ref_node.next_sibling();
-        let ref_node = ref_node.as_ref();
-        self.visit(|node| parent.insert_before(node, ref_node))
+        self.visit(|node| parent.insert_before(node, ref_node));
     }
 
     pub fn replace_with(&self, parent: &N, new_component: &Self) {
         match (self, new_component) {
             (Self::Node(old), Self::Node(new)) => parent.replace_child(new, old),
             _ => {
-                new_component.move_before(parent, &self.first());
+                new_component.move_before(parent, Some(&self.first()));
                 self.remove_from(parent);
             }
         }

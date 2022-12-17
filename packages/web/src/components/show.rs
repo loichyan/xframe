@@ -41,13 +41,13 @@ where
         let Self { cx, children } = self;
         view_with(cx, move |placeholder: Placeholder<N>| {
             let placeholder = placeholder.into_node();
-            // Add a default branch.
             let branches = children
                 .into_iter()
                 .map(|ShowChild { cond, content }| Branch {
                     cond,
                     view: cx.untrack(|| content.render()),
                 })
+                // Add a default branch.
                 .chain(Some(Branch {
                     cond: Value(true),
                     view: View::Node(placeholder.clone()),
@@ -62,12 +62,12 @@ where
                     } = branch;
                     if cond.clone().into_value() {
                         cx.untrack(|| {
-                            let current = dyn_view.get();
-                            let old_node = current.first();
-                            let parent = old_node.parent().unwrap_or_else(|| unreachable!());
-                            let new_node = new_view.first();
-                            if old_node.ne(&new_node) {
-                                current.replace_with(&parent, new_view);
+                            let current_view = dyn_view.get();
+                            let current_first = current_view.first();
+                            let parent = current_first.parent().unwrap_or_else(|| unreachable!());
+                            let new_first = new_view.first();
+                            if current_first.ne(&new_first) {
+                                current_view.replace_with(&parent, new_view);
                                 dyn_view.set(new_view.clone());
                             }
                         });

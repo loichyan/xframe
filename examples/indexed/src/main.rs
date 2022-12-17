@@ -1,4 +1,4 @@
-use xframe::{view, Else, GenericComponent, If, Indexed, Show};
+use xframe::{view, Else, If, Indexed, Show};
 
 fn main() {
     console_error_panic_hook::set_once();
@@ -26,7 +26,6 @@ fn main() {
                     }
                 }
             }
-            .render()
         };
         let new_counter = move |_| counters.write(|x| x.push(x.len() + 1));
         let remove_counter = move |_| {

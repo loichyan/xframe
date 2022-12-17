@@ -62,7 +62,6 @@ impl<N: GenericNode> GenericComponent<N> for Fragment<N> {
     }
 }
 
-#[allow(clippy::type_complexity)]
 struct FragmentInit<N>(Box<dyn FnOnce(&mut Vec<View<N>>)>);
 
 impl<N: GenericNode> FragmentInit<N> {
@@ -93,7 +92,6 @@ impl<N: GenericNode> From<FragmentInit<N>> for TemplateInit<N> {
     }
 }
 
-#[allow(clippy::type_complexity)]
 struct FragmentRender<N>(Box<dyn FnOnce(Option<N>, &mut Vec<View<N>>) -> Option<N>>);
 
 impl<N: GenericNode> FragmentRender<N> {
