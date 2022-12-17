@@ -57,21 +57,30 @@ impl<N: GenericNode> View<N> {
             Self::Node(v) => v.clone(),
             Self::Fragment(v) => v
                 .first()
-                .unwrap_or_else(|| panic!("`View::Fragment` cannot be empty"))
+                .unwrap_or_else(|| panic!("`View` cannot be empty"))
                 .first(),
             Self::Dyn(v) => v().first(),
         }
     }
 
+    fn ensure_not_empty(&self) {
+        if cfg!(debug_assertions) && self.is_empty() {
+            panic!("`View` cannot be empty")
+        }
+    }
+
     pub fn append_to(&self, parent: &N) {
+        self.ensure_not_empty();
         self.visit(|node| parent.append_child(node));
     }
 
     pub fn remove_from(&self, parent: &N) {
+        self.ensure_not_empty();
         self.visit(|node| parent.remove_child(node));
     }
 
     pub fn move_before(&self, parent: &N, ref_node: &N) {
+        self.ensure_not_empty();
         self.visit(|node| parent.insert_before(node, ref_node));
     }
 

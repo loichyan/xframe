@@ -34,6 +34,12 @@ impl<T> Clone for ReadSignal<T> {
 
 impl<T> Copy for ReadSignal<T> {}
 
+impl<T> From<Signal<T>> for ReadSignal<T> {
+    fn from(t: Signal<T>) -> Self {
+        t.0
+    }
+}
+
 pub struct Signal<T: 'static>(ReadSignal<T>);
 
 impl<T: fmt::Debug> fmt::Debug for Signal<T> {
