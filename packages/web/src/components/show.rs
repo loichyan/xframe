@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use crate::view;
 use smallvec::SmallVec;
 use xframe_core::{
-    component::DynComponent, Component, GenericComponent, GenericElement, GenericNode,
+    component::DynComponent, View, GenericComponent, GenericElement, GenericNode,
     IntoReactive, NodeType, Reactive, Value,
 };
 use xframe_reactive::Scope;
@@ -53,14 +53,14 @@ where
     pub fn build(self) -> impl GenericComponent<N> {
         struct Branch<N> {
             when: Reactive<bool>,
-            children: Component<N>,
+            children: View<N>,
         }
 
         let Self { cx, branches } = self;
         view(cx, move |placeholder: Placeholder<N>| {
             let placeholder = placeholder.into_node();
             let parent = placeholder.parent().unwrap_or_else(|| unreachable!());
-            let mut current = Component::Node(placeholder.clone());
+            let mut current = View::Node(placeholder.clone());
             let branches = branches
                 .into_iter()
                 .map(|ShowChild { when, children }| Branch {

@@ -2,7 +2,7 @@ use crate::view;
 use std::rc::Rc;
 use xframe_core::{
     component::{Template, TemplateInit, TemplateRender},
-    Attribute, Component, GenericComponent, GenericElement, GenericNode, IntoReactive,
+    Attribute, View, GenericComponent, GenericElement, GenericNode, IntoReactive,
 };
 use xframe_reactive::Scope;
 
@@ -85,7 +85,7 @@ impl<N: GenericNode> From<FragmentInit<N>> for TemplateInit<N> {
         TemplateInit::new(|| {
             let mut fragments = Default::default();
             (init.0)(&mut fragments);
-            Component::Fragment(Rc::from(fragments.into_boxed_slice()))
+            View::Fragment(Rc::from(fragments.into_boxed_slice()))
         })
     }
 }

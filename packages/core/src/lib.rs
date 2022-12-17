@@ -13,7 +13,7 @@ pub mod prelude {
     #[doc(inline)]
     pub use crate::{
         attr::Attribute,
-        component::{Component, GenericComponent, Template, TemplateId},
+        component::{View, GenericComponent, Template, TemplateId},
         element::GenericElement,
         event::{EventHandler, EventOptions, IntoEventHandler},
         node::{GenericNode, NodeType},

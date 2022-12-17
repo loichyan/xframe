@@ -70,7 +70,7 @@ pub trait GenericComponent<N: GenericNode>: 'static + Sized {
     fn id() -> Option<TemplateId> {
         None
     }
-    fn render(self) -> Component<N> {
+    fn render(self) -> View<N> {
         self.into_dyn_component().render()
     }
     fn render_to(self, root: &N) {
@@ -89,14 +89,14 @@ pub struct Template<N> {
     pub render: TemplateRender<N>,
 }
 
-pub struct TemplateInit<N>(Box<dyn FnOnce() -> Component<N>>);
+pub struct TemplateInit<N>(Box<dyn FnOnce() -> View<N>>);
 
 impl<N> TemplateInit<N> {
-    pub fn new(f: impl 'static + FnOnce() -> Component<N>) -> Self {
+    pub fn new(f: impl 'static + FnOnce() -> View<N>) -> Self {
         Self(Box::new(f))
     }
 
-    pub fn init(self) -> Component<N> {
+    pub fn init(self) -> View<N> {
         (self.0)()
     }
 }
@@ -119,7 +119,7 @@ pub struct DynComponent<N> {
 }
 
 impl<N: GenericNode> DynComponent<N> {
-    pub fn render(self) -> Component<N> {
+    pub fn render(self) -> View<N> {
         let Self {
             id,
             template: Template { init, render },
@@ -152,7 +152,7 @@ impl<N: GenericNode> DynComponent<N> {
             let last_child = render.render(Some(first.clone()));
             debug_assert!(last_child.is_none());
             if length == 1 {
-                Component::Node(first)
+                View::Node(first)
             } else {
                 let mut fragment = Vec::with_capacity(length);
                 let mut current = first.clone();
@@ -162,11 +162,11 @@ impl<N: GenericNode> DynComponent<N> {
                     current = next;
                 }
                 debug_assert_eq!(fragment.len(), length);
-                Component::Fragment(Rc::from(fragment.into_boxed_slice()))
+                View::Fragment(Rc::from(fragment.into_boxed_slice()))
             }
         } else {
             debug_assert_eq!(length, 0);
-            Component::empty()
+            View::empty()
         }
     }
 }
@@ -182,12 +182,12 @@ impl<N: GenericNode> GenericComponent<N> for DynComponent<N> {
 }
 
 #[derive(Clone)]
-pub enum Component<N> {
+pub enum View<N> {
     Node(N),
     Fragment(Rc<[N]>),
 }
 
-impl<N: GenericNode> Component<N> {
+impl<N: GenericNode> View<N> {
     pub fn empty() -> Self {
         Self::Fragment(Rc::new([]))
     }

@@ -1,6 +1,6 @@
 use xframe_core::{
     component::{GenericComponent, Template, TemplateInit, TemplateRender},
-    Attribute, Component, GenericElement, GenericNode, IntoReactive,
+    Attribute, View, GenericElement, GenericNode, IntoReactive,
 };
 use xframe_reactive::Scope;
 
@@ -113,7 +113,7 @@ impl<N: GenericNode> From<ElementInit<N>> for TemplateInit<N> {
         TemplateInit::new(move || {
             let root = (init.0)();
             (init.1)(&root);
-            Component::Node(root)
+            View::Node(root)
         })
     }
 }
