@@ -46,7 +46,6 @@ where
         let children = children.expect("`each` was not provided");
         view_with(cx, move |placeholder: Placeholder<N>| {
             let placeholder = placeholder.into_node();
-            let parent = placeholder.parent().unwrap_or_else(|| unreachable!());
             let mut mounted = Vec::new();
             let dyn_view = cx.create_signal(View::Node(placeholder.clone()));
             cx.create_effect(move || {
@@ -59,6 +58,7 @@ where
                     }
                     let current = dyn_view.get();
                     let mut last_node = current.last();
+                    let parent = last_node.parent().unwrap_or_else(|| unreachable!());
                     if new_len == 0 {
                         if last_node.ne(&placeholder) {
                             // Replace with a placeholder.

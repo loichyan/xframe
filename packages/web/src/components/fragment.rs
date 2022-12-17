@@ -103,10 +103,9 @@ impl<N: GenericNode> FragmentRender<N> {
 
     fn child(self, child: TemplateRender<N>) -> Self {
         Self(Box::new(|first, fragments| {
-            let TemplateRenderOutput { next_sibling, view } =
-                child.render((self.0)(first, fragments));
-            fragments.push(view);
-            next_sibling
+            let output = child.render((self.0)(first, fragments));
+            fragments.push(output.view);
+            output.next_sibling
         }))
     }
 }
@@ -126,7 +125,7 @@ impl<N: GenericNode> From<FragmentRender<N>> for TemplateRender<N> {
             } else {
                 TemplateRenderOutput {
                     next_sibling,
-                    view: View::Fragment(fragments.into_boxed_slice().into()),
+                    view: View::from(fragments),
                 }
             }
         })

@@ -80,29 +80,29 @@ impl<N: GenericNode> View<N> {
         last.unwrap_or_else(|| panic!("`View` cannot be empty"))
     }
 
-    fn ensure_not_empty(&self) {
+    fn debug_ensure_not_empty(&self) {
         if cfg!(debug_assertions) && self.is_empty() {
             panic!("`View` cannot be empty")
         }
     }
 
     pub fn append_to(&self, parent: &N) {
-        self.ensure_not_empty();
+        self.debug_ensure_not_empty();
         self.visit(|node| parent.append_child(node));
     }
 
     pub fn remove_from(&self, parent: &N) {
-        self.ensure_not_empty();
+        self.debug_ensure_not_empty();
         self.visit(|node| parent.remove_child(node));
     }
 
     pub fn move_before(&self, parent: &N, ref_node: &N) {
-        self.ensure_not_empty();
+        self.debug_ensure_not_empty();
         self.visit(|node| parent.insert_before(node, Some(ref_node)));
     }
 
     pub fn move_after(&self, parent: &N, ref_node: &N) {
-        self.ensure_not_empty();
+        self.debug_ensure_not_empty();
         let ref_node = ref_node.next_sibling();
         let ref_node = ref_node.as_ref();
         self.visit(|node| parent.insert_before(node, ref_node))
