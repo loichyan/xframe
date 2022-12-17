@@ -1,11 +1,16 @@
 use crate::DOCUMENT;
 use js_sys::Reflect;
-use std::borrow::Cow;
+use std::{borrow::Cow, cell::Cell};
 use wasm_bindgen::{intern, prelude::*, JsCast};
 use web_sys::AddEventListenerOptions;
 use xframe_core::{
     component::Templates, Attribute, EventHandler, GenericNode, NodeType, UnwrapThrowValExt,
 };
+
+thread_local! {
+    static TEMPLATES: Templates<DomNode> = Templates::default();
+    static GLOBAL_ID: Cell<usize> = Cell::new(0);
+}
 
 type CowStr = std::borrow::Cow<'static, str>;
 
@@ -22,15 +27,41 @@ impl CowStrExt for CowStr {
     }
 }
 
-// TODO: use global IDs to check euqality
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+struct NodeId {
+    id: usize,
+}
+
+impl NodeId {
+    pub fn new() -> Self {
+        GLOBAL_ID.with(|id| {
+            let current = id.get();
+            id.set(current + 1);
+            NodeId { id: current }
+        })
+    }
+}
+
+#[derive(Clone)]
 pub struct DomNode {
+    id: NodeId,
     node: web_sys::Node,
 }
 
+impl PartialEq for DomNode {
+    fn eq(&self, other: &Self) -> bool {
+        self.id.eq(&other.id)
+    }
+}
+
+impl Eq for DomNode {}
+
 impl From<web_sys::Node> for DomNode {
     fn from(node: web_sys::Node) -> Self {
-        Self { node }
+        Self {
+            id: NodeId::new(),
+            node,
+        }
     }
 }
 
@@ -44,10 +75,6 @@ impl AsRef<web_sys::Node> for DomNode {
     fn as_ref(&self) -> &web_sys::Node {
         &self.node
     }
-}
-
-thread_local! {
-    static TEMPLATES: Templates<DomNode> = Templates::default();
 }
 
 impl GenericNode for DomNode {
@@ -79,11 +106,15 @@ impl GenericNode for DomNode {
                 }
             }
         });
-        Self { node }
+        Self {
+            node,
+            id: NodeId::new(),
+        }
     }
 
     fn deep_clone(&self) -> Self {
         Self {
+            id: NodeId::new(),
             node: self.node.clone_node_with_deep(true).unwrap_throw_val(),
         }
     }
