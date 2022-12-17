@@ -14,18 +14,23 @@ define_placeholder!(Placeholder("Placeholder for `xframe::Show` Component"));
 pub fn Show<N: GenericNode>(cx: Scope) -> Show<N> {
     Show {
         cx,
-        branches: Default::default(),
+        children: Default::default(),
     }
 }
 
 pub struct Show<N> {
     cx: Scope,
-    branches: SmallVec<[ShowChild<N>; INITIAL_BRANCH_SLOTS]>,
+    children: SmallVec<[ShowChild<N>; INITIAL_BRANCH_SLOTS]>,
 }
 
 pub struct ShowChild<N> {
-    when: Reactive<bool>,
-    children: View<N>,
+    cond: Reactive<bool>,
+    content: DynComponent<N>,
+}
+
+struct Branch<N> {
+    cond: Reactive<bool>,
+    view: View<N>,
 }
 
 impl<N> Show<N>
@@ -33,23 +38,30 @@ where
     N: GenericNode,
 {
     pub fn build(self) -> impl GenericComponent<N> {
-        let Self { cx, mut branches } = self;
+        let Self { cx, children } = self;
         view_with(cx, move |placeholder: Placeholder<N>| {
             let placeholder = placeholder.into_node();
             let parent = placeholder.parent().unwrap_or_else(|| unreachable!());
             // Add a default branch.
-            branches.push(ShowChild {
-                when: Value(true),
-                children: View::Node(placeholder.clone()),
-            });
+            let branches = children
+                .into_iter()
+                .map(|ShowChild { cond, content }| Branch {
+                    cond,
+                    view: content.render(),
+                })
+                .chain(Some(Branch {
+                    cond: Value(true),
+                    view: View::Node(placeholder.clone()),
+                }))
+                .collect::<SmallVec<[_; INITIAL_BRANCH_SLOTS]>>();
             let dyn_view = cx.create_signal(View::Node(placeholder));
             cx.create_effect(move || {
                 for branch in branches.iter() {
-                    let ShowChild::<N> {
-                        when,
-                        children: new_view,
+                    let Branch::<N> {
+                        cond,
+                        view: new_view,
                     } = branch;
-                    if when.clone().into_value() {
+                    if cond.clone().into_value() {
                         cx.untrack(|| {
                             let current = dyn_view.get();
                             let old_node = current.first();
@@ -72,7 +84,7 @@ where
 
 impl<N> Show<N> {
     pub fn child(mut self, child: ShowChild<N>) -> Show<N> {
-        self.branches.push(child);
+        self.children.push(child);
         self
     }
 }
@@ -93,8 +105,8 @@ pub struct If<N> {
 impl<N: GenericNode> If<N> {
     pub fn build(self) -> ShowChild<N> {
         ShowChild {
-            when: self.when.expect("no `when` was provided"),
-            children: self.children.expect("no `child` was provided").render(),
+            cond: self.when.expect("no `when` was provided"),
+            content: self.children.expect("no `child` was provided"),
         }
     }
 }
@@ -129,8 +141,8 @@ pub struct Else<N> {
 impl<N: GenericNode> Else<N> {
     pub fn build(self) -> ShowChild<N> {
         ShowChild {
-            when: Value(true),
-            children: self.children.expect("no `child` was provided").render(),
+            cond: Value(true),
+            content: self.children.expect("no `child` was provided"),
         }
     }
 }
