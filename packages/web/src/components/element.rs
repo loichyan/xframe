@@ -50,11 +50,7 @@ impl<N: GenericNode> Element<N> {
                     root.first_child(),
                     TemplateRenderOutput {
                         next_sibling: root.next_sibling(),
-                        view: {
-                            // TODO: return View instead of ()
-                            render(E::create_with_node(cx, root.clone()));
-                            View::Node(root)
-                        },
+                        view: render(E::create_with_node(cx, root)),
                     },
                 )
             }),

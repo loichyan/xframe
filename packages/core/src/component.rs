@@ -34,10 +34,7 @@ impl<N: GenericNode> DynComponent<N> {
             id,
             template: Template { init, render },
         } = self;
-        let TemplateNode {
-            view: template_view,
-            container,
-        } = {
+        let TemplateNode { container, .. } = {
             let create_template_node = move || {
                 let container = N::create(NodeType::Template(id));
                 let view = init.init();
@@ -52,15 +49,13 @@ impl<N: GenericNode> DynComponent<N> {
                 create_template_node()
             }
         };
-        let view = if let Some(first) = container.first_child() {
+        if let Some(first) = container.first_child() {
             let TemplateRenderOutput { next_sibling, view } = render.render(Some(first));
             debug_assert!(next_sibling.is_none());
             view
         } else {
             View::empty()
-        };
-        debug_assert_eq!(view.len(), template_view.len());
-        view
+        }
     }
 }
 
