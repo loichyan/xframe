@@ -1,11 +1,17 @@
 use std::borrow::Cow;
-use xframe_core::{Attribute, GenericElement, GenericNode, IntoReactive, NodeType};
+use xframe_core::{Attribute, GenericElement, GenericNode, IntoReactive, NodeType, View};
 use xframe_reactive::Scope;
 
 #[allow(non_camel_case_types)]
 pub struct text<N> {
     cx: Scope,
     node: N,
+}
+
+impl<N: GenericNode> From<text<N>> for View<N> {
+    fn from(t: text<N>) -> Self {
+        View::Node(t.node)
+    }
 }
 
 impl<N: GenericNode> text<N> {

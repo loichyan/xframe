@@ -182,14 +182,14 @@ impl ViewChild {
             Self::Literal(lit) => {
                 quote!(#FN_VIEW(
                         #VAR_CX,
-                        move |#VAR_ELEMENT: #T_TEXT::<_>| { #VAR_ELEMENT.data(#lit); },
+                        move |#VAR_ELEMENT: #T_TEXT::<_>| { #VAR_ELEMENT.data(#lit) },
                 ))
             }
             Self::Text { paren_token, value } => {
                 let value = QuoteSurround(paren_token, value);
                 quote!(#FN_VIEW(
                     #VAR_CX,
-                    move |#VAR_ELEMENT: #T_TEXT::<_>| { #VAR_ELEMENT.data #value; },
+                    move |#VAR_ELEMENT: #T_TEXT::<_>| { #VAR_ELEMENT.data #value },
                 ))
             }
             Self::Expr { value, .. } => value.to_token_stream(),
@@ -233,7 +233,7 @@ impl ViewComponent {
             quote!({
                 #FN_VIEW(
                     #VAR_CX,
-                    move |#VAR_ELEMENT: #M_ELEMENT::#path::<_>| { #VAR_ELEMENT #props; },
+                    move |#VAR_ELEMENT: #M_ELEMENT::#path::<_>| { #VAR_ELEMENT #props },
                 )
                 #children
             })

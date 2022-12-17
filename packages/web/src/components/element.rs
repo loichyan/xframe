@@ -1,10 +1,18 @@
 use xframe_core::{
-    template::{Template, TemplateInit, TemplateRender},
+    template::{Template, TemplateInit, TemplateRender, TemplateRenderOutput},
     Attribute, GenericComponent, GenericElement, GenericNode, IntoReactive, View,
 };
 use xframe_reactive::Scope;
 
-pub fn view<N, E>(cx: Scope, render: impl 'static + FnOnce(E)) -> Element<N>
+pub fn view<N, E>(cx: Scope, render: impl 'static + FnOnce(E) -> E) -> Element<N>
+where
+    N: GenericNode,
+    E: GenericElement<N>,
+{
+    Element(cx).root(|root| View::Node(render(root).into_node()))
+}
+
+pub fn view_with<N, E>(cx: Scope, render: impl 'static + FnOnce(E) -> View<N>) -> Element<N>
 where
     N: GenericNode,
     E: GenericElement<N>,
@@ -28,7 +36,7 @@ pub struct Element<N> {
 }
 
 impl<N: GenericNode> Element<N> {
-    pub fn root<E>(self, render: impl 'static + FnOnce(E)) -> Self
+    pub fn root<E>(self, render: impl 'static + FnOnce(E) -> View<N>) -> Self
     where
         E: GenericElement<N>,
     {
@@ -38,16 +46,21 @@ impl<N: GenericNode> Element<N> {
             init: ElementInit::new(|| N::create(E::TYPE)),
             render: ElementRender::<N>::new(move |root| {
                 let root = root.unwrap_or_else(|| unreachable!());
-                let next_sibling = root.next_sibling();
-                let first_child = root.first_child();
-                render(E::create_with_node(cx, root));
-                (next_sibling, first_child)
+                (
+                    root.first_child(),
+                    TemplateRenderOutput {
+                        next_sibling: root.next_sibling(),
+                        view: {
+                            // TODO: return View instead of ()
+                            render(E::create_with_node(cx, root.clone()));
+                            View::Node(root)
+                        },
+                    },
+                )
             }),
         }
     }
-}
 
-impl<N: GenericNode> Element<N> {
     pub fn build(self) -> impl GenericComponent<N> {
         self
     }
@@ -64,10 +77,9 @@ impl<N: GenericNode> Element<N> {
         }
     }
 
-    pub fn child_element<E, F>(self, render: F) -> Element<N>
+    pub fn child_element<E>(self, render: impl 'static + FnOnce(E) -> E) -> Element<N>
     where
         E: GenericElement<N>,
-        F: 'static + FnOnce(E),
     {
         let cx = self.cx;
         self.child(view(cx, render))
@@ -75,9 +87,7 @@ impl<N: GenericNode> Element<N> {
 
     pub fn child_text<A: IntoReactive<Attribute>>(self, data: A) -> Element<N> {
         let data = data.into_reactive();
-        self.child_element(move |text: crate::elements::text<_>| {
-            text.data(data);
-        })
+        self.child_element(move |text: crate::elements::text<_>| text.data(data))
     }
 }
 
@@ -118,15 +128,15 @@ impl<N: GenericNode> From<ElementInit<N>> for TemplateInit<N> {
     }
 }
 
-type NextSiblingAndLastChild<N> = (Option<N>, Option<N>);
+type FirstChildAndOutput<N> = (Option<N>, TemplateRenderOutput<N>);
 
 struct ElementRender<N>(
-    Box<dyn FnOnce(Option<N>) -> NextSiblingAndLastChild<N>>,
+    Box<dyn FnOnce(Option<N>) -> FirstChildAndOutput<N>>,
     Box<dyn FnOnce(Option<N>) -> Option<N>>,
 );
 
 impl<N: GenericNode> ElementRender<N> {
-    fn new(f: impl 'static + FnOnce(Option<N>) -> NextSiblingAndLastChild<N>) -> Self {
+    fn new(f: impl 'static + FnOnce(Option<N>) -> FirstChildAndOutput<N>) -> Self {
         Self(Box::new(f), Box::new(|first| first))
     }
 
@@ -135,7 +145,7 @@ impl<N: GenericNode> ElementRender<N> {
             self.0,
             Box::new(move |node| {
                 let node = (self.1)(node);
-                child.render(node)
+                child.render(node).next_sibling
             }),
         )
     }
@@ -144,10 +154,10 @@ impl<N: GenericNode> ElementRender<N> {
 impl<N: GenericNode> From<ElementRender<N>> for TemplateRender<N> {
     fn from(render: ElementRender<N>) -> Self {
         TemplateRender::new(move |root| {
-            let (next_sibling, first_child) = (render.0)(root);
+            let (first_child, output) = (render.0)(root);
             let last_child = (render.1)(first_child);
             debug_assert!(last_child.is_none());
-            next_sibling
+            output
         })
     }
 }

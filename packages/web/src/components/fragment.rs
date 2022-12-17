@@ -1,10 +1,11 @@
 use crate::view;
-use std::rc::Rc;
 use xframe_core::{
-    template::{Template, TemplateInit, TemplateRender},
+    template::{Template, TemplateInit, TemplateRender, TemplateRenderOutput},
     Attribute, GenericComponent, GenericElement, GenericNode, IntoReactive, View,
 };
 use xframe_reactive::Scope;
+
+define_placeholder!(Placeholder("Placeholder for `xframe::Fragment` Component"));
 
 #[allow(non_snake_case)]
 pub fn Fragment<N: GenericNode>(cx: Scope) -> Fragment<N> {
@@ -38,10 +39,9 @@ impl<N: GenericNode> Fragment<N> {
         }
     }
 
-    pub fn child_element<E, F>(self, render: F) -> Fragment<N>
+    pub fn child_element<E>(self, render: impl 'static + FnOnce(E) -> E) -> Fragment<N>
     where
         E: GenericElement<N>,
-        F: 'static + FnOnce(E),
     {
         let cx = self.cx;
         self.child(view(cx, render))
@@ -49,9 +49,7 @@ impl<N: GenericNode> Fragment<N> {
 
     pub fn child_text<A: IntoReactive<Attribute>>(self, data: A) -> Fragment<N> {
         let data = data.into_reactive();
-        self.child_element(move |text: crate::elements::text<_>| {
-            text.data(data);
-        })
+        self.child_element(move |text: crate::elements::text<_>| text.data(data))
     }
 }
 
@@ -65,7 +63,7 @@ impl<N: GenericNode> GenericComponent<N> for Fragment<N> {
 }
 
 #[allow(clippy::type_complexity)]
-struct FragmentInit<N>(Box<dyn FnOnce(&mut Vec<N>)>);
+struct FragmentInit<N>(Box<dyn FnOnce(&mut Vec<View<N>>)>);
 
 impl<N: GenericNode> FragmentInit<N> {
     fn new() -> Self {
@@ -73,9 +71,9 @@ impl<N: GenericNode> FragmentInit<N> {
     }
 
     fn child(self, child: TemplateInit<N>) -> Self {
-        Self(Box::new(|fragments| {
-            (self.0)(fragments);
-            fragments.extend(child.init().iter().cloned());
+        Self(Box::new(|fragment| {
+            (self.0)(fragment);
+            fragment.push(child.init());
         }))
     }
 }
@@ -83,27 +81,54 @@ impl<N: GenericNode> FragmentInit<N> {
 impl<N: GenericNode> From<FragmentInit<N>> for TemplateInit<N> {
     fn from(init: FragmentInit<N>) -> Self {
         TemplateInit::new(|| {
-            let mut fragments = Default::default();
-            (init.0)(&mut fragments);
-            View::Fragment(Rc::from(fragments.into_boxed_slice()))
+            let mut fragment = Default::default();
+            (init.0)(&mut fragment);
+            if fragment.is_empty() {
+                // Return a placeholder.
+                View::Node(Placeholder::new().into_node())
+            } else {
+                View::Fragment(fragment.into_boxed_slice().into())
+            }
         })
     }
 }
 
-struct FragmentRender<N>(Box<dyn FnOnce(Option<N>) -> Option<N>>);
+#[allow(clippy::type_complexity)]
+struct FragmentRender<N>(Box<dyn FnOnce(Option<N>, &mut Vec<View<N>>) -> Option<N>>);
 
 impl<N: GenericNode> FragmentRender<N> {
     fn new() -> Self {
-        Self(Box::new(|first| first))
+        Self(Box::new(|first, _| first))
     }
 
     fn child(self, child: TemplateRender<N>) -> Self {
-        Self(Box::new(|first| child.render((self.0)(first))))
+        Self(Box::new(|first, fragments| {
+            let TemplateRenderOutput { next_sibling, view } =
+                child.render((self.0)(first, fragments));
+            fragments.push(view);
+            next_sibling
+        }))
     }
 }
 
 impl<N: GenericNode> From<FragmentRender<N>> for TemplateRender<N> {
     fn from(render: FragmentRender<N>) -> Self {
-        TemplateRender::new(|node| (render.0)(node))
+        TemplateRender::new(|node| {
+            let mut fragments = Default::default();
+            let next_sibling = (render.0)(node, &mut fragments);
+            if fragments.is_empty() {
+                // Ignore the placeholder.
+                let placeholder = next_sibling.unwrap_or_else(|| unreachable!());
+                TemplateRenderOutput {
+                    next_sibling: placeholder.next_sibling(),
+                    view: View::Node(placeholder),
+                }
+            } else {
+                TemplateRenderOutput {
+                    next_sibling,
+                    view: View::Fragment(fragments.into_boxed_slice().into()),
+                }
+            }
+        })
     }
 }

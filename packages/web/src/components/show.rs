@@ -1,31 +1,14 @@
-use crate::view;
+use crate::view_with;
 use smallvec::SmallVec;
-use std::borrow::Cow;
 use xframe_core::{
-    component::DynComponent, GenericComponent, GenericElement, GenericNode, IntoReactive, NodeType,
-    Reactive, Value, View,
+    component::DynComponent, GenericComponent, GenericElement, GenericNode, IntoReactive, Reactive,
+    Value, View,
 };
 use xframe_reactive::Scope;
 
 const INITIAL_BRANCH_SLOTS: usize = 4;
 
-#[allow(non_camel_case_types)]
-pub struct Placeholder<N> {
-    node: N,
-}
-
-impl<N: GenericNode> GenericElement<N> for Placeholder<N> {
-    const TYPE: NodeType =
-        NodeType::Placeholder(Cow::Borrowed("Placeholder for `xframe::Show` Component"));
-
-    fn create_with_node(_: Scope, node: N) -> Self {
-        Self { node }
-    }
-
-    fn into_node(self) -> N {
-        self.node
-    }
-}
+define_placeholder!(Placeholder("Placeholder for `xframe::Show` Component"));
 
 #[allow(non_snake_case)]
 pub fn Show<N: GenericNode>(cx: Scope) -> Show<N> {
@@ -42,7 +25,7 @@ pub struct Show<N> {
 
 pub struct ShowChild<N> {
     when: Reactive<bool>,
-    children: DynComponent<N>,
+    children: View<N>,
 }
 
 impl<N> Show<N>
@@ -50,47 +33,39 @@ where
     N: GenericNode,
 {
     pub fn build(self) -> impl GenericComponent<N> {
-        struct Branch<N> {
-            when: Reactive<bool>,
-            children: View<N>,
-        }
-
-        let Self { cx, branches } = self;
-        view(cx, move |placeholder: Placeholder<N>| {
+        let Self { cx, mut branches } = self;
+        view_with(cx, move |placeholder: Placeholder<N>| {
             let placeholder = placeholder.into_node();
             let parent = placeholder.parent().unwrap_or_else(|| unreachable!());
-            let mut current = View::Node(placeholder.clone());
-            let branches = branches
-                .into_iter()
-                .map(|ShowChild { when, children }| Branch {
-                    when,
-                    children: {
-                        // Replace empty fragments with the placeholder.
-                        let mut children = children.render();
-                        children.insert_with(|| placeholder.clone());
-                        children
-                    },
-                })
-                // Add a default branch.
-                .chain(std::iter::once(Branch {
-                    when: Value(true),
-                    children: current.clone(),
-                }))
-                .collect::<SmallVec<[_; INITIAL_BRANCH_SLOTS]>>();
+            // Add a default branch.
+            branches.push(ShowChild {
+                when: Value(true),
+                children: View::Node(placeholder.clone()),
+            });
+            let dyn_view = cx.create_signal(View::Node(placeholder));
             cx.create_effect(move || {
                 for branch in branches.iter() {
-                    let branch: &Branch<N> = branch;
-                    if branch.when.clone().into_value() {
-                        let old_node = current.first().unwrap_or_else(|| unreachable!());
-                        let new_node = branch.children.first().unwrap_or_else(|| unreachable!());
-                        if old_node.ne(new_node) {
-                            current.replace_with(&parent, &branch.children);
-                            current = branch.children.clone();
-                        }
+                    let ShowChild::<N> {
+                        when,
+                        children: new_view,
+                    } = branch;
+                    if when.clone().into_value() {
+                        cx.untrack(|| {
+                            let current = dyn_view.get();
+                            let old_node = current.first();
+                            let new_node = new_view.first();
+                            if old_node.ne(&new_node) {
+                                cx.untrack(|| {
+                                    current.replace_with(&parent, new_view);
+                                });
+                                dyn_view.set(new_view.clone());
+                            }
+                        });
                         break;
                     }
                 }
             });
+            View::from(dyn_view)
         })
     }
 }
@@ -119,7 +94,7 @@ impl<N: GenericNode> If<N> {
     pub fn build(self) -> ShowChild<N> {
         ShowChild {
             when: self.when.expect("no `when` was provided"),
-            children: self.children.expect("no `child` was provided"),
+            children: self.children.expect("no `child` was provided").render(),
         }
     }
 }
@@ -155,7 +130,7 @@ impl<N: GenericNode> Else<N> {
     pub fn build(self) -> ShowChild<N> {
         ShowChild {
             when: Value(true),
-            children: self.children.expect("no `child` was provided"),
+            children: self.children.expect("no `child` was provided").render(),
         }
     }
 }

@@ -97,14 +97,19 @@ impl<N> TemplateInit<N> {
     }
 }
 
-pub struct TemplateRender<N>(Box<dyn FnOnce(Option<N>) -> Option<N>>);
+pub struct TemplateRender<N>(Box<dyn FnOnce(Option<N>) -> TemplateRenderOutput<N>>);
+
+pub struct TemplateRenderOutput<N> {
+    pub next_sibling: Option<N>,
+    pub view: View<N>,
+}
 
 impl<N> TemplateRender<N> {
-    pub fn new(f: impl 'static + FnOnce(Option<N>) -> Option<N>) -> Self {
+    pub fn new(f: impl 'static + FnOnce(Option<N>) -> TemplateRenderOutput<N>) -> Self {
         Self(Box::new(f))
     }
 
-    pub fn render(self, node: Option<N>) -> Option<N> {
+    pub fn render(self, node: Option<N>) -> TemplateRenderOutput<N> {
         (self.0)(node)
     }
 }
