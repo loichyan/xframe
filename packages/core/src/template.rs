@@ -39,7 +39,7 @@ impl<N: GenericNode> Templates<N> {
         let mut templates = self.inner.borrow_mut();
         let template = templates.entry(id).or_insert_with(f);
         TemplateNode {
-            length: template.length,
+            view: template.view.clone(),
             container: template.container.deep_clone(),
         }
     }
@@ -47,7 +47,7 @@ impl<N: GenericNode> Templates<N> {
 
 #[derive(Clone)]
 pub(crate) struct TemplateNode<N> {
-    pub length: usize,
+    pub view: View<N>,
     pub container: N,
 }
 

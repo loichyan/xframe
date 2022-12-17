@@ -87,7 +87,7 @@ impl<N: GenericNode> From<FragmentInit<N>> for TemplateInit<N> {
                 // Return a placeholder.
                 View::Node(Placeholder::new().into_node())
             } else {
-                View::Fragment(fragment.into_boxed_slice().into())
+                View::from(fragment)
             }
         })
     }

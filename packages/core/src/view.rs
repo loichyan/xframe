@@ -1,7 +1,6 @@
-use xframe_reactive::Signal;
-
 use crate::node::GenericNode;
 use std::rc::Rc;
+use xframe_reactive::{ReadSignal, Signal};
 
 #[derive(Clone)]
 pub enum View<N> {
@@ -10,9 +9,21 @@ pub enum View<N> {
     Dyn(Rc<dyn Fn() -> View<N>>),
 }
 
+impl<N: GenericNode> From<Vec<View<N>>> for View<N> {
+    fn from(t: Vec<View<N>>) -> Self {
+        Self::Fragment(t.into_boxed_slice().into())
+    }
+}
+
+impl<N: GenericNode> From<ReadSignal<View<N>>> for View<N> {
+    fn from(t: ReadSignal<View<N>>) -> Self {
+        View::from(move || t.get())
+    }
+}
+
 impl<N: GenericNode> From<Signal<View<N>>> for View<N> {
     fn from(t: Signal<View<N>>) -> Self {
-        View::from(move || t.get())
+        From::<ReadSignal<_>>::from(t.into())
     }
 }
 
@@ -63,6 +74,12 @@ impl<N: GenericNode> View<N> {
         }
     }
 
+    pub fn last(&self) -> N {
+        let mut last = None;
+        self.visit(|n| last = Some(n.clone()));
+        last.unwrap_or_else(|| panic!("`View` cannot be empty"))
+    }
+
     fn ensure_not_empty(&self) {
         if cfg!(debug_assertions) && self.is_empty() {
             panic!("`View` cannot be empty")
@@ -81,7 +98,14 @@ impl<N: GenericNode> View<N> {
 
     pub fn move_before(&self, parent: &N, ref_node: &N) {
         self.ensure_not_empty();
-        self.visit(|node| parent.insert_before(node, ref_node));
+        self.visit(|node| parent.insert_before(node, Some(ref_node)));
+    }
+
+    pub fn move_after(&self, parent: &N, ref_node: &N) {
+        self.ensure_not_empty();
+        let ref_node = ref_node.next_sibling();
+        let ref_node = ref_node.as_ref();
+        self.visit(|node| parent.insert_before(node, ref_node))
     }
 
     pub fn replace_with(&self, parent: &N, new_component: &Self) {

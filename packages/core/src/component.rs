@@ -34,15 +34,15 @@ impl<N: GenericNode> DynComponent<N> {
             id,
             template: Template { init, render },
         } = self;
-        let TemplateNode { length, container } = {
+        let TemplateNode {
+            view: template_view,
+            container,
+        } = {
             let create_template_node = move || {
                 let container = N::create(NodeType::Template(id));
-                let output = init.init();
-                output.append_to(&container);
-                TemplateNode {
-                    length: output.len(),
-                    container,
-                }
+                let view = init.init();
+                view.append_to(&container);
+                TemplateNode { view, container }
             };
             if let Some(id) = id {
                 // Initialize or reuse existing templates.
@@ -59,7 +59,7 @@ impl<N: GenericNode> DynComponent<N> {
         } else {
             View::empty()
         };
-        debug_assert_eq!(view.len(), length);
+        debug_assert_eq!(view.len(), template_view.len());
         view
     }
 }

@@ -29,5 +29,5 @@ pub trait GenericNode: 'static + Clone + Eq {
     fn parent(&self) -> Option<Self>;
     fn replace_child(&self, new_node: &Self, old_node: &Self);
     fn remove_child(&self, node: &Self);
-    fn insert_before(&self, new_node: &Self, ref_node: &Self);
+    fn insert_before(&self, new_node: &Self, ref_node: Option<&Self>);
 }

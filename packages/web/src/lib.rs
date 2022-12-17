@@ -6,12 +6,14 @@ mod render;
 pub mod components {
     pub(crate) mod element;
     mod fragment;
+    mod indexed;
     mod show;
 
     #[doc(inline)]
     pub use {
         element::Element,
         fragment::Fragment,
+        indexed::Indexed,
         show::{Else, If, Show},
     };
 }

@@ -67,9 +67,7 @@ where
                             let old_node = current.first();
                             let new_node = new_view.first();
                             if old_node.ne(&new_node) {
-                                cx.untrack(|| {
-                                    current.replace_with(&parent, new_view);
-                                });
+                                current.replace_with(&parent, new_view);
                                 dyn_view.set(new_view.clone());
                             }
                         });

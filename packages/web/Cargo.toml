@@ -20,7 +20,7 @@ features = [
     "DomTokenList",
     "Element",
     "Event",
-    "HtmlElement",
+    "HtmlTemplateElement",
     "Text",
     "Window",
 ]

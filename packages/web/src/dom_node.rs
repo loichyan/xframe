@@ -2,7 +2,7 @@ use crate::DOCUMENT;
 use js_sys::Reflect;
 use std::{borrow::Cow, cell::Cell};
 use wasm_bindgen::{intern, prelude::*, JsCast};
-use web_sys::AddEventListenerOptions;
+use web_sys::{AddEventListenerOptions, HtmlTemplateElement};
 use xframe_core::{
     template::Templates, Attribute, EventHandler, GenericNode, NodeType, UnwrapThrowValExt,
 };
@@ -100,7 +100,10 @@ impl GenericNode for DomNode {
                         body.insert_before(&template, body.first_child().as_ref())
                             .unwrap_throw_val();
                     }
-                    template.into()
+                    template
+                        .unchecked_into::<HtmlTemplateElement>()
+                        .content()
+                        .into()
                 } else {
                     doc.create_document_fragment().into()
                 }
@@ -189,9 +192,9 @@ impl GenericNode for DomNode {
         self.node.remove_child(&node.node).unwrap_throw_val();
     }
 
-    fn insert_before(&self, new_node: &Self, ref_node: &Self) {
+    fn insert_before(&self, new_node: &Self, ref_node: Option<&Self>) {
         self.node
-            .insert_before(&new_node.node, Some(&ref_node.node))
+            .insert_before(&new_node.node, ref_node.map(|node| &node.node))
             .unwrap_throw_val();
     }
 }
