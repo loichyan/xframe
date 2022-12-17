@@ -1,6 +1,8 @@
 use xframe::{view, Fragment, If, Show};
 
 fn main() {
+    console_error_panic_hook::set_once();
+
     xframe::render_to_body(|cx| {
         let counter = cx.create_signal(0);
         let increment = move |_| counter.update(|x| *x + 1);

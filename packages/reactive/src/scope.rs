@@ -148,10 +148,11 @@ impl RawScope {
 }
 
 impl Shared {
-    pub fn untrack(&self, f: impl FnOnce()) {
+    pub fn untrack<U>(&self, f: impl FnOnce() -> U) -> U {
         let prev = self.observer.take();
-        f();
+        let output = f();
         self.observer.set(prev);
+        output
     }
 }
 
@@ -183,8 +184,8 @@ impl Scope {
         disposer
     }
 
-    pub fn untrack(&self, f: impl FnOnce()) {
-        self.with_shared(|shared| shared.untrack(f));
+    pub fn untrack<U>(&self, f: impl FnOnce() -> U) -> U {
+        self.with_shared(|shared| shared.untrack(f))
     }
 
     pub fn on_cleanup(&self, f: impl 'static + FnOnce()) {

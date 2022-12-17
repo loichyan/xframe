@@ -33,6 +33,8 @@ fn Counter<N: GenericNode>(cx: Scope) -> Counter<N> {
 }
 
 fn main() {
+    console_error_panic_hook::set_once();
+
     xframe::render_to_body(|cx| {
         view! { cx,
             div {

@@ -12,13 +12,11 @@ impl<N: GenericNode> Counter<N> {
         let Self { cx, .. } = self;
         let counter = cx.create_signal(0);
         let increment = move |_| counter.update(|x| *x + 1);
-        view(cx, move |_: div<_>| {}).child(
-            view(cx, move |e: button<_>| {
-                e.on_click(increment);
-            })
-            .child_text("Click me: ")
-            .child_text(counter)
-            .child_text(" times!"),
+        view(cx, move |div: div<_>| div).child(
+            view(cx, move |e: button<_>| e.on_click(increment))
+                .child_text("Click me: ")
+                .child_text(counter)
+                .child_text(" times!"),
         )
     }
 }
@@ -32,6 +30,8 @@ fn Counter<N: GenericNode>(cx: Scope) -> Counter<N> {
 }
 
 fn main() {
+    console_error_panic_hook::set_once();
+
     xframe::render_to_body(|cx| {
         view! { cx,
              div {

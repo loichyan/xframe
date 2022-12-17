@@ -27,12 +27,13 @@ pub mod event {
 
 #[doc(inline)]
 pub use {
-    xframe_core::prelude::*,
-    xframe_macros::view,
-    xframe_reactive::*,
-    xframe_web::{components::*, render, render_to_body, view},
+    xframe_core::prelude::*, xframe_macros::view, xframe_reactive::*, xframe_web::prelude::*,
 };
 
 /// A trait alias of [`xframe_core::GenericNode`].
 pub trait GenericNode: xframe_core::GenericNode<Event = xframe_web::Event> {}
 impl<T: xframe_core::GenericNode<Event = xframe_web::Event>> GenericNode for T {}
+
+#[doc(hidden)]
+#[path = "private.rs"]
+pub mod __private;
