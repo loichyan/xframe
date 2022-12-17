@@ -5,6 +5,8 @@ mod node;
 mod reactive;
 
 pub mod component;
+pub mod template;
+pub mod view;
 
 #[doc(inline)]
 pub use prelude::*;
@@ -13,11 +15,13 @@ pub mod prelude {
     #[doc(inline)]
     pub use crate::{
         attr::Attribute,
-        component::{View, GenericComponent, Template, TemplateId},
+        component::GenericComponent,
         element::GenericElement,
         event::{EventHandler, EventOptions, IntoEventHandler},
         node::{GenericNode, NodeType},
         reactive::{IntoReactive, Reactive, Value},
+        template::{Template, TemplateId},
+        view::View,
     };
 }
 

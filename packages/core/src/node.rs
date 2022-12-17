@@ -1,4 +1,9 @@
-use crate::{attr::Attribute, component::Templates, event::EventHandler, CowStr, TemplateId};
+use crate::{
+    attr::Attribute,
+    event::EventHandler,
+    template::{TemplateId, Templates},
+    CowStr,
+};
 
 pub enum NodeType {
     Tag(CowStr),

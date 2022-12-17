@@ -4,7 +4,7 @@ use std::{borrow::Cow, cell::Cell};
 use wasm_bindgen::{intern, prelude::*, JsCast};
 use web_sys::AddEventListenerOptions;
 use xframe_core::{
-    component::Templates, Attribute, EventHandler, GenericNode, NodeType, UnwrapThrowValExt,
+    template::Templates, Attribute, EventHandler, GenericNode, NodeType, UnwrapThrowValExt,
 };
 
 thread_local! {

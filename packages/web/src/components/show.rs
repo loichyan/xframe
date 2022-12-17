@@ -1,10 +1,9 @@
-use std::borrow::Cow;
-
 use crate::view;
 use smallvec::SmallVec;
+use std::borrow::Cow;
 use xframe_core::{
-    component::DynComponent, View, GenericComponent, GenericElement, GenericNode,
-    IntoReactive, NodeType, Reactive, Value,
+    component::DynComponent, GenericComponent, GenericElement, GenericNode, IntoReactive, NodeType,
+    Reactive, Value, View,
 };
 use xframe_reactive::Scope;
 

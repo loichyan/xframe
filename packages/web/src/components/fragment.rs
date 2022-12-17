@@ -1,8 +1,8 @@
 use crate::view;
 use std::rc::Rc;
 use xframe_core::{
-    component::{Template, TemplateInit, TemplateRender},
-    Attribute, View, GenericComponent, GenericElement, GenericNode, IntoReactive,
+    template::{Template, TemplateInit, TemplateRender},
+    Attribute, GenericComponent, GenericElement, GenericNode, IntoReactive, View,
 };
 use xframe_reactive::Scope;
 

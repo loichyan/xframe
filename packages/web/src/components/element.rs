@@ -1,6 +1,6 @@
 use xframe_core::{
-    component::{GenericComponent, Template, TemplateInit, TemplateRender},
-    Attribute, View, GenericElement, GenericNode, IntoReactive,
+    template::{Template, TemplateInit, TemplateRender},
+    Attribute, GenericComponent, GenericElement, GenericNode, IntoReactive, View,
 };
 use xframe_reactive::Scope;
 
