@@ -9,6 +9,7 @@ pub mod components {
     pub(crate) mod element;
     mod fragment;
     mod indexed;
+    mod keyed;
     mod show;
 
     #[doc(inline)]
@@ -16,6 +17,7 @@ pub mod components {
         element::Element,
         fragment::Fragment,
         indexed::Indexed,
+        keyed::Keyed,
         show::{Else, If, Show},
     };
 }

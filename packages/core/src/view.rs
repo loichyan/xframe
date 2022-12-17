@@ -106,11 +106,11 @@ impl<N: GenericNode> View<N> {
         self.visit(|node| parent.insert_before(node, ref_node));
     }
 
-    pub fn replace_with(&self, parent: &N, new_component: &Self) {
-        match (self, new_component) {
+    pub fn replace_with(&self, parent: &N, new_view: &Self) {
+        match (self, new_view) {
             (Self::Node(old), Self::Node(new)) => parent.replace_child(new, old),
             _ => {
-                new_component.move_before(parent, Some(&self.first()));
+                new_view.move_before(parent, Some(&self.first()));
                 self.remove_from(parent);
             }
         }

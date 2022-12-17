@@ -1,90 +1,94 @@
 use crate::{utils::Visit, view_with};
-use smallvec::SmallVec;
+use std::hash::Hash;
 use xframe_core::{GenericComponent, GenericElement, GenericNode, IntoReactive, Reactive, View};
 use xframe_reactive::Scope;
 
-const INITIAL_VIEW_SLOTS: usize = 4;
+type AIndexMap<K, V> = indexmap::IndexMap<K, V, ahash::RandomState>;
 
-define_placeholder!(Placeholder("Placeholder for `xframe::Indexed` Component"));
+define_placeholder!(Placeholder("Placeholder for `xframe::Keyed` Component"));
 
-pub struct Indexed<N, T, I>
+pub struct Keyed<N, T, K, I>
 where
     I: 'static + Visit<T>,
 {
     cx: Scope,
     each: Option<Reactive<I>>,
+    key: Option<Box<dyn Fn(&T) -> K>>,
     children: Option<Box<dyn Fn(&T) -> View<N>>>,
 }
 
 #[allow(non_snake_case)]
-pub fn Indexed<N, T, I>(cx: Scope) -> Indexed<N, T, I>
+pub fn Keyed<N, T, K, I>(cx: Scope) -> Keyed<N, T, K, I>
 where
     N: GenericNode,
     I: 'static + Clone + Visit<T>,
 {
-    Indexed {
+    Keyed {
         cx,
         each: None,
+        key: None,
         children: None,
     }
 }
 
-impl<N, T, I> Indexed<N, T, I>
+impl<N, T, K, I> Keyed<N, T, K, I>
 where
     N: GenericNode,
     T: 'static,
+    K: 'static + Eq + Hash,
     I: 'static + Clone + Visit<T>,
+    N: GenericNode,
 {
     pub fn build(self) -> impl GenericComponent<N> {
-        let Self { cx, each, children } = self;
+        let Self {
+            cx,
+            each,
+            key,
+            children,
+        } = self;
         let each = each.expect("`each` was not provided");
+        let fn_key = key.expect("`key` was not provided");
         let fn_view = children.expect("`each` was not provided");
         view_with(cx, move |placeholder: Placeholder<N>| {
             let placeholder = placeholder.into_node();
-            let mut mounted_views = SmallVec::<[_; INITIAL_VIEW_SLOTS]>::new();
+            let mut mounted_views = AIndexMap::<K, View<N>>::default();
             let dyn_view = cx.create_signal(View::Node(placeholder.clone()));
             cx.create_effect(move || {
                 let each = each.clone().into_value();
                 cx.untrack(|| {
+                    let mut new_mounted_views = AIndexMap::default();
+                    each.visit(|val| {
+                        let key = fn_key(val);
+                        if let Some(view) = mounted_views.get(&key) {
+                            new_mounted_views.insert(key, view.clone());
+                        } else {
+                            let view = fn_view(val);
+                            new_mounted_views.insert(key, view);
+                        }
+                    });
+                    let new_view = new_mounted_views.values().cloned().collect::<Vec<_>>();
+                    let mounted_views = std::mem::replace(&mut mounted_views, new_mounted_views);
                     let current_view = dyn_view.get();
                     let current_last = current_view.last();
                     let parent = current_last.parent().unwrap_or_else(|| unreachable!());
-                    let next_first = current_last.next_sibling();
-
-                    let mounted_len = mounted_views.len();
-                    let mut new_len = 0;
-                    each.visit(|val| {
-                        // Append new views.
-                        if new_len >= mounted_len {
-                            let view = fn_view(val);
-                            view.move_before(&parent, next_first.as_ref());
-                            mounted_views.push(view);
-                        }
-                        new_len += 1;
-                    });
-                    if new_len == mounted_len {
-                        return;
-                    }
-
-                    if new_len == 0 {
+                    let next_last = current_last.next_sibling();
+                    if new_view.is_empty() {
                         if current_last.ne(&placeholder) {
-                            // Replace with a placeholder.
                             let placeholder = View::Node(placeholder.clone());
                             current_view.replace_with(&parent, &placeholder);
-                            mounted_views.clear();
                             dyn_view.set(placeholder);
                         }
                     } else {
-                        if new_len < mounted_len {
-                            // Remove old views.
-                            for view in mounted_views.drain(new_len..) {
-                                view.remove_from(&parent);
-                            }
-                        } else if current_last.eq(&placeholder) {
-                            // Remove the placeholder.
+                        if new_view.len() > mounted_views.len() && current_last.eq(&placeholder) {
                             parent.remove_child(&placeholder);
                         }
-                        dyn_view.set(View::from(mounted_views.to_vec()))
+                        // TODO: do a diff?
+                        for view in mounted_views.into_values() {
+                            view.remove_from(&parent);
+                        }
+                        let new_view = View::from(new_view);
+                        new_view.move_before(&parent, next_last.as_ref());
+                        dyn_view.set(new_view);
                     }
                 });
             });
@@ -97,6 +101,14 @@ where
             panic!("`each` has already been provided");
         }
         self.each = Some(each.into_reactive());
+        self
+    }
+
+    pub fn key(mut self, key: impl 'static + Fn(&T) -> K) -> Self {
+        if self.key.is_some() {
+            panic!("`child` has already been provided");
+        }
+        self.key = Some(Box::new(key));
         self
     }
 
