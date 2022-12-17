@@ -33,3 +33,7 @@ pub use {
 /// A trait alias of [`xframe_core::GenericNode`].
 pub trait GenericNode: xframe_core::GenericNode<Event = xframe_web::Event> {}
 impl<T: xframe_core::GenericNode<Event = xframe_web::Event>> GenericNode for T {}
+
+#[doc(hidden)]
+#[path = "private.rs"]
+pub mod __private;

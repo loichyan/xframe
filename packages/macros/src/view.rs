@@ -10,16 +10,18 @@ use syn::{
 
 new_type_quote! {
     XFRAME(::xframe);
-    M_ELEMENT(::xframe::element);
-    T_TEXT(#M_ELEMENT::text);
+    RT(#XFRAME::__private);
+    M_ELEMENT(#XFRAME::element);
     VAR_ELEMENT(__element);
     VAR_CX(__cx);
     T_COMPONENT(__Component);
     T_GENERIC_COMPONENT(#XFRAME::GenericComponent);
     T_TEMPLATE(#XFRAME::Template);
     T_TEMPLATE_ID(#XFRAME::TemplateId);
+    FN_TEXT(#M_ELEMENT::text);
     FN_CHILD(child);
     FN_BUILD(build);
+    FN_BUILTIN(#RT::view_builtin);
     FN_VIEW(#XFRAME::view);
 }
 
@@ -180,16 +182,18 @@ impl ViewChild {
     pub fn quote(&self) -> TokenStream {
         match self {
             Self::Literal(lit) => {
-                quote!(#FN_VIEW(
-                        #VAR_CX,
-                        move |#VAR_ELEMENT: #T_TEXT::<_>| { #VAR_ELEMENT.data(#lit) },
+                quote!(#FN_BUILTIN(
+                    #VAR_CX,
+                    #FN_TEXT,
+                    move |#VAR_ELEMENT| { #VAR_ELEMENT.data(#lit) },
                 ))
             }
             Self::Text { paren_token, value } => {
                 let value = QuoteSurround(paren_token, value);
-                quote!(#FN_VIEW(
+                quote!(#FN_BUILTIN(
                     #VAR_CX,
-                    move |#VAR_ELEMENT: #T_TEXT::<_>| { #VAR_ELEMENT.data #value },
+                    #FN_TEXT,
+                    move |#VAR_ELEMENT| { #VAR_ELEMENT .data #value },
                 ))
             }
             Self::Expr { value, .. } => value.to_token_stream(),
@@ -218,28 +222,34 @@ impl Parse for ViewComponent {
 impl ViewComponent {
     pub fn quote(&self) -> TokenStream {
         let Self { path, args, .. } = self;
-        let is_builtin = if let Some(ident) = path.get_ident() {
-            ident
+        let builtin = if let Some(ident) = path.get_ident() {
+            if ident
                 .to_string()
                 .trim_end_matches('_')
                 .chars()
                 .all(|c| c.is_ascii_lowercase())
+            {
+                Some(ident)
+            } else {
+                None
+            }
         } else {
-            false
+            None
         };
         let props = args.quote_props();
         let children = args.quote_children();
-        if is_builtin {
+        if let Some(builtin) = builtin {
             quote!({
-                #FN_VIEW(
+                #FN_BUILTIN(
                     #VAR_CX,
-                    move |#VAR_ELEMENT: #M_ELEMENT::#path::<_>| { #VAR_ELEMENT #props },
+                    #M_ELEMENT::#builtin,
+                    move |#VAR_ELEMENT| { #VAR_ELEMENT #props },
                 )
                 #children
             })
         } else {
             quote!({
-                #path::<_>(#VAR_CX)
+                #path(#VAR_CX)
                 #props
                 #children
                 .#FN_BUILD()
