@@ -75,9 +75,14 @@ impl<N: GenericNode> View<N> {
     }
 
     pub fn last(&self) -> N {
-        let mut last = None;
-        self.visit(|n| last = Some(n.clone()));
-        last.unwrap_or_else(|| panic!("`View` cannot be empty"))
+        match self {
+            Self::Node(v) => v.clone(),
+            Self::Fragment(v) => v
+                .last()
+                .unwrap_or_else(|| panic!("`View` cannot be empty"))
+                .last(),
+            Self::Dyn(v) => v().last(),
+        }
     }
 
     fn debug_ensure_not_empty(&self) {
