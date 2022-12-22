@@ -1,5 +1,4 @@
 use std::marker::PhantomData;
-
 use xframe_core::{
     template::{BeforeRendering, RenderOutput, Template, TemplateInit, TemplateRender},
     Attribute, GenericComponent, GenericElement, GenericNode, IntoReactive, View,
@@ -12,6 +11,21 @@ where
     E: GenericElement<N>,
 {
     Element(cx)
+}
+
+#[allow(non_snake_case)]
+pub fn Element<N, E>(cx: Scope) -> Element<N, E>
+where
+    N: GenericNode,
+    E: GenericElement<N>,
+{
+    Element {
+        cx,
+        init: PhantomData,
+        render: None,
+        init_children: Box::new(|_| {}),
+        render_children: Box::new(|first_child| first_child),
+    }
 }
 
 pub struct Element<N: GenericNode, E> {
@@ -65,21 +79,6 @@ where
     }
 }
 
-#[allow(non_snake_case)]
-pub fn Element<N, E>(cx: Scope) -> Element<N, E>
-where
-    N: GenericNode,
-    E: GenericElement<N>,
-{
-    Element {
-        cx,
-        init: PhantomData,
-        render: None,
-        init_children: Box::new(|_| {}),
-        render_children: Box::new(|first_child| first_child),
-    }
-}
-
 impl<N, E> Element<N, E>
 where
     N: GenericNode,
@@ -95,7 +94,7 @@ where
 
     pub fn with_view(mut self, render: impl 'static + FnOnce(E) -> View<N>) -> Self {
         if self.render.is_some() {
-            panic!("`Element::with_view` should only be called once");
+            panic!("`Element::with_view` has already be specified");
         }
         self.render = Some(Box::new(render));
         self

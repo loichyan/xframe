@@ -1,4 +1,4 @@
-use xframe::{view, Fragment, If, Show};
+use xframe::{view, Fragment, If, Switch};
 
 fn main() {
     console_error_panic_hook::set_once();
@@ -14,7 +14,7 @@ fn main() {
                     .on_click(increment)
                     "Click me!"
                 }
-                div { Show {
+                div { Switch {
                     If {
                         .when(is_even)
                         Fragment {

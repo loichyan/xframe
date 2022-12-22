@@ -181,6 +181,7 @@ impl Parse for ViewChild {
 impl ViewChild {
     pub fn quote(&self) -> TokenStream {
         match self {
+            // TODO: use square to create fragments
             Self::Literal(lit) => quote!({ #FN_VIEW_TEXT(#VAR_CX, #lit) }),
             Self::Text { value, .. } => quote!({ #FN_VIEW_TEXT(#VAR_CX, #value) }),
             Self::Expr { value, .. } => value.to_token_stream(),

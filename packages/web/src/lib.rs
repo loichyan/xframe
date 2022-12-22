@@ -7,18 +7,19 @@ mod render;
 
 pub mod components {
     pub(crate) mod element;
+    #[path = "for.rs"]
+    mod for_;
     mod fragment;
-    mod indexed;
-    mod keyed;
-    mod show;
+    mod list;
+    mod switch;
 
     #[doc(inline)]
     pub use {
         element::Element,
+        for_::For,
         fragment::Fragment,
-        indexed::Indexed,
-        keyed::Keyed,
-        show::{Else, If, Show},
+        list::List,
+        switch::{Else, If, Switch},
     };
 }
 

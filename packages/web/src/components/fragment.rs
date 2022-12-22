@@ -5,9 +5,18 @@ use xframe_core::{
 };
 use xframe_reactive::Scope;
 
-define_placeholder!(Placeholder("Placeholder for `xframe::Fragment` Component"));
+define_placeholder!(Placeholder("PLACEHOLDER FOR `xframe::Fragment` COMPONENT"));
 
 type Views<N> = Vec<View<N>>;
+
+#[allow(non_snake_case)]
+pub fn Fragment<N: GenericNode>(cx: Scope) -> Fragment<N> {
+    Fragment {
+        cx,
+        init: Box::new(|_| {}),
+        render: Box::new(|_, first_node, _| Some(first_node)),
+    }
+}
 
 pub struct Fragment<N: GenericNode> {
     cx: Scope,
@@ -50,15 +59,6 @@ impl<N: GenericNode> GenericComponent<N> for Fragment<N> {
                 }
             }),
         }
-    }
-}
-
-#[allow(non_snake_case)]
-pub fn Fragment<N: GenericNode>(cx: Scope) -> Fragment<N> {
-    Fragment {
-        cx,
-        init: Box::new(|_| {}),
-        render: Box::new(|_, first_node, _| Some(first_node)),
     }
 }
 

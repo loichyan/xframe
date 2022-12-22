@@ -1,4 +1,4 @@
-use xframe::{view, Else, If, Indexed, Show};
+use xframe::{view, Else, If, List, Switch};
 
 fn main() {
     console_error_panic_hook::set_once();
@@ -13,7 +13,7 @@ fn main() {
                 fieldset {
                     div {
                         "Number " (counter) " is "
-                        Show {
+                        Switch {
                             If { .when(is_even) "even" }
                             Else { "odd" }
                         }
@@ -43,7 +43,7 @@ fn main() {
                     .on_click(remove_counter)
                     "Click me to remove the last counter"
                 } }
-                Indexed { .each(counters) {make_counter} }
+                List { .each(counters) {make_counter} }
             }
         }
     });

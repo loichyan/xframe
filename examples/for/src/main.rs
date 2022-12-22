@@ -1,5 +1,5 @@
 use wasm_bindgen::JsCast;
-use xframe::{view, Fragment, Keyed};
+use xframe::{view, For, Fragment};
 
 fn main() {
     console_error_panic_hook::set_once();
@@ -36,7 +36,7 @@ fn main() {
                     button { .on_click(clear_todos) "Clear todos" }
                 }
                 ul {
-                    Keyed {
+                    For {
                         .each(todos)
                         .key(Clone::clone)
                         { move |s| {

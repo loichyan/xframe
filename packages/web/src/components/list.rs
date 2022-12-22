@@ -5,9 +5,9 @@ use xframe_reactive::{untrack, Scope};
 
 const INITIAL_VIEW_SLOTS: usize = 4;
 
-define_placeholder!(Placeholder("Placeholder for `xframe::Indexed` Component"));
+define_placeholder!(Placeholder("PLACEHOLDER FOR `xframe::List` COMPONENT"));
 
-pub struct Indexed<N, T, I>
+pub struct List<N, T, I>
 where
     N: GenericNode,
     I: 'static + Visit<T>,
@@ -17,21 +17,20 @@ where
     children: Option<Box<dyn Fn(&T) -> View<N>>>,
 }
 
-// TODO: rename to `List`
 #[allow(non_snake_case)]
-pub fn Indexed<N, T, I>(cx: Scope) -> Indexed<N, T, I>
+pub fn List<N, T, I>(cx: Scope) -> List<N, T, I>
 where
     N: GenericNode,
     I: 'static + Clone + Visit<T>,
 {
-    Indexed {
+    List {
         cx,
         each: None,
         children: None,
     }
 }
 
-impl<N, T, I> Indexed<N, T, I>
+impl<N, T, I> List<N, T, I>
 where
     N: GenericNode,
     T: 'static,

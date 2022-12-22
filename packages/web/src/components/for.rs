@@ -5,9 +5,9 @@ use xframe_reactive::{untrack, Scope};
 
 type AIndexMap<K, V> = indexmap::IndexMap<K, V, ahash::RandomState>;
 
-define_placeholder!(Placeholder("Placeholder for `xframe::Keyed` Component"));
+define_placeholder!(Placeholder("PLACEHOLDER FOR `xframe::For` COMPONENT"));
 
-pub struct Keyed<N, T, K, I>
+pub struct For<N, T, K, I>
 where
     N: GenericNode,
     I: 'static + Visit<T>,
@@ -18,14 +18,13 @@ where
     children: Option<Box<dyn Fn(&T) -> View<N>>>,
 }
 
-// TODO: rename to `For`
 #[allow(non_snake_case)]
-pub fn Keyed<N, T, K, I>(cx: Scope) -> Keyed<N, T, K, I>
+pub fn For<N, T, K, I>(cx: Scope) -> For<N, T, K, I>
 where
     N: GenericNode,
     I: 'static + Clone + Visit<T>,
 {
-    Keyed {
+    For {
         cx,
         each: None,
         key: None,
@@ -33,7 +32,7 @@ where
     }
 }
 
-impl<N, T, K, I> Keyed<N, T, K, I>
+impl<N, T, K, I> For<N, T, K, I>
 where
     N: GenericNode,
     T: 'static,
