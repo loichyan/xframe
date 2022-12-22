@@ -3,6 +3,7 @@
 mod attr;
 mod element;
 mod event;
+mod ext;
 mod node;
 mod reactive;
 
@@ -18,8 +19,9 @@ pub mod prelude {
     pub use crate::{
         attr::Attribute,
         component::GenericComponent,
-        element::GenericElement,
+        element::{GenericElement, NodeRef},
         event::{EventHandler, EventOptions, IntoEventHandler},
+        ext::ScopeExt,
         node::{GenericNode, NodeType},
         reactive::{IntoReactive, Reactive, Value},
         template::{Template, TemplateId},

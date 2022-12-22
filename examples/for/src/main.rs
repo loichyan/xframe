@@ -20,7 +20,7 @@ fn main() {
     console_error_panic_hook::set_once();
 
     let mut rng = rand::thread_rng();
-    xframe::render_to_body(|cx| {
+    xframe::mount_to_body(|cx| {
         let ids = cx.create_signal(vec![]);
         cx.create_effect(move || {
             let arr = ids

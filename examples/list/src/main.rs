@@ -26,7 +26,7 @@ fn make_counter<N: GenericNode>(cx: Scope, init: usize) -> impl GenericComponent
 fn main() {
     console_error_panic_hook::set_once();
 
-    xframe::render_to_body(|cx| {
+    xframe::mount_to_body(|cx| {
         let counters = cx.create_signal(vec![1, 2, 3, 4]);
         let show = cx.create_signal(true);
         let push = move |_| counters.write(|x| x.push(x.len() + 1));

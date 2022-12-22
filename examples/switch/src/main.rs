@@ -3,7 +3,7 @@ use xframe::{view, Else, If, Switch};
 fn main() {
     console_error_panic_hook::set_once();
 
-    xframe::render_to_body(|cx| {
+    xframe::mount_to_body(|cx| {
         let counter = cx.create_signal(1);
         let increment = move |_| counter.update(|x| *x + 1);
         let is_even = cx.create_selector(move || counter.get() % 2 == 0);
