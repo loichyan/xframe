@@ -19,7 +19,6 @@ new_key_type! {
     pub(crate) struct ScopeId;
     pub(crate) struct SignalId;
     pub(crate) struct EffectId;
-    pub(crate) struct VariableId;
 }
 
 type ASparseSecondaryMap<K, V> = SparseSecondaryMap<K, V, ahash::RandomState>;
@@ -34,5 +33,4 @@ pub(crate) struct Runtime {
     pub signal_contexts: RefCell<SecondaryMap<SignalId, SignalContext>>,
     pub effects: RefCell<SlotMap<EffectId, Rc<RefCell<dyn AnyEffect>>>>,
     pub effect_contexts: RefCell<SecondaryMap<EffectId, EffectContext>>,
-    pub variables: RefCell<SlotMap<VariableId, Box<dyn Any>>>,
 }

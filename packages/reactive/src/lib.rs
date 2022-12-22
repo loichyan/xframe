@@ -4,7 +4,6 @@ mod memo;
 mod runtime;
 mod scope;
 mod signal;
-mod variable;
 
 type ThreadLocal = *const ();
 
@@ -16,7 +15,6 @@ pub use {
     effect::Effect,
     scope::{create_root, Scope, ScopeDisposer},
     signal::{ReadSignal, Signal},
-    variable::Variable,
 };
 
 #[test]

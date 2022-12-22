@@ -1,5 +1,5 @@
 use crate::{
-    runtime::{EffectId, Runtime, ScopeId, SignalId, VariableId, RT},
+    runtime::{EffectId, Runtime, ScopeId, SignalId, RT},
     ThreadLocal,
 };
 use smallvec::SmallVec;
@@ -33,7 +33,6 @@ pub(crate) struct RawScope {
 pub(crate) enum Cleanup {
     Effect(EffectId),
     Signal(SignalId),
-    Variable(VariableId),
     Callback(Box<(dyn FnOnce())>),
 }
 
@@ -42,7 +41,6 @@ impl fmt::Debug for Cleanup {
         match self {
             Cleanup::Effect(_) => f.debug_tuple("Effect"),
             Cleanup::Signal(_) => f.debug_tuple("Signal"),
-            Cleanup::Variable(_) => f.debug_tuple("Variable"),
             Cleanup::Callback(_) => f.debug_tuple("Callback"),
         }
         .field(&"_")
@@ -100,9 +98,6 @@ impl Drop for ScopeDisposer {
                         _t.try_borrow_mut()
                             .unwrap_or_else(|_| panic!("tried to dispose an effect in use"));
                         let _t = rt.effect_contexts.borrow_mut().remove(id).unwrap();
-                    }
-                    Cleanup::Variable(id) => {
-                        let _t = rt.variables.borrow_mut().remove(id).unwrap();
                     }
                     Cleanup::Callback(cb) => rt.untrack(cb),
                 }

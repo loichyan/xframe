@@ -1,14 +1,14 @@
 use crate::{
-    runtime::{Runtime, ScopeId, VariableId},
+    runtime::{Runtime, ScopeId, SignalId},
     scope::Scope,
-    variable::Variable,
+    signal::{ReadSignal, Signal},
 };
 use ahash::AHashMap;
 use std::{any::TypeId, marker::PhantomData};
 
 #[derive(Default)]
 pub(crate) struct ScopeContexts {
-    content: AHashMap<TypeId, VariableId>,
+    content: AHashMap<TypeId, SignalId>,
 }
 
 struct ContextId<T>(PhantomData<T>);
@@ -18,19 +18,18 @@ fn context_id<T: 'static>() -> TypeId {
 }
 
 impl ScopeId {
-    fn find_context<T>(&self, rt: &Runtime) -> Option<Variable<T>> {
+    fn find_context<T>(&self, rt: &Runtime) -> Option<Signal<T>> {
         rt.scope_contexts.borrow().get(*self).and_then(|contexts| {
-            contexts
-                .content
-                .get(&context_id::<T>())
-                .map(|&id| Variable {
+            contexts.content.get(&context_id::<T>()).map(|&id| {
+                Signal(ReadSignal {
                     id,
                     marker: PhantomData,
                 })
+            })
         })
     }
 
-    fn find_context_recursive<T>(&self, rt: &Runtime) -> Option<Variable<T>> {
+    fn find_context_recursive<T>(&self, rt: &Runtime) -> Option<Signal<T>> {
         self.find_context::<T>(rt).or_else(|| {
             rt.scope_parents
                 .borrow()
@@ -46,7 +45,7 @@ impl Scope {
     /// # Panics
     ///
     /// Panics if the same context has already been provided.
-    pub fn provide_context<T>(&self, t: T) -> Variable<T> {
+    pub fn provide_context<T>(&self, t: T) -> Signal<T> {
         self.try_provide_context(t)
             .unwrap_or_else(|_| panic!("tried to provide a duplicated context in the same scope"))
     }
@@ -54,19 +53,19 @@ impl Scope {
     /// Provide a context in current scope which is identified by the [`TypeId`].
     /// If the same context has not been provided then return its reference,
     /// otherwise return the existing one as an error.
-    pub fn try_provide_context<T>(&self, t: T) -> Result<Variable<T>, Variable<T>> {
+    pub fn try_provide_context<T>(&self, t: T) -> Result<Signal<T>, Signal<T>> {
         self.with_shared(|rt| {
             if let Some(val) = self.id.find_context::<T>(rt) {
                 Err(val)
             } else {
-                let val = self.create_variable(t);
+                let val = self.create_signal(t);
                 rt.scope_contexts
                     .borrow_mut()
                     .entry(self.id)
                     .unwrap()
                     .or_default()
                     .content
-                    .insert(context_id::<T>(), val.id);
+                    .insert(context_id::<T>(), val.0.id);
                 Ok(val)
             }
         })
@@ -77,13 +76,13 @@ impl Scope {
     /// # Panics
     ///
     /// Panics if the context is not provided.
-    pub fn use_context<T>(&self) -> Variable<T> {
+    pub fn use_context<T>(&self) -> Signal<T> {
         self.try_use_context::<T>()
             .unwrap_or_else(|| panic!("tried to use a nonexistent context"))
     }
 
     /// Loop up the context in the current and parent scopes.
-    pub fn try_use_context<T>(&self) -> Option<Variable<T>> {
+    pub fn try_use_context<T>(&self) -> Option<Signal<T>> {
         self.with_shared(|rt| self.id.find_context_recursive::<T>(rt))
     }
 }

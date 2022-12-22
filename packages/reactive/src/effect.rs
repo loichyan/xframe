@@ -147,7 +147,7 @@ mod tests {
     fn effect() {
         create_root(|cx| {
             let state = cx.create_signal(0);
-            let double = cx.create_variable(-1);
+            let double = cx.create_signal(-1);
 
             cx.create_effect(move || {
                 double.set(state.get() * 2);
@@ -234,12 +234,12 @@ mod tests {
     fn inner_effect_triggered_first() {
         create_root(|cx| {
             let state = cx.create_signal(());
-            let inner_counter = cx.create_variable(0);
-            let outer_counter = cx.create_variable(0);
+            let inner_counter = cx.create_signal(0);
+            let outer_counter = cx.create_signal(0);
 
             cx.create_effect(move || {
                 state.track();
-                if inner_counter.get() < 2 {
+                if inner_counter.get_untracked() < 2 {
                     cx.create_effect_scoped(move |cx| {
                         cx.create_effect(move || {
                             state.track();
@@ -311,7 +311,7 @@ mod tests {
         }
 
         create_root(|cx| {
-            let var = cx.create_variable(DropAndRead(None));
+            let var = cx.create_signal(DropAndRead(None));
             // Last creadted drop first.
             let eff = cx.create_effect(|| ());
             var.write(|v| v.0 = Some(eff));

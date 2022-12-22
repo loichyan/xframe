@@ -10,8 +10,8 @@ use std::{any::Any, fmt, marker::PhantomData, ops::Deref, rc::Rc};
 const INITIAL_SUBCRIBER_SLOTS: usize = 4;
 
 pub struct ReadSignal<T: 'static> {
-    id: SignalId,
-    marker: PhantomData<(T, ThreadLocal)>,
+    pub(crate) id: SignalId,
+    pub(crate) marker: PhantomData<(T, ThreadLocal)>,
 }
 
 impl<T: fmt::Debug> fmt::Debug for ReadSignal<T> {
@@ -40,7 +40,7 @@ impl<T> From<Signal<T>> for ReadSignal<T> {
     }
 }
 
-pub struct Signal<T: 'static>(ReadSignal<T>);
+pub struct Signal<T: 'static>(pub(crate) ReadSignal<T>);
 
 impl<T: fmt::Debug> fmt::Debug for Signal<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -280,7 +280,7 @@ mod tests {
     #[should_panic = "tried to access a disposed signal"]
     fn cannot_read_disposed_signals() {
         create_root(|cx| {
-            let var = cx.create_variable(DropAndRead(None));
+            let var = cx.create_signal(DropAndRead(None));
             let signal = cx.create_signal(String::from("Hello, xFrame!"));
             var.write(|v| v.0 = Some(signal));
         });
@@ -290,9 +290,27 @@ mod tests {
     #[should_panic = "tried to access a disposed signal"]
     fn cannot_read_disposed_signal_contexts() {
         create_root(|cx| {
-            let var = cx.create_variable(DropAndRead(None));
+            let var = cx.create_signal(DropAndRead(None));
             let signal = cx.create_signal(String::from("Hello, xFrame!"));
             var.write(|v| v.0 = Some(signal));
+        });
+    }
+
+    #[test]
+    fn access_previous_signal_on_drop() {
+        struct DropAndAssert {
+            var: Signal<i32>,
+            expect: i32,
+        }
+        impl Drop for DropAndAssert {
+            fn drop(&mut self) {
+                assert_eq!(self.var.get(), self.expect);
+            }
+        }
+
+        create_root(|cx| {
+            let var = cx.create_signal(777);
+            cx.create_signal(DropAndAssert { var, expect: 777 });
         });
     }
 
