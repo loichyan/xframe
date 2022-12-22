@@ -13,7 +13,7 @@ impl<T> Empty for T {}
 #[doc(inline)]
 pub use {
     effect::Effect,
-    scope::{create_root, Scope, ScopeDisposer},
+    scope::{create_root, untrack, Scope, ScopeDisposer},
     signal::{ReadSignal, Signal},
 };
 

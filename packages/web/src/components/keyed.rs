@@ -1,7 +1,7 @@
 use crate::{utils::Visit, view_with};
 use std::hash::Hash;
 use xframe_core::{GenericComponent, GenericElement, GenericNode, IntoReactive, Reactive, View};
-use xframe_reactive::Scope;
+use xframe_reactive::{untrack, Scope};
 
 type AIndexMap<K, V> = indexmap::IndexMap<K, V, ahash::RandomState>;
 
@@ -56,7 +56,7 @@ where
             let dyn_view = cx.create_signal(View::Node(placeholder.clone()));
             cx.create_effect(move || {
                 let each = each.clone().into_value();
-                cx.untrack(|| {
+                untrack(|| {
                     let mut new_mounted_views = AIndexMap::default();
                     each.visit(|val| {
                         let key = fn_key(val);

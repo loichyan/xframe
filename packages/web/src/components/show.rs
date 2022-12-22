@@ -4,7 +4,7 @@ use xframe_core::{
     component::DynComponent, GenericComponent, GenericElement, GenericNode, IntoReactive, Reactive,
     Value, View,
 };
-use xframe_reactive::Scope;
+use xframe_reactive::{untrack, Scope};
 
 const INITIAL_BRANCH_SLOTS: usize = 4;
 
@@ -46,7 +46,7 @@ where
                 .into_iter()
                 .map(|ShowChild { cond, content }| Branch {
                     cond,
-                    view: cx.untrack(|| content.render()),
+                    view: untrack(|| content.render()),
                 })
                 // Add a default branch.
                 .chain(Some(Branch {
@@ -62,7 +62,7 @@ where
                         view: new_view,
                     } = branch;
                     if cond.clone().into_value() {
-                        cx.untrack(|| {
+                        untrack(|| {
                             let current_view = dyn_view.get();
                             let current_first = current_view.first();
                             let parent = current_first.parent().unwrap();

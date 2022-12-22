@@ -1,5 +1,5 @@
 use crate::{
-    runtime::{EffectId, Runtime, ScopeId, SignalId, RT},
+    runtime::{EffectId, ScopeId, SignalId, RT},
     ThreadLocal,
 };
 use smallvec::SmallVec;
@@ -97,7 +97,7 @@ impl Drop for ScopeDisposer {
                             .unwrap_or_else(|_| panic!("tried to dispose an effect in use"));
                         let _t = rt.effect_contexts.borrow_mut().remove(id).unwrap();
                     }
-                    Cleanup::Callback(cb) => rt.untrack(cb),
+                    Cleanup::Callback(cb) => untrack(cb),
                 }
             }
             // 2) Cleanup resources onwed by this `Scope`.
@@ -105,16 +105,6 @@ impl Drop for ScopeDisposer {
             rt.scope_contexts.borrow_mut().remove(id);
             rt.scope_parents.borrow_mut().remove(id);
         });
-    }
-}
-
-impl Runtime {
-    // TODO: export as global fn
-    pub fn untrack<U>(&self, f: impl FnOnce() -> U) -> U {
-        let prev = self.observer.take();
-        let output = f();
-        self.observer.set(prev);
-        output
     }
 }
 
@@ -134,6 +124,15 @@ impl ScopeId {
     }
 }
 
+pub fn untrack<U>(f: impl FnOnce() -> U) -> U {
+    RT.with(|rt| {
+        let prev = rt.observer.take();
+        let output = f();
+        rt.observer.set(prev);
+        output
+    })
+}
+
 pub fn create_root(f: impl FnOnce(Scope)) -> ScopeDisposer {
     let disposer = ScopeDisposer::new(None);
     f(disposer.0);
@@ -146,10 +145,6 @@ impl Scope {
         let disposer = ScopeDisposer::new(Some(self.id));
         f(disposer.0);
         disposer
-    }
-
-    pub fn untrack<U>(&self, f: impl FnOnce() -> U) -> U {
-        RT.with(|rt| rt.untrack(f))
     }
 
     pub fn on_cleanup(&self, f: impl 'static + FnOnce()) {
@@ -189,7 +184,7 @@ mod tests {
 
             cx.create_effect(move || {
                 trigger1.track();
-                cx.untrack(|| {
+                super::untrack(|| {
                     trigger2.track();
                     counter.update(|x| x + 1);
                 });

@@ -1,7 +1,7 @@
 use crate::{utils::Visit, view_with};
 use smallvec::SmallVec;
 use xframe_core::{GenericComponent, GenericElement, GenericNode, IntoReactive, Reactive, View};
-use xframe_reactive::Scope;
+use xframe_reactive::{untrack, Scope};
 
 const INITIAL_VIEW_SLOTS: usize = 4;
 
@@ -46,7 +46,7 @@ where
             let dyn_view = cx.create_signal(View::Node(placeholder.clone()));
             cx.create_effect(move || {
                 let each = each.clone().into_value();
-                cx.untrack(|| {
+                untrack(|| {
                     let current_view = dyn_view.get();
                     let current_last = current_view.last();
                     let parent = current_last.parent().unwrap();
