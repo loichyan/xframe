@@ -1,7 +1,7 @@
 use crate::GenericNode;
 use xframe_core::{Attribute, GenericElement, IntoReactive};
 use xframe_reactive::Scope;
-use xframe_web::Element;
+use xframe_web::{Element, Fragment};
 
 pub fn view_element<N, E>(
     cx: Scope,
@@ -40,4 +40,14 @@ pub fn view_component<Init, U1, U2, Final>(
     let u1 = props(component);
     let u2 = children(u1);
     build(u2)
+}
+
+pub fn view_fragment<N>(
+    cx: Scope,
+    children: impl 'static + FnOnce(Fragment<N>) -> Fragment<N>,
+) -> Fragment<N>
+where
+    N: GenericNode,
+{
+    children(Fragment(cx))
 }

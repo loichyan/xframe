@@ -2,7 +2,7 @@ use rand::seq::SliceRandom;
 use std::cell::Cell;
 use wasm_bindgen::JsValue;
 use web_sys::console;
-use xframe::{view, For, Fragment, If};
+use xframe::{view, For, If};
 
 thread_local! {
     static COUNTER: Cell<usize> = Cell::new(0);
@@ -70,7 +70,7 @@ fn main() {
                     For {
                         .each(ids)
                         .key(|v| *v)
-                        {move |cx, &id| view! { cx, Fragment { hr { } "ID: " (id) } }}
+                        {move |cx, &id| view! { cx, [hr { } "ID: " (id)] }}
                     }
                 }
             }

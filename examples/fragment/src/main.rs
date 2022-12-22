@@ -1,4 +1,4 @@
-use xframe::{view, Fragment, If, Switch};
+use xframe::{view, If, Switch};
 
 fn main() {
     console_error_panic_hook::set_once();
@@ -17,9 +17,7 @@ fn main() {
                 div { Switch {
                     If {
                         .when(is_even)
-                        Fragment {
-                            "I'm only visible when " (counter) " is even."
-                        }
+                        ["I'm only visible when " (counter) " is even."]
                     }
                 } }
             }

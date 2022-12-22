@@ -2,7 +2,7 @@ use crate::utils::QuoteSurround;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 use syn::{
-    braced, parenthesized,
+    braced, bracketed, parenthesized,
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
     token, Expr, Ident, LitStr, Path, Result, Token,
@@ -22,8 +22,9 @@ new_type_quote! {
     FN_CHILD(child);
     FN_BUILD(build);
     FN_VIEW_ELEMENT(#RT::view_element);
-    FN_VIEW_COMPONENT(#RT::view_component);
     FN_VIEW_TEXT(#RT::view_text);
+    FN_VIEW_COMPONENT(#RT::view_component);
+    FN_VIEW_FRAGMENT(#RT::view_fragment);
     FN_VIEW(#XFRAME::view);
 }
 
@@ -118,9 +119,7 @@ impl ViewArgs {
     }
 
     pub fn quote_children(&self) -> TokenStream {
-        let children = self.children.iter().map(ViewChild::quote);
-        let fn_ = FN_CHILD;
-        quote!(#(.#fn_(#children))*)
+        quote_children(&self.children)
     }
 }
 
@@ -153,7 +152,11 @@ pub enum ViewChild {
         brace_token: token::Brace,
         value: Expr,
     },
-    View(ViewComponent),
+    Element(ViewElement),
+    Fragment {
+        bracket_token: token::Bracket,
+        children: Vec<ViewChild>,
+    },
 }
 
 impl Parse for ViewChild {
@@ -172,8 +175,23 @@ impl Parse for ViewChild {
                 brace_token: braced!(content in input),
                 value: content.parse()?,
             }
+        } else if input.peek(token::Bracket) {
+            let content;
+            Self::Fragment {
+                bracket_token: bracketed!(content in input ),
+                children: {
+                    let mut children = Vec::new();
+                    loop {
+                        if content.is_empty() {
+                            break;
+                        }
+                        children.push(content.parse()?);
+                    }
+                    children
+                },
+            }
         } else {
-            Self::View(input.parse()?)
+            Self::Element(input.parse()?)
         })
     }
 }
@@ -181,22 +199,28 @@ impl Parse for ViewChild {
 impl ViewChild {
     pub fn quote(&self) -> TokenStream {
         match self {
-            // TODO: use square to create fragments
             Self::Literal(lit) => quote!({ #FN_VIEW_TEXT(#VAR_CX, #lit) }),
             Self::Text { value, .. } => quote!({ #FN_VIEW_TEXT(#VAR_CX, #value) }),
             Self::Expr { value, .. } => value.to_token_stream(),
-            Self::View(view) => view.quote(),
+            Self::Element(view) => view.quote(),
+            Self::Fragment { children, .. } => {
+                let children = quote_children(children);
+                quote!({ #FN_VIEW_FRAGMENT(
+                    #VAR_CX,
+                    move |#VAR_VIEW| { #VAR_VIEW #children },
+                ) })
+            }
         }
     }
 }
 
-pub struct ViewComponent {
+pub struct ViewElement {
     pub path: Path,
     pub brace_token: token::Brace,
     pub args: ViewArgs,
 }
 
-impl Parse for ViewComponent {
+impl Parse for ViewElement {
     fn parse(input: ParseStream) -> Result<Self> {
         let content;
         Ok(Self {
@@ -207,7 +231,7 @@ impl Parse for ViewComponent {
     }
 }
 
-impl ViewComponent {
+impl ViewElement {
     pub fn quote(&self) -> TokenStream {
         let Self { path, args, .. } = self;
         let builtin = path.get_ident().filter(|&ident| {
@@ -220,24 +244,26 @@ impl ViewComponent {
         let props = args.quote_props();
         let children = args.quote_children();
         if let Some(builtin) = builtin {
-            quote!({
-                #FN_VIEW_ELEMENT(
-                    #VAR_CX,
-                    #M_ELEMENT::#builtin,
-                    move |#VAR_VIEW| { #VAR_VIEW #props },
-                    move |#VAR_VIEW| { #VAR_VIEW #children },
-                )
-            })
+            quote!({ #FN_VIEW_ELEMENT(
+                #VAR_CX,
+                #M_ELEMENT::#builtin,
+                move |#VAR_VIEW| { #VAR_VIEW #props },
+                move |#VAR_VIEW| { #VAR_VIEW #children },
+            ) })
         } else {
-            quote!({
-                #FN_VIEW_COMPONENT(
-                    #VAR_CX,
-                    #path,
-                    move |#VAR_VIEW| { #VAR_VIEW #props },
-                    move |#VAR_VIEW| { #VAR_VIEW #children },
-                    move |#VAR_VIEW| { #VAR_VIEW .build() }
-                )
-            })
+            quote!({ #FN_VIEW_COMPONENT(
+                #VAR_CX,
+                #path,
+                move |#VAR_VIEW| { #VAR_VIEW #props },
+                move |#VAR_VIEW| { #VAR_VIEW #children },
+                move |#VAR_VIEW| { #VAR_VIEW .build() }
+            ) })
         }
     }
+}
+
+fn quote_children(children: &[ViewChild]) -> TokenStream {
+    let children = children.iter().map(ViewChild::quote);
+    let fn_ = FN_CHILD;
+    quote!(#(.#fn_(#children))*)
 }
