@@ -30,9 +30,7 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn buf(&self) -> &'a str {
-        self.source
-            .get(self.start..self.end)
-            .unwrap_or_else(|| unreachable!())
+        self.source.get(self.start..self.end).unwrap()
     }
 
     pub fn pos(&self) -> (usize, usize) {

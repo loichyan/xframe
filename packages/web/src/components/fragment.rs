@@ -84,7 +84,7 @@ impl<N: GenericNode> From<FragmentInit<N>> for TemplateInit<N> {
             (init.0)(&mut fragment);
             if fragment.is_empty() {
                 // Return a placeholder.
-                View::Node(Placeholder::new().into_node())
+                View::Node(N::create(Placeholder::<N>::TYPE))
             } else {
                 View::from(fragment)
             }
@@ -115,7 +115,7 @@ impl<N: GenericNode> From<FragmentRender<N>> for TemplateRender<N> {
             let next_sibling = (render.0)(node, &mut fragments);
             if fragments.is_empty() {
                 // Ignore the placeholder.
-                let placeholder = next_sibling.unwrap_or_else(|| unreachable!());
+                let placeholder = next_sibling.unwrap();
                 TemplateRenderOutput {
                     next_sibling: placeholder.next_sibling(),
                     view: View::Node(placeholder),

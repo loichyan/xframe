@@ -1,6 +1,6 @@
 use crate::{
+    runtime::{EffectId, Runtime, SignalId, RT},
     scope::{Cleanup, Scope},
-    shared::{EffectId, Shared, SignalId, SHARED},
     ThreadLocal,
 };
 use indexmap::IndexSet;
@@ -72,10 +72,10 @@ impl<T> Copy for Signal<T> {}
 
 impl<T> ReadSignal<T> {
     pub fn track(&self) {
-        SHARED.with(|shared| {
-            if let Some(id) = shared.observer.get() {
-                id.with_context(shared, |ctx| ctx.add_dependency(self.id))
-                    .unwrap_or_else(|| unreachable!());
+        RT.with(|rt| {
+            if let Some(id) = rt.observer.get() {
+                id.with_context(rt, |ctx| ctx.add_dependency(self.id))
+                    .unwrap();
             }
         });
     }
@@ -86,14 +86,13 @@ impl<T> ReadSignal<T> {
     }
 
     pub fn read_untracked<U>(&self, f: impl FnOnce(&T) -> U) -> U {
-        SHARED.with(|shared| {
-            f(shared
-                .signals
+        RT.with(|rt| {
+            f(rt.signals
                 .borrow()
                 .get(self.id)
                 .unwrap_or_else(|| panic!("tried to access a disposed signal"))
                 .downcast_ref::<T>()
-                .unwrap_or_else(|| unreachable!()))
+                .unwrap_or_else(|| panic!("tried to use a signal in mismatched types")))
         })
     }
 
@@ -115,7 +114,7 @@ impl<T> ReadSignal<T> {
 
 impl<T> Signal<T> {
     pub fn trigger(&self) {
-        SHARED.with(|shared| self.id.trigger(shared));
+        RT.with(|rt| self.id.trigger(rt));
     }
 
     pub fn write<U>(&self, f: impl FnOnce(&mut T) -> U) -> U {
@@ -125,14 +124,13 @@ impl<T> Signal<T> {
     }
 
     pub fn write_slient<U>(&self, f: impl FnOnce(&mut T) -> U) -> U {
-        SHARED.with(|shared| {
-            f(shared
-                .signals
+        RT.with(|rt| {
+            f(rt.signals
                 .borrow_mut()
                 .get_mut(self.id)
                 .unwrap_or_else(|| panic!("tried to access a disposed signal"))
                 .downcast_mut()
-                .unwrap_or_else(|| unreachable!()))
+                .unwrap_or_else(|| panic!("tried to use a signal in mismatched types")))
         })
     }
 
@@ -173,15 +171,15 @@ impl SignalContext {
 impl SignalId {
     pub fn with_context<T>(
         &self,
-        shared: &Shared,
+        rt: &Runtime,
         f: impl FnOnce(&mut SignalContext) -> T,
     ) -> Option<T> {
-        shared.signal_contexts.borrow_mut().get_mut(*self).map(f)
+        rt.signal_contexts.borrow_mut().get_mut(*self).map(f)
     }
 
-    pub fn trigger(&self, shared: &Shared) {
+    pub fn trigger(&self, rt: &Runtime) {
         let subscribers = self
-            .with_context(shared, |ctx| {
+            .with_context(rt, |ctx| {
                 ctx.subscribers
                     .drain(..)
                     .collect::<SmallVec<[_; INITIAL_SUBCRIBER_SLOTS]>>()
@@ -192,21 +190,18 @@ impl SignalId {
         // so we should ensure the inner effects re-execute before outer ones to
         // avoid potential double executions.
         for id in subscribers {
-            id.run(shared);
+            id.run(rt);
         }
     }
 }
 
 impl Scope {
     fn create_signal_dyn(&self, t: Box<dyn Any>) -> SignalId {
-        self.with_shared(|shared| {
-            self.id.with(shared, |cx| {
-                let id = shared.signals.borrow_mut().insert(t);
+        self.with_shared(|rt| {
+            self.id.with(rt, |cx| {
+                let id = rt.signals.borrow_mut().insert(t);
                 cx.push_cleanup(Cleanup::Signal(id));
-                shared
-                    .signal_contexts
-                    .borrow_mut()
-                    .insert(id, <_>::default());
+                rt.signal_contexts.borrow_mut().insert(id, <_>::default());
                 id
             })
         })

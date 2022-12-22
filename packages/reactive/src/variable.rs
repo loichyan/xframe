@@ -1,6 +1,6 @@
 use crate::{
+    runtime::{VariableId, RT},
     scope::{Cleanup, Scope},
-    shared::{VariableId, SHARED},
     ThreadLocal,
 };
 use std::{any::Any, fmt, marker::PhantomData};
@@ -32,14 +32,13 @@ impl<T: fmt::Display> fmt::Display for Variable<T> {
 
 impl<T> Variable<T> {
     pub fn read<U>(&self, f: impl FnOnce(&T) -> U) -> U {
-        SHARED.with(|shared| {
-            f(shared
-                .variables
+        RT.with(|rt| {
+            f(rt.variables
                 .borrow()
                 .get(self.id)
                 .unwrap_or_else(|| panic!("tried to access a disposed variable"))
                 .downcast_ref()
-                .unwrap_or_else(|| unreachable!()))
+                .unwrap_or_else(|| panic!("tried to use a variable in mismatched types")))
         })
     }
 
@@ -51,14 +50,13 @@ impl<T> Variable<T> {
     }
 
     pub fn write<U>(&self, f: impl FnOnce(&mut T) -> U) -> U {
-        SHARED.with(|shared| {
-            f(shared
-                .variables
+        RT.with(|rt| {
+            f(rt.variables
                 .borrow_mut()
                 .get_mut(self.id)
                 .unwrap_or_else(|| panic!("tried to access a disposed variable"))
                 .downcast_mut()
-                .unwrap_or_else(|| unreachable!()))
+                .unwrap_or_else(|| panic!("tried to use a variable in mismatched types")))
         })
     }
 
@@ -73,9 +71,9 @@ impl<T> Variable<T> {
 
 impl Scope {
     fn create_variable_dyn(&self, t: Box<dyn Any>) -> VariableId {
-        self.with_shared(|shared| {
-            self.id.with(shared, |cx| {
-                let id = shared.variables.borrow_mut().insert(t);
+        self.with_shared(|rt| {
+            self.id.with(rt, |cx| {
+                let id = rt.variables.borrow_mut().insert(t);
                 cx.push_cleanup(Cleanup::Variable(id));
                 id
             })

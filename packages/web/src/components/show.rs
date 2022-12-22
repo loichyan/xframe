@@ -10,6 +10,7 @@ const INITIAL_BRANCH_SLOTS: usize = 4;
 
 define_placeholder!(Placeholder("Placeholder for `xframe::Show` Component"));
 
+// TODO: rename to `Switch`
 #[allow(non_snake_case)]
 pub fn Show<N: GenericNode>(cx: Scope) -> Show<N> {
     Show {
@@ -64,7 +65,7 @@ where
                         cx.untrack(|| {
                             let current_view = dyn_view.get();
                             let current_first = current_view.first();
-                            let parent = current_first.parent().unwrap_or_else(|| unreachable!());
+                            let parent = current_first.parent().unwrap();
                             let new_first = new_view.first();
                             if current_first.ne(&new_first) {
                                 current_view.replace_with(&parent, new_view);

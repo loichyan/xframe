@@ -222,20 +222,13 @@ impl Parse for ViewComponent {
 impl ViewComponent {
     pub fn quote(&self) -> TokenStream {
         let Self { path, args, .. } = self;
-        let builtin = if let Some(ident) = path.get_ident() {
-            if ident
+        let builtin = path.get_ident().filter(|&ident| {
+            ident
                 .to_string()
                 .trim_end_matches('_')
                 .chars()
                 .all(|c| c.is_ascii_lowercase())
-            {
-                Some(ident)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        });
         let props = args.quote_props();
         let children = args.quote_children();
         if let Some(builtin) = builtin {

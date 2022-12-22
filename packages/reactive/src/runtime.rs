@@ -12,7 +12,7 @@ use std::{
 };
 
 thread_local! {
-    pub(crate) static SHARED: Shared = <_>::default();
+    pub(crate) static RT: Runtime = <_>::default();
 }
 
 new_key_type! {
@@ -25,7 +25,7 @@ new_key_type! {
 type ASparseSecondaryMap<K, V> = SparseSecondaryMap<K, V, ahash::RandomState>;
 
 #[derive(Default)]
-pub(crate) struct Shared {
+pub(crate) struct Runtime {
     pub observer: Cell<Option<EffectId>>,
     pub scopes: RefCell<SlotMap<ScopeId, RawScope>>,
     pub scope_parents: RefCell<SecondaryMap<ScopeId, ScopeId>>,

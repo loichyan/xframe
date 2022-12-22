@@ -1,6 +1,6 @@
 use crate::{
+    runtime::{EffectId, Runtime, SignalId, RT},
     scope::{Cleanup, Scope},
-    shared::{EffectId, Shared, SignalId, SHARED},
     ThreadLocal,
 };
 use ahash::AHashSet;
@@ -22,9 +22,9 @@ impl fmt::Debug for Effect {
 
 impl Effect {
     pub fn run(&self) {
-        SHARED.with(|shared| {
+        RT.with(|rt| {
             self.id
-                .run(shared)
+                .run(rt)
                 .unwrap_or_else(|| panic!("tried to access a disposed effect"));
         })
     }
@@ -59,63 +59,61 @@ where
 impl EffectId {
     pub fn with_context<T>(
         &self,
-        shared: &Shared,
+        rt: &Runtime,
         f: impl FnOnce(&mut EffectContext) -> T,
     ) -> Option<T> {
-        shared.effect_contexts.borrow_mut().get_mut(*self).map(f)
+        rt.effect_contexts.borrow_mut().get_mut(*self).map(f)
     }
 
-    pub fn run(&self, shared: &Shared) -> Option<()> {
-        let effect = shared.effects.borrow().get(*self).cloned();
+    pub fn run(&self, rt: &Runtime) -> Option<()> {
+        let effect = rt.effects.borrow().get(*self).cloned();
         effect.map(|effect| {
             // 1) Clear dependencies.
             // After each execution a signal may not be tracked by this effect anymore,
             // so we need to clear dependencies both links and backlinks at first.
-            self.with_context(shared, |ctx| {
+            self.with_context(rt, |ctx| {
                 let dependencies = &mut ctx.dependencies;
+                // TODO: drain
                 for id in dependencies.iter() {
-                    id.with_context(shared, |ctx| {
+                    id.with_context(rt, |ctx| {
                         ctx.unsubscribe(*self);
                     });
                 }
                 dependencies.clear();
             })
-            .unwrap_or_else(|| unreachable!());
+            .unwrap();
 
             // 2) Save observer and change it to this effect.
-            let prev = shared.observer.take();
-            shared.observer.set(Some(*self));
+            let prev = rt.observer.take();
+            rt.observer.set(Some(*self));
 
             // 3) Call the effect.
             effect.borrow_mut().run_untracked();
+            drop(effect);
 
             // 4) Subscribe dependencies.
             // An effect is appended to the subscriber list of the signals since we
             // subscribe after running the closure.
-            self.with_context(shared, |ctx| {
+            self.with_context(rt, |ctx| {
                 for id in ctx.dependencies.iter() {
-                    id.with_context(shared, |ctx| ctx.subscribe(*self));
+                    id.with_context(rt, |ctx| ctx.subscribe(*self));
                 }
             })
-            .unwrap_or_else(|| unreachable!());
+            .unwrap();
 
             // 5) Restore previous observer.
-            shared.observer.set(prev);
+            rt.observer.set(prev);
         })
     }
 }
 
 impl Scope {
     fn create_effect_dyn(&self, f: Rc<RefCell<dyn AnyEffect>>) -> Effect {
-        self.with_shared(|shared| {
-            let id = shared.effects.borrow_mut().insert(f);
-            self.id
-                .with(shared, |cx| cx.push_cleanup(Cleanup::Effect(id)));
-            shared
-                .effect_contexts
-                .borrow_mut()
-                .insert(id, <_>::default());
-            id.run(shared).unwrap_or_else(|| unreachable!());
+        self.with_shared(|rt| {
+            let id = rt.effects.borrow_mut().insert(f);
+            self.id.with(rt, |cx| cx.push_cleanup(Cleanup::Effect(id)));
+            rt.effect_contexts.borrow_mut().insert(id, <_>::default());
+            id.run(rt).unwrap();
             Effect {
                 id,
                 marker: PhantomData,
@@ -281,16 +279,16 @@ mod tests {
                     first = false;
                 }
             });
-            let (total, active) = SHARED.with(|shared| {
+            let (total, active) = RT.with(|rt| {
                 eff.id
-                    .with_context(shared, |ctx| {
+                    .with_context(rt, |ctx| {
                         (
                             ctx.dependencies.len(),
                             ctx.dependencies
                                 .iter()
                                 // The `Signal` should be removed after the scope is
                                 // disposed.
-                                .map(|id| id.with_context(shared, |_| ()).is_some())
+                                .map(|id| id.with_context(rt, |_| ()).is_some())
                                 .filter(|x| *x)
                                 .count(),
                         )

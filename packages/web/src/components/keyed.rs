@@ -17,6 +17,7 @@ where
     children: Option<Box<dyn Fn(&T) -> View<N>>>,
 }
 
+// TODO: rename to `For`
 #[allow(non_snake_case)]
 pub fn Keyed<N, T, K, I>(cx: Scope) -> Keyed<N, T, K, I>
 where
@@ -70,7 +71,7 @@ where
                     let mounted_views = std::mem::replace(&mut mounted_views, new_mounted_views);
                     let current_view = dyn_view.get();
                     let current_last = current_view.last();
-                    let parent = current_last.parent().unwrap_or_else(|| unreachable!());
+                    let parent = current_last.parent().unwrap();
                     let next_last = current_last.next_sibling();
                     if new_view.is_empty() {
                         if current_last.ne(&placeholder) {

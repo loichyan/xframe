@@ -1,9 +1,9 @@
 use crate::{
-    shared::{EffectId, ScopeId, Shared, SignalId, VariableId, SHARED},
+    runtime::{EffectId, Runtime, ScopeId, SignalId, VariableId, RT},
     ThreadLocal,
 };
 use smallvec::SmallVec;
-use std::{fmt, marker::PhantomData, rc::Rc};
+use std::{fmt, marker::PhantomData};
 
 const INITIAL_CLEANUP_SLOTS: usize = 4;
 
@@ -15,8 +15,8 @@ pub struct Scope {
 
 impl fmt::Debug for Scope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.with_shared(|shared| {
-            self.id.with(shared, |raw| {
+        self.with_shared(|rt| {
+            self.id.with(rt, |raw| {
                 f.debug_struct("Scope")
                     .field("cleanups", &raw.cleanups as _)
                     .finish_non_exhaustive()
@@ -54,10 +54,10 @@ pub struct ScopeDisposer(Scope);
 
 impl ScopeDisposer {
     fn new(parent: Option<ScopeId>) -> Self {
-        SHARED.with(|shared| {
-            let id = shared.scopes.borrow_mut().insert(<_>::default());
+        RT.with(|rt| {
+            let id = rt.scopes.borrow_mut().insert(<_>::default());
             if let Some(parent) = parent {
-                shared.scope_parents.borrow_mut().insert(id, parent);
+                rt.scope_parents.borrow_mut().insert(id, parent);
             }
             let scope = Scope {
                 id,
@@ -83,60 +83,34 @@ impl ScopeDisposer {
 
 impl Drop for ScopeDisposer {
     fn drop(&mut self) {
-        SHARED.with(|shared| {
+        RT.with(|rt| {
             let Scope { id, .. } = self.0;
             // 1) Cleanup resources created inside this `Scope`.
-            let cleanups = id.with(shared, |cx| std::mem::take(&mut cx.cleanups));
+            let cleanups = id.with(rt, |cx| std::mem::take(&mut cx.cleanups));
             for cl in cleanups.into_iter().rev() {
                 match cl {
                     Cleanup::Signal(id) => {
-                        let v = shared
-                            .signals
-                            .borrow_mut()
-                            .remove(id)
-                            .unwrap_or_else(|| unreachable!());
-                        shared
-                            .signal_contexts
-                            .borrow_mut()
-                            .remove(id)
-                            .unwrap_or_else(|| unreachable!());
-                        drop(v);
+                        // Use let binding to let the mutable borrow of `signals`
+                        // get dropped before `_t`.
+                        let _t = rt.signals.borrow_mut().remove(id).unwrap();
+                        let _t = rt.signal_contexts.borrow_mut().remove(id).unwrap();
                     }
                     Cleanup::Effect(id) => {
-                        let v = shared
-                            .effects
-                            .borrow_mut()
-                            .remove(id)
-                            .unwrap_or_else(|| unreachable!());
-                        shared
-                            .effect_contexts
-                            .borrow_mut()
-                            .remove(id)
-                            .unwrap_or_else(|| unreachable!());
-                        if Rc::strong_count(&v) != 1 {
-                            panic!("tried to dispose an effect in use")
-                        }
-                        drop(v);
+                        let _t = rt.effects.borrow_mut().remove(id).unwrap();
+                        _t.try_borrow_mut()
+                            .unwrap_or_else(|_| panic!("tried to dispose an effect in use"));
+                        let _t = rt.effect_contexts.borrow_mut().remove(id).unwrap();
                     }
                     Cleanup::Variable(id) => {
-                        let v = shared
-                            .variables
-                            .borrow_mut()
-                            .remove(id)
-                            .unwrap_or_else(|| unreachable!());
-                        drop(v);
+                        let _t = rt.variables.borrow_mut().remove(id).unwrap();
                     }
-                    Cleanup::Callback(cb) => shared.untrack(cb),
+                    Cleanup::Callback(cb) => rt.untrack(cb),
                 }
             }
             // 2) Cleanup resources onwed by this `Scope`.
-            shared
-                .scopes
-                .borrow_mut()
-                .remove(id)
-                .unwrap_or_else(|| unreachable!());
-            shared.scope_contexts.borrow_mut().remove(id);
-            shared.scope_parents.borrow_mut().remove(id);
+            rt.scopes.borrow_mut().remove(id).unwrap();
+            rt.scope_contexts.borrow_mut().remove(id);
+            rt.scope_parents.borrow_mut().remove(id);
         });
     }
 }
@@ -147,7 +121,8 @@ impl RawScope {
     }
 }
 
-impl Shared {
+impl Runtime {
+    // TODO: export as global fn
     pub fn untrack<U>(&self, f: impl FnOnce() -> U) -> U {
         let prev = self.observer.take();
         let output = f();
@@ -157,9 +132,8 @@ impl Shared {
 }
 
 impl ScopeId {
-    pub fn with<T>(&self, shared: &Shared, f: impl FnOnce(&mut RawScope) -> T) -> T {
-        shared
-            .scopes
+    pub fn with<T>(&self, rt: &Runtime, f: impl FnOnce(&mut RawScope) -> T) -> T {
+        rt.scopes
             .borrow_mut()
             .get_mut(*self)
             .map(f)
@@ -174,23 +148,24 @@ pub fn create_root(f: impl FnOnce(Scope)) -> ScopeDisposer {
 }
 
 impl Scope {
-    pub(crate) fn with_shared<T>(&self, f: impl FnOnce(&Shared) -> T) -> T {
-        SHARED.with(f)
+    pub(crate) fn with_shared<T>(&self, f: impl FnOnce(&Runtime) -> T) -> T {
+        RT.with(f)
     }
 
     pub fn create_child(&self, f: impl FnOnce(Scope)) -> ScopeDisposer {
+        // TODO: dispose child scope
         let disposer = ScopeDisposer::new(Some(self.id));
         f(disposer.0);
         disposer
     }
 
     pub fn untrack<U>(&self, f: impl FnOnce() -> U) -> U {
-        self.with_shared(|shared| shared.untrack(f))
+        self.with_shared(|rt| rt.untrack(f))
     }
 
     pub fn on_cleanup(&self, f: impl 'static + FnOnce()) {
-        self.with_shared(|shared| {
-            self.id.with(shared, |cx| {
+        self.with_shared(|rt| {
+            self.id.with(rt, |cx| {
                 cx.cleanups.push(Cleanup::Callback(Box::new(f)));
             })
         })

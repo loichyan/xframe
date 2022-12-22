@@ -1,5 +1,5 @@
 use wasm_bindgen::JsCast;
-use xframe::{view, Fragment, Indexed, Keyed};
+use xframe::{view, Fragment, Keyed};
 
 fn main() {
     console_error_panic_hook::set_once();

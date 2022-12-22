@@ -24,21 +24,21 @@ impl Scope {
                 }
             }
         });
-        *memo.get().unwrap_or_else(|| unreachable!())
+        memo.get().unwrap().into()
     }
 
     pub fn create_memo<T>(&self, f: impl 'static + FnMut() -> T) -> ReadSignal<T> {
         self.create_memo_impl(f, |new_val, memo| memo.set(new_val))
     }
 
-    pub fn create_seletor<T>(&self, f: impl 'static + FnMut() -> T) -> ReadSignal<T>
+    pub fn create_selector<T>(&self, f: impl 'static + FnMut() -> T) -> ReadSignal<T>
     where
         T: PartialEq,
     {
-        self.create_seletor_with(f, T::eq)
+        self.create_selector_with(f, T::eq)
     }
 
-    pub fn create_seletor_with<T>(
+    pub fn create_selector_with<T>(
         &self,
         f: impl 'static + FnMut() -> T,
         mut is_equal: impl 'static + FnMut(&T, &T) -> bool,
@@ -130,7 +130,7 @@ mod tests {
     fn selector() {
         create_root(|cx| {
             let state = cx.create_signal(1);
-            let double = cx.create_seletor(move || state.get() * 2);
+            let double = cx.create_selector(move || state.get() * 2);
 
             let counter2 = cx.create_signal(0);
             cx.create_effect(move || {

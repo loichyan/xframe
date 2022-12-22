@@ -16,6 +16,7 @@ where
     children: Option<Box<dyn Fn(&T) -> View<N>>>,
 }
 
+// TODO: rename to `List`
 #[allow(non_snake_case)]
 pub fn Indexed<N, T, I>(cx: Scope) -> Indexed<N, T, I>
 where
@@ -48,7 +49,7 @@ where
                 cx.untrack(|| {
                     let current_view = dyn_view.get();
                     let current_last = current_view.last();
-                    let parent = current_last.parent().unwrap_or_else(|| unreachable!());
+                    let parent = current_last.parent().unwrap();
                     let next_first = current_last.next_sibling();
 
                     let mounted_len = mounted_views.len();

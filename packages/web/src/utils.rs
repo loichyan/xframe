@@ -6,15 +6,6 @@ macro_rules! define_placeholder {
             node: N,
         }
 
-        #[allow(dead_code)]
-        impl<N: ::xframe_core::GenericNode> $name<N> {
-            pub fn new() -> Self {
-                Self {
-                    node: N::create(<Self as ::xframe_core::GenericElement<N>>::TYPE),
-                }
-            }
-        }
-
         impl<N: ::xframe_core::GenericNode> xframe_core::GenericElement<N> for $name<N> {
             const TYPE: ::xframe_core::NodeType =
                 ::xframe_core::NodeType::Placeholder(::std::borrow::Cow::Borrowed($desc));

@@ -45,7 +45,7 @@ impl<N: GenericNode> Element<N> {
             cx,
             init: ElementInit::new(|| N::create(E::TYPE)),
             render: ElementRender::<N>::new(move |root| {
-                let root = root.unwrap_or_else(|| unreachable!());
+                let root = root.unwrap();
                 (
                     root.first_child(),
                     TemplateRenderOutput {
