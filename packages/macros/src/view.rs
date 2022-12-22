@@ -12,19 +12,22 @@ new_type_quote! {
     XFRAME(::xframe);
     RT(#XFRAME::__private);
     M_ELEMENT(#XFRAME::element);
-    VAR_ELEMENT(__element);
     VAR_CX(__cx);
+    VAR_VIEW(__view);
     T_COMPONENT(__Component);
     T_GENERIC_COMPONENT(#XFRAME::GenericComponent);
     T_TEMPLATE(#XFRAME::Template);
     T_TEMPLATE_ID(#XFRAME::TemplateId);
-    FN_TEXT(#M_ELEMENT::text);
+    T_TEXT(#M_ELEMENT::text);
     FN_CHILD(child);
     FN_BUILD(build);
-    FN_BUILTIN(#RT::view_builtin);
+    FN_VIEW_ELEMENT(#RT::view_element);
+    FN_VIEW_COMPONENT(#RT::view_component);
+    FN_VIEW_TEXT(#RT::view_text);
     FN_VIEW(#XFRAME::view);
 }
 
+// TODO: better spanned
 pub fn expand(input: ParseStream) -> Result<TokenStream> {
     Ok(input.parse::<View>()?.quote())
 }
@@ -59,12 +62,7 @@ impl View {
                 F: 'static + FnOnce() -> #T_TEMPLATE<N>,
             {
                 fn id() -> Option<#T_TEMPLATE_ID> {
-                    thread_local! {
-                        static __ID: #T_TEMPLATE_ID = #T_TEMPLATE_ID::generate(
-                            concat!(module_path!(), ":", line!(), ":", column!())
-                        );
-                    }
-                    Some(__ID.with(Clone::clone))
+                    Some(#XFRAME::id!())
                 }
 
                 fn build_template(self) -> #T_TEMPLATE<N> {
@@ -183,22 +181,8 @@ impl Parse for ViewChild {
 impl ViewChild {
     pub fn quote(&self) -> TokenStream {
         match self {
-            Self::Literal(lit) => {
-                // TODO: add private::view_*
-                quote!(#FN_BUILTIN(
-                    #VAR_CX,
-                    #FN_TEXT,
-                    move |#VAR_ELEMENT| { #VAR_ELEMENT.data(#lit) },
-                ))
-            }
-            Self::Text { paren_token, value } => {
-                let value = QuoteSurround(paren_token, value);
-                quote!(#FN_BUILTIN(
-                    #VAR_CX,
-                    #FN_TEXT,
-                    move |#VAR_ELEMENT| { #VAR_ELEMENT .data #value },
-                ))
-            }
+            Self::Literal(lit) => quote!({ #FN_VIEW_TEXT(#VAR_CX, #lit) }),
+            Self::Text { value, .. } => quote!({ #FN_VIEW_TEXT(#VAR_CX, #value) }),
             Self::Expr { value, .. } => value.to_token_stream(),
             Self::View(view) => view.quote(),
         }
@@ -236,19 +220,22 @@ impl ViewComponent {
         let children = args.quote_children();
         if let Some(builtin) = builtin {
             quote!({
-                #FN_BUILTIN(
+                #FN_VIEW_ELEMENT(
                     #VAR_CX,
                     #M_ELEMENT::#builtin,
-                    move |#VAR_ELEMENT| { #VAR_ELEMENT #props },
+                    move |#VAR_VIEW| { #VAR_VIEW #props },
+                    move |#VAR_VIEW| { #VAR_VIEW #children },
                 )
-                #children
             })
         } else {
             quote!({
-                #path(#VAR_CX)
-                #props
-                #children
-                .#FN_BUILD()
+                #FN_VIEW_COMPONENT(
+                    #VAR_CX,
+                    #path,
+                    move |#VAR_VIEW| { #VAR_VIEW #props },
+                    move |#VAR_VIEW| { #VAR_VIEW #children },
+                    move |#VAR_VIEW| { #VAR_VIEW .build() }
+                )
             })
         }
     }

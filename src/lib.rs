@@ -27,7 +27,10 @@ pub mod event {
 
 #[doc(inline)]
 pub use {
-    xframe_core::prelude::*, xframe_macros::view, xframe_reactive::*, xframe_web::prelude::*,
+    xframe_core::{component, prelude::*, template},
+    xframe_macros::view,
+    xframe_reactive::*,
+    xframe_web::prelude::*,
 };
 
 /// A trait alias of [`xframe_core::GenericNode`].
@@ -37,3 +40,17 @@ impl<T: xframe_core::GenericNode<Event = xframe_web::Event>> GenericNode for T {
 #[doc(hidden)]
 #[path = "private.rs"]
 pub mod __private;
+
+/// Generate a unique [`TemplateId`] with the module path and line/column info.
+///
+/// [`TemplateId`]: template::TemplateId
+#[macro_export]
+macro_rules! id {
+    () => {{
+        thread_local! {
+            static __ID: $crate::template::TemplateId =
+                $crate::template::TemplateId::generate(concat!(module_path!(), ":", line!(), ":", column!()));
+        }
+        __ID.with(Clone::clone)
+    }};
+}
