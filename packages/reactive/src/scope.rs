@@ -15,12 +15,10 @@ pub struct Scope {
 
 impl fmt::Debug for Scope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        RT.with(|rt| {
-            self.id.with(rt, |raw| {
-                f.debug_struct("Scope")
-                    .field("cleanups", &raw.cleanups as _)
-                    .finish_non_exhaustive()
-            })
+        self.id.with(|raw| {
+            f.debug_struct("Scope")
+                .field("cleanups", &raw.cleanups as _)
+                .finish_non_exhaustive()
         })
     }
 }
@@ -84,7 +82,7 @@ impl Drop for ScopeDisposer {
         RT.with(|rt| {
             let Scope { id, .. } = self.0;
             // 1) Cleanup resources created inside this `Scope`.
-            let cleanups = id.with(rt, |cx| std::mem::take(&mut cx.cleanups));
+            let cleanups = id.with(|cx| std::mem::take(&mut cx.cleanups));
             for cl in cleanups.into_iter().rev() {
                 match cl {
                     Cleanup::Signal(id) => {
@@ -110,12 +108,6 @@ impl Drop for ScopeDisposer {
     }
 }
 
-impl RawScope {
-    pub fn push_cleanup(&mut self, cleanup: Cleanup) {
-        self.cleanups.push(cleanup);
-    }
-}
-
 impl Runtime {
     // TODO: export as global fn
     pub fn untrack<U>(&self, f: impl FnOnce() -> U) -> U {
@@ -127,12 +119,18 @@ impl Runtime {
 }
 
 impl ScopeId {
-    pub fn with<T>(&self, rt: &Runtime, f: impl FnOnce(&mut RawScope) -> T) -> T {
-        rt.scopes
-            .borrow_mut()
-            .get_mut(*self)
-            .map(f)
-            .unwrap_or_else(|| panic!("tried to access a disposed scope"))
+    fn with<T>(&self, f: impl FnOnce(&mut RawScope) -> T) -> T {
+        RT.with(|rt| {
+            rt.scopes
+                .borrow_mut()
+                .get_mut(*self)
+                .map(f)
+                .unwrap_or_else(|| panic!("tried to access a disposed scope"))
+        })
+    }
+
+    pub fn on_cleanup(&self, cl: Cleanup) {
+        self.with(|raw| raw.cleanups.push(cl))
     }
 }
 
@@ -155,10 +153,8 @@ impl Scope {
     }
 
     pub fn on_cleanup(&self, f: impl 'static + FnOnce()) {
-        RT.with(|rt| {
-            self.id.with(rt, |cx| {
-                cx.cleanups.push(Cleanup::Callback(Box::new(f)));
-            })
+        self.id.with(|cx| {
+            cx.cleanups.push(Cleanup::Callback(Box::new(f)));
         })
     }
 }

@@ -1,5 +1,5 @@
 use crate::{
-    runtime::{EffectId, Runtime, SignalId, RT},
+    runtime::{EffectId, SignalId, RT},
     scope::{Cleanup, Scope},
     ThreadLocal,
 };
@@ -13,7 +13,7 @@ pub(crate) type RawSignal = Rc<RefCell<dyn Any>>;
 
 pub struct ReadSignal<T: 'static> {
     pub(crate) id: SignalId,
-    pub(crate) marker: PhantomData<(T, ThreadLocal)>,
+    marker: PhantomData<(T, ThreadLocal)>,
 }
 
 impl<T: fmt::Debug> fmt::Debug for ReadSignal<T> {
@@ -42,7 +42,7 @@ impl<T> From<Signal<T>> for ReadSignal<T> {
     }
 }
 
-pub struct Signal<T: 'static>(pub(crate) ReadSignal<T>);
+pub struct Signal<T: 'static>(ReadSignal<T>);
 
 impl<T: fmt::Debug> fmt::Debug for Signal<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -76,8 +76,7 @@ impl<T> ReadSignal<T> {
     pub fn track(&self) {
         RT.with(|rt| {
             if let Some(id) = rt.observer.get() {
-                id.with_context(rt, |ctx| ctx.add_dependency(self.id))
-                    .unwrap();
+                id.with_context(|ctx| ctx.add_dependency(self.id)).unwrap();
             }
         });
     }
@@ -119,7 +118,7 @@ impl<T> ReadSignal<T> {
 
 impl<T> Signal<T> {
     pub fn trigger(&self) {
-        RT.with(|rt| self.id.trigger(rt));
+        self.id.trigger()
     }
 
     pub fn write(&self, f: impl FnOnce(&mut T)) {
@@ -176,17 +175,13 @@ impl SignalContext {
 }
 
 impl SignalId {
-    pub fn with_context<T>(
-        &self,
-        rt: &Runtime,
-        f: impl FnOnce(&mut SignalContext) -> T,
-    ) -> Option<T> {
-        rt.signal_contexts.borrow_mut().get_mut(*self).map(f)
+    pub fn with_context<T>(&self, f: impl FnOnce(&mut SignalContext) -> T) -> Option<T> {
+        RT.with(|rt| rt.signal_contexts.borrow_mut().get_mut(*self).map(f))
     }
 
-    pub fn trigger(&self, rt: &Runtime) {
+    pub fn trigger(&self) {
         let subscribers = self
-            .with_context(rt, |ctx| {
+            .with_context(|ctx| {
                 ctx.subscribers
                     .drain(..)
                     .collect::<SmallVec<[_; INITIAL_SUBCRIBER_SLOTS]>>()
@@ -197,33 +192,31 @@ impl SignalId {
         // so we should ensure the inner effects re-execute before outer ones to
         // avoid potential double executions.
         for id in subscribers {
-            id.run(rt);
+            id.run();
         }
+    }
+
+    pub fn make_signal<T>(&self) -> Signal<T> {
+        Signal(ReadSignal {
+            id: *self,
+            marker: PhantomData,
+        })
     }
 }
 
 impl Scope {
     fn create_signal_dyn(&self, t: Rc<RefCell<dyn Any>>) -> SignalId {
         RT.with(|rt| {
-            self.id.with(rt, |cx| {
-                let id = rt.signals.borrow_mut().insert(t);
-                cx.push_cleanup(Cleanup::Signal(id));
-                rt.signal_contexts.borrow_mut().insert(id, <_>::default());
-                id
-            })
+            let id = rt.signals.borrow_mut().insert(t);
+            rt.signal_contexts.borrow_mut().insert(id, <_>::default());
+            self.id.on_cleanup(Cleanup::Signal(id));
+            id
         })
     }
 
     pub fn create_signal<T>(&self, t: T) -> Signal<T> {
-        let id = self.create_signal_dyn(Rc::new(RefCell::new(t)));
-        Signal(ReadSignal {
-            id,
-            marker: PhantomData,
-        })
-    }
-
-    pub fn create_signal_rc<T>(&self, t: T) -> Signal<Rc<T>> {
-        self.create_signal(Rc::new(t))
+        self.create_signal_dyn(Rc::new(RefCell::new(t)))
+            .make_signal()
     }
 }
 

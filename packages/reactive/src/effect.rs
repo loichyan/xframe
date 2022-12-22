@@ -1,5 +1,5 @@
 use crate::{
-    runtime::{EffectId, Runtime, SignalId, RT},
+    runtime::{EffectId, SignalId, RT},
     scope::{Cleanup, Scope},
     ThreadLocal,
 };
@@ -12,7 +12,7 @@ pub(crate) type RawEffect = Rc<RefCell<dyn AnyEffect>>;
 /// [`Signal`](crate::signal::Signal)s changed.
 #[derive(Clone, Copy)]
 pub struct Effect {
-    id: EffectId,
+    pub(crate) id: EffectId,
     marker: PhantomData<ThreadLocal>,
 }
 
@@ -24,11 +24,9 @@ impl fmt::Debug for Effect {
 
 impl Effect {
     pub fn run(&self) {
-        RT.with(|rt| {
-            self.id
-                .run(rt)
-                .unwrap_or_else(|| panic!("tried to access a disposed effect"));
-        })
+        self.id
+            .run()
+            .unwrap_or_else(|| panic!("tried to access a disposed effect"));
     }
 }
 
@@ -59,52 +57,50 @@ where
 }
 
 impl EffectId {
-    pub fn with_context<T>(
-        &self,
-        rt: &Runtime,
-        f: impl FnOnce(&mut EffectContext) -> T,
-    ) -> Option<T> {
-        rt.effect_contexts.borrow_mut().get_mut(*self).map(f)
+    pub fn with_context<T>(&self, f: impl FnOnce(&mut EffectContext) -> T) -> Option<T> {
+        RT.with(|rt| rt.effect_contexts.borrow_mut().get_mut(*self).map(f))
     }
 
-    pub fn run(&self, rt: &Runtime) -> Option<()> {
-        let effect = rt.effects.borrow().get(*self).cloned();
-        effect.map(|effect| {
-            // 1) Clear dependencies.
-            // After each execution a signal may not be tracked by this effect anymore,
-            // so we need to clear dependencies both links and backlinks at first.
-            self.with_context(rt, |ctx| {
-                let dependencies = &mut ctx.dependencies;
-                // TODO: drain
-                for id in dependencies.iter() {
-                    id.with_context(rt, |ctx| {
-                        ctx.unsubscribe(*self);
-                    });
-                }
-                dependencies.clear();
+    pub fn run(&self) -> Option<()> {
+        RT.with(|rt| {
+            let effect = rt.effects.borrow().get(*self).cloned();
+            effect.map(|effect| {
+                // 1) Clear dependencies.
+                // After each execution a signal may not be tracked by this effect anymore,
+                // so we need to clear dependencies both links and backlinks at first.
+                self.with_context(|ctx| {
+                    let dependencies = &mut ctx.dependencies;
+                    // TODO: drain
+                    for id in dependencies.iter() {
+                        id.with_context(|ctx| {
+                            ctx.unsubscribe(*self);
+                        });
+                    }
+                    dependencies.clear();
+                })
+                .unwrap();
+
+                // 2) Save observer and change it to this effect.
+                let prev = rt.observer.take();
+                rt.observer.set(Some(*self));
+
+                // 3) Call the effect.
+                effect.borrow_mut().run_untracked();
+                drop(effect);
+
+                // 4) Subscribe dependencies.
+                // An effect is appended to the subscriber list of the signals since we
+                // subscribe after running the closure.
+                self.with_context(|ctx| {
+                    for id in ctx.dependencies.iter() {
+                        id.with_context(|ctx| ctx.subscribe(*self));
+                    }
+                })
+                .unwrap();
+
+                // 5) Restore previous observer.
+                rt.observer.set(prev);
             })
-            .unwrap();
-
-            // 2) Save observer and change it to this effect.
-            let prev = rt.observer.take();
-            rt.observer.set(Some(*self));
-
-            // 3) Call the effect.
-            effect.borrow_mut().run_untracked();
-            drop(effect);
-
-            // 4) Subscribe dependencies.
-            // An effect is appended to the subscriber list of the signals since we
-            // subscribe after running the closure.
-            self.with_context(rt, |ctx| {
-                for id in ctx.dependencies.iter() {
-                    id.with_context(rt, |ctx| ctx.subscribe(*self));
-                }
-            })
-            .unwrap();
-
-            // 5) Restore previous observer.
-            rt.observer.set(prev);
         })
     }
 }
@@ -113,9 +109,9 @@ impl Scope {
     fn create_effect_dyn(&self, f: Rc<RefCell<dyn AnyEffect>>) -> Effect {
         RT.with(|rt| {
             let id = rt.effects.borrow_mut().insert(f);
-            self.id.with(rt, |cx| cx.push_cleanup(Cleanup::Effect(id)));
             rt.effect_contexts.borrow_mut().insert(id, <_>::default());
-            id.run(rt).unwrap();
+            self.id.on_cleanup(Cleanup::Effect(id));
+            id.run().unwrap();
             Effect {
                 id,
                 marker: PhantomData,
@@ -281,22 +277,21 @@ mod tests {
                     first = false;
                 }
             });
-            let (total, active) = RT.with(|rt| {
-                eff.id
-                    .with_context(rt, |ctx| {
-                        (
-                            ctx.dependencies.len(),
-                            ctx.dependencies
-                                .iter()
-                                // The `Signal` should be removed after the scope is
-                                // disposed.
-                                .map(|id| id.with_context(rt, |_| ()).is_some())
-                                .filter(|x| *x)
-                                .count(),
-                        )
-                    })
-                    .unwrap()
-            });
+            let (total, active) = eff
+                .id
+                .with_context(|ctx| {
+                    (
+                        ctx.dependencies.len(),
+                        ctx.dependencies
+                            .iter()
+                            // The `Signal` should be removed after the scope is
+                            // disposed.
+                            .map(|id| id.with_context(|_| ()).is_some())
+                            .filter(|x| *x)
+                            .count(),
+                    )
+                })
+                .unwrap();
             assert_eq!(total, 1);
             assert_eq!(active, 0);
         });

@@ -1,7 +1,7 @@
 use crate::{
-    runtime::{Runtime, ScopeId, SignalId, RT},
+    runtime::{ScopeId, SignalId, RT},
     scope::Scope,
-    signal::{ReadSignal, Signal},
+    signal::Signal,
 };
 use ahash::AHashMap;
 use std::{any::TypeId, marker::PhantomData};
@@ -18,23 +18,25 @@ fn context_id<T: 'static>() -> TypeId {
 }
 
 impl ScopeId {
-    fn find_context<T>(&self, rt: &Runtime) -> Option<Signal<T>> {
-        rt.scope_contexts.borrow().get(*self).and_then(|contexts| {
-            contexts.content.get(&context_id::<T>()).map(|&id| {
-                Signal(ReadSignal {
-                    id,
-                    marker: PhantomData,
-                })
+    fn find_context<T>(&self) -> Option<Signal<T>> {
+        RT.with(|rt| {
+            rt.scope_contexts.borrow().get(*self).and_then(|contexts| {
+                contexts
+                    .content
+                    .get(&context_id::<T>())
+                    .map(|id| id.make_signal())
             })
         })
     }
 
-    fn find_context_recursive<T>(&self, rt: &Runtime) -> Option<Signal<T>> {
-        self.find_context::<T>(rt).or_else(|| {
-            rt.scope_parents
-                .borrow()
-                .get(*self)
-                .and_then(|parent| parent.find_context_recursive::<T>(rt))
+    fn find_context_recursive<T>(&self) -> Option<Signal<T>> {
+        RT.with(|rt| {
+            self.find_context::<T>().or_else(|| {
+                rt.scope_parents
+                    .borrow()
+                    .get(*self)
+                    .and_then(|parent| parent.find_context_recursive::<T>())
+            })
         })
     }
 }
@@ -55,7 +57,7 @@ impl Scope {
     /// otherwise return the existing one as an error.
     pub fn try_provide_context<T>(&self, t: T) -> Result<Signal<T>, Signal<T>> {
         RT.with(|rt| {
-            if let Some(val) = self.id.find_context::<T>(rt) {
+            if let Some(val) = self.id.find_context::<T>() {
                 Err(val)
             } else {
                 let val = self.create_signal(t);
@@ -65,7 +67,7 @@ impl Scope {
                     .unwrap()
                     .or_default()
                     .content
-                    .insert(context_id::<T>(), val.0.id);
+                    .insert(context_id::<T>(), val.id);
                 Ok(val)
             }
         })
@@ -83,7 +85,7 @@ impl Scope {
 
     /// Loop up the context in the current and parent scopes.
     pub fn try_use_context<T>(&self) -> Option<Signal<T>> {
-        RT.with(|rt| self.id.find_context_recursive::<T>(rt))
+        self.id.find_context_recursive::<T>()
     }
 }
 
