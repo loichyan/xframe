@@ -237,9 +237,8 @@ impl ViewElement {
         let builtin = path.get_ident().filter(|&ident| {
             ident
                 .to_string()
-                .trim_end_matches('_')
                 .chars()
-                .all(|c| c.is_ascii_lowercase())
+                .all(|c| matches!(c, 'a'..='z' | '0'..='9' | '_'))
         });
         let props = args.quote_props();
         let children = args.quote_children();
