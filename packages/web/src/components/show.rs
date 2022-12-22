@@ -1,4 +1,4 @@
-use crate::view_with;
+use crate::Element;
 use smallvec::SmallVec;
 use xframe_core::{
     component::DynComponent, GenericComponent, GenericElement, GenericNode, IntoReactive, Reactive,
@@ -19,17 +19,17 @@ pub fn Show<N: GenericNode>(cx: Scope) -> Show<N> {
     }
 }
 
-pub struct Show<N> {
+pub struct Show<N: GenericNode> {
     cx: Scope,
     children: SmallVec<[ShowChild<N>; INITIAL_BRANCH_SLOTS]>,
 }
 
-pub struct ShowChild<N> {
+pub struct ShowChild<N: GenericNode> {
     cond: Reactive<bool>,
     content: DynComponent<N>,
 }
 
-struct Branch<N> {
+struct Branch<N: GenericNode> {
     cond: Reactive<bool>,
     view: View<N>,
 }
@@ -40,7 +40,7 @@ where
 {
     pub fn build(self) -> impl GenericComponent<N> {
         let Self { cx, children } = self;
-        view_with(cx, move |placeholder: Placeholder<N>| {
+        Element(cx).with_view(move |placeholder: Placeholder<N>| {
             let placeholder = placeholder.into_node();
             let branches = children
                 .into_iter()
@@ -51,28 +51,31 @@ where
                 // Add a default branch.
                 .chain(Some(Branch {
                     cond: Value(true),
-                    view: View::Node(placeholder.clone()),
+                    view: View::node(placeholder.clone()),
                 }))
                 .collect::<SmallVec<[_; INITIAL_BRANCH_SLOTS]>>();
-            let dyn_view = cx.create_signal(View::Node(placeholder));
-            cx.create_effect(move || {
-                for branch in branches.iter() {
-                    let Branch::<N> {
-                        cond,
-                        view: new_view,
-                    } = branch;
-                    if cond.clone().into_value() {
-                        untrack(|| {
-                            let current_view = dyn_view.get();
-                            let current_first = current_view.first();
-                            let parent = current_first.parent().unwrap();
-                            let new_first = new_view.first();
-                            if current_first.ne(&new_first) {
-                                current_view.replace_with(&parent, new_view);
-                                dyn_view.set(new_view.clone());
-                            }
-                        });
-                        break;
+            let dyn_view = View::dyn_(cx, View::node(placeholder));
+            cx.create_effect({
+                let dyn_view = dyn_view.clone();
+                move || {
+                    for branch in branches.iter() {
+                        let Branch::<N> {
+                            cond,
+                            view: new_view,
+                        } = branch;
+                        if cond.clone().into_value() {
+                            untrack(|| {
+                                let current_view = dyn_view.get();
+                                let current_first = current_view.first();
+                                let parent = current_first.parent().unwrap();
+                                let new_first = new_view.first();
+                                if current_first.ne(&new_first) {
+                                    current_view.replace_with(&parent, new_view);
+                                    dyn_view.set(new_view.clone());
+                                }
+                            });
+                            break;
+                        }
                     }
                 }
             });
@@ -81,7 +84,7 @@ where
     }
 }
 
-impl<N> Show<N> {
+impl<N: GenericNode> Show<N> {
     pub fn child(mut self, child: ShowChild<N>) -> Show<N> {
         self.children.push(child);
         self
@@ -96,7 +99,7 @@ pub fn If<N: GenericNode>(_: Scope) -> If<N> {
     }
 }
 
-pub struct If<N> {
+pub struct If<N: GenericNode> {
     when: Option<Reactive<bool>>,
     children: Option<DynComponent<N>>,
 }
@@ -133,7 +136,7 @@ pub fn Else<N: GenericNode>(_: Scope) -> Else<N> {
     Else { children: None }
 }
 
-pub struct Else<N> {
+pub struct Else<N: GenericNode> {
     children: Option<DynComponent<N>>,
 }
 

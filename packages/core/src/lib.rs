@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 mod attr;
 mod element;
 mod event;
@@ -27,6 +29,14 @@ pub mod prelude {
 
 type CowStr = std::borrow::Cow<'static, str>;
 
+#[macro_export]
+macro_rules! is_dev {
+    () => {
+        cfg!(debug_assertions)
+    };
+}
+
+// TODO: move to `xframe-web`
 pub trait UnwrapThrowValExt<T> {
     fn unwrap_throw_val(self) -> T;
 }

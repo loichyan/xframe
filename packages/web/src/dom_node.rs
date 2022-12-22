@@ -4,11 +4,11 @@ use std::{borrow::Cow, cell::Cell};
 use wasm_bindgen::{intern, prelude::*, JsCast};
 use web_sys::{AddEventListenerOptions, HtmlTemplateElement};
 use xframe_core::{
-    template::Templates, Attribute, EventHandler, GenericNode, NodeType, UnwrapThrowValExt,
+    template::GlobalTemplates, Attribute, EventHandler, GenericNode, NodeType, UnwrapThrowValExt,
 };
 
 thread_local! {
-    static TEMPLATES: Templates<DomNode> = Templates::default();
+    static TEMPLATES: GlobalTemplates<DomNode> = GlobalTemplates::default();
     static GLOBAL_ID: Cell<usize> = Cell::new(0);
 }
 
@@ -80,7 +80,7 @@ impl AsRef<web_sys::Node> for DomNode {
 impl GenericNode for DomNode {
     type Event = web_sys::Event;
 
-    fn global_templates() -> Templates<Self> {
+    fn global_templates() -> GlobalTemplates<Self> {
         TEMPLATES.with(Clone::clone)
     }
 
@@ -89,17 +89,15 @@ impl GenericNode for DomNode {
             NodeType::Tag(tag) => doc.create_element(tag.intern()).unwrap_throw_val().into(),
             NodeType::Text(data) => doc.create_text_node(data.intern()).into(),
             NodeType::Placeholder(desc) => doc.create_comment(desc.intern()).into(),
-            NodeType::Template(id) => {
-                if cfg!(debug_assertions) {
+            NodeType::Template(data) => {
+                if cfg!(debug_assertions) && !data.is_empty() {
                     let template = doc.create_element("template").unwrap_throw_val();
-                    if let Some(id) = id {
-                        template
-                            .set_attribute("data-xframe-template-id", &id.to_string())
-                            .unwrap_throw_val();
-                        let body = doc.body().unwrap_throw();
-                        body.insert_before(&template, body.first_child().as_ref())
-                            .unwrap_throw_val();
-                    }
+                    template
+                        .set_attribute("data-xframe-template-id", &data)
+                        .unwrap_throw_val();
+                    let body = doc.body().unwrap_throw();
+                    body.insert_before(&template, body.first_child().as_ref())
+                        .unwrap_throw_val();
                     template
                         .unchecked_into::<HtmlTemplateElement>()
                         .content()

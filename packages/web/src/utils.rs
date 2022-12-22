@@ -2,6 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 macro_rules! define_placeholder {
     ($vis:vis $name:ident($desc:literal)) => {
+        #[derive(Clone)]
         $vis struct $name<N> {
             node: N,
         }

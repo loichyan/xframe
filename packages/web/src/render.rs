@@ -15,7 +15,7 @@ where
     C: GenericComponent<DomNode>,
 {
     xframe_reactive::create_root(|cx| {
-        f(cx).render_to(&DomNode::from(root.clone()));
+        f(cx).mount_to(&DomNode::from(root.clone()));
     })
     .leak();
 }

@@ -1,4 +1,4 @@
-use crate::{utils::Visit, view_with};
+use crate::{utils::Visit, Element};
 use smallvec::SmallVec;
 use xframe_core::{GenericComponent, GenericElement, GenericNode, IntoReactive, Reactive, View};
 use xframe_reactive::{untrack, Scope};
@@ -9,6 +9,7 @@ define_placeholder!(Placeholder("Placeholder for `xframe::Indexed` Component"));
 
 pub struct Indexed<N, T, I>
 where
+    N: GenericNode,
     I: 'static + Visit<T>,
 {
     cx: Scope,
@@ -40,54 +41,57 @@ where
         let Self { cx, each, children } = self;
         let each = each.expect("`each` was not provided");
         let fn_view = children.expect("`each` was not provided");
-        view_with(cx, move |placeholder: Placeholder<N>| {
+        Element(cx).with_view(move |placeholder: Placeholder<N>| {
             let placeholder = placeholder.into_node();
             let mut mounted_views = SmallVec::<[_; INITIAL_VIEW_SLOTS]>::new();
-            let dyn_view = cx.create_signal(View::Node(placeholder.clone()));
-            cx.create_effect(move || {
-                let each = each.clone().into_value();
-                untrack(|| {
-                    let current_view = dyn_view.get();
-                    let current_last = current_view.last();
-                    let parent = current_last.parent().unwrap();
-                    let next_first = current_last.next_sibling();
+            let dyn_view = View::dyn_(cx, View::node(placeholder.clone()));
+            cx.create_effect({
+                let dyn_view = dyn_view.clone();
+                move || {
+                    let each = each.clone().into_value();
+                    untrack(|| {
+                        let current_view = dyn_view.get();
+                        let current_last = current_view.last();
+                        let parent = current_last.parent().unwrap();
+                        let next_first = current_last.next_sibling();
 
-                    let mounted_len = mounted_views.len();
-                    let mut new_len = 0;
-                    each.visit(|val| {
-                        // Append new views.
-                        if new_len >= mounted_len {
-                            let view = fn_view(val);
-                            view.move_before(&parent, next_first.as_ref());
-                            mounted_views.push(view);
-                        }
-                        new_len += 1;
-                    });
-                    if new_len == mounted_len {
-                        return;
-                    }
-
-                    if new_len == 0 {
-                        if current_last.ne(&placeholder) {
-                            // Replace with a placeholder.
-                            let placeholder = View::Node(placeholder.clone());
-                            current_view.replace_with(&parent, &placeholder);
-                            mounted_views.clear();
-                            dyn_view.set(placeholder);
-                        }
-                    } else {
-                        if new_len < mounted_len {
-                            // Remove old views.
-                            for view in mounted_views.drain(new_len..) {
-                                view.remove_from(&parent);
+                        let mounted_len = mounted_views.len();
+                        let mut new_len = 0;
+                        each.visit(|val| {
+                            // Append new views.
+                            if new_len >= mounted_len {
+                                let view = fn_view(val);
+                                view.move_before(&parent, next_first.as_ref());
+                                mounted_views.push(view);
                             }
-                        } else if current_last.eq(&placeholder) {
-                            // Remove the placeholder.
-                            parent.remove_child(&placeholder);
+                            new_len += 1;
+                        });
+                        if new_len == mounted_len {
+                            return;
                         }
-                        dyn_view.set(View::from(mounted_views.to_vec()))
-                    }
-                });
+
+                        if new_len == 0 {
+                            if current_last.ne(&placeholder) {
+                                // Replace with a placeholder.
+                                let placeholder = View::node(placeholder.clone());
+                                current_view.replace_with(&parent, &placeholder);
+                                mounted_views.clear();
+                                dyn_view.set(placeholder);
+                            }
+                        } else {
+                            if new_len < mounted_len {
+                                // Remove old views.
+                                for view in mounted_views.drain(new_len..) {
+                                    view.remove_from(&parent);
+                                }
+                            } else if current_last.eq(&placeholder) {
+                                // Remove the placeholder.
+                                parent.remove_child(&placeholder);
+                            }
+                            dyn_view.set(View::fragment(mounted_views.to_vec()))
+                        }
+                    });
+                }
             });
             View::from(dyn_view)
         })

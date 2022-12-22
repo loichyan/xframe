@@ -1,131 +1,97 @@
-use crate::view;
+use crate::Element;
 use xframe_core::{
-    template::{Template, TemplateInit, TemplateRender, TemplateRenderOutput},
+    template::{BeforeRendering, RenderOutput, Template, TemplateInit, TemplateRender},
     Attribute, GenericComponent, GenericElement, GenericNode, IntoReactive, View,
 };
 use xframe_reactive::Scope;
 
 define_placeholder!(Placeholder("Placeholder for `xframe::Fragment` Component"));
 
-#[allow(non_snake_case)]
-pub fn Fragment<N: GenericNode>(cx: Scope) -> Fragment<N> {
-    Fragment {
-        cx,
-        init: FragmentInit::new(),
-        render: FragmentRender::new(),
-    }
-}
+type Views<N> = Vec<View<N>>;
 
-pub struct Fragment<N> {
+pub struct Fragment<N: GenericNode> {
     cx: Scope,
-    init: FragmentInit<N>,
-    render: FragmentRender<N>,
-}
-
-impl<N: GenericNode> Fragment<N> {
-    pub fn build(self) -> impl GenericComponent<N> {
-        self
-    }
-
-    pub fn child<C>(self, child: C) -> Fragment<N>
-    where
-        C: GenericComponent<N>,
-    {
-        let child = child.build_template();
-        Fragment {
-            cx: self.cx,
-            init: self.init.child(child.init),
-            render: self.render.child(child.render),
-        }
-    }
-
-    pub fn child_element<E>(self, render: impl 'static + FnOnce(E) -> E) -> Fragment<N>
-    where
-        E: GenericElement<N>,
-    {
-        let cx = self.cx;
-        self.child(view(cx, render))
-    }
-
-    pub fn child_text<A: IntoReactive<Attribute>>(self, data: A) -> Fragment<N> {
-        let data = data.into_reactive();
-        self.child_element(move |text: crate::elements::text<_>| text.data(data))
-    }
+    init: Box<dyn FnOnce(&mut Views<N>)>,
+    render: Box<dyn FnOnce(BeforeRendering<N>, N, &mut Views<N>) -> Option<N>>,
 }
 
 impl<N: GenericNode> GenericComponent<N> for Fragment<N> {
     fn build_template(self) -> Template<N> {
+        let Self { init, render, .. } = self;
         Template {
-            init: self.init.into(),
-            render: self.render.into(),
+            init: TemplateInit::new(move || {
+                let mut views = Views::default();
+                init(&mut views);
+                if views.is_empty() {
+                    // Fallback to a placeholder.
+                    View::node(N::create(Placeholder::<N>::TYPE))
+                } else {
+                    View::fragment(views)
+                }
+            }),
+            render: TemplateRender::new(move |before_rendering, node| {
+                let mut views = Views::default();
+                let next = render(before_rendering, node, &mut views);
+                if views.is_empty() {
+                    // Ignore the placeholder.
+                    let placeholder = next.unwrap();
+                    RenderOutput {
+                        next: placeholder.next_sibling(),
+                        view: {
+                            before_rendering.apply_to(&placeholder);
+                            View::node(placeholder)
+                        },
+                    }
+                } else {
+                    RenderOutput {
+                        next,
+                        view: View::fragment(views),
+                    }
+                }
+            }),
         }
     }
 }
 
-struct FragmentInit<N>(Box<dyn FnOnce(&mut Vec<View<N>>)>);
-
-impl<N: GenericNode> FragmentInit<N> {
-    fn new() -> Self {
-        Self(Box::new(|_| {}))
-    }
-
-    fn child(self, child: TemplateInit<N>) -> Self {
-        Self(Box::new(|fragment| {
-            (self.0)(fragment);
-            fragment.push(child.init());
-        }))
+#[allow(non_snake_case)]
+pub fn Fragment<N: GenericNode>(cx: Scope) -> Fragment<N> {
+    Fragment {
+        cx,
+        init: Box::new(|_| {}),
+        render: Box::new(|_, first_node, _| Some(first_node)),
     }
 }
 
-impl<N: GenericNode> From<FragmentInit<N>> for TemplateInit<N> {
-    fn from(init: FragmentInit<N>) -> Self {
-        TemplateInit::new(|| {
-            let mut fragment = Default::default();
-            (init.0)(&mut fragment);
-            if fragment.is_empty() {
-                // Return a placeholder.
-                View::Node(N::create(Placeholder::<N>::TYPE))
-            } else {
-                View::from(fragment)
-            }
-        })
-    }
-}
-
-struct FragmentRender<N>(Box<dyn FnOnce(Option<N>, &mut Vec<View<N>>) -> Option<N>>);
-
-impl<N: GenericNode> FragmentRender<N> {
-    fn new() -> Self {
-        Self(Box::new(|first, _| first))
+impl<N: GenericNode> Fragment<N> {
+    pub fn build(self) -> Self {
+        self
     }
 
-    fn child(self, child: TemplateRender<N>) -> Self {
-        Self(Box::new(|first, fragments| {
-            let output = child.render((self.0)(first, fragments));
-            fragments.push(output.view);
-            output.next_sibling
-        }))
+    pub fn child<C: GenericComponent<N>>(mut self, child: C) -> Self {
+        let Template { init, render, .. } = child.build_template();
+        self.init = Box::new(move |views| {
+            (self.init)(views);
+            views.push(init.init());
+        });
+        self.render = Box::new(move |before_rendering, first, views| {
+            let node = (self.render)(before_rendering, first, views);
+            let RenderOutput { next, view } = render.render(before_rendering, node.unwrap());
+            views.push(view);
+            next
+        });
+        self
     }
-}
 
-impl<N: GenericNode> From<FragmentRender<N>> for TemplateRender<N> {
-    fn from(render: FragmentRender<N>) -> Self {
-        TemplateRender::new(|node| {
-            let mut fragments = Default::default();
-            let next_sibling = (render.0)(node, &mut fragments);
-            if fragments.is_empty() {
-                // Ignore the placeholder.
-                let placeholder = next_sibling.unwrap();
-                TemplateRenderOutput {
-                    next_sibling: placeholder.next_sibling(),
-                    view: View::Node(placeholder),
-                }
-            } else {
-                TemplateRenderOutput {
-                    next_sibling,
-                    view: View::from(fragments),
-                }
-            }
-        })
+    pub fn child_element<E>(self, render: impl 'static + FnOnce(E) -> E) -> Self
+    where
+        E: GenericElement<N>,
+    {
+        let cx = self.cx;
+        self.child(Element(cx).with(render))
+    }
+
+    pub fn child_text<A: IntoReactive<Attribute>>(self, data: A) -> Self {
+        let data = data.into_reactive();
+        self.child_element(move |text: crate::elements::text<_>| text.data(data))
     }
 }

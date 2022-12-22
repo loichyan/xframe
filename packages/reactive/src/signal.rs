@@ -73,6 +73,10 @@ impl<T> Clone for Signal<T> {
 impl<T> Copy for Signal<T> {}
 
 impl<T> ReadSignal<T> {
+    pub fn ref_eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+
     pub fn track(&self) {
         RT.with(|rt| {
             if let Some(id) = rt.observer.get() {

@@ -60,7 +60,9 @@ impl View {
             {
                 fn id() -> Option<#T_TEMPLATE_ID> {
                     thread_local! {
-                        static __ID: #T_TEMPLATE_ID = #T_TEMPLATE_ID::new();
+                        static __ID: #T_TEMPLATE_ID = #T_TEMPLATE_ID::generate(
+                            concat!(module_path!(), ":", line!(), ":", column!())
+                        );
                     }
                     Some(__ID.with(Clone::clone))
                 }
@@ -182,6 +184,7 @@ impl ViewChild {
     pub fn quote(&self) -> TokenStream {
         match self {
             Self::Literal(lit) => {
+                // TODO: add private::view_*
                 quote!(#FN_BUILTIN(
                     #VAR_CX,
                     #FN_TEXT,

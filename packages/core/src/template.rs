@@ -2,7 +2,6 @@ use crate::{GenericNode, View};
 use ahash::AHashMap;
 use std::{
     cell::{Cell, RefCell},
-    fmt,
     rc::Rc,
 };
 
@@ -10,11 +9,80 @@ thread_local! {
     static GLOBAL_ID: Cell<usize> = Cell::new(0);
 }
 
-pub struct Templates<N> {
-    inner: Rc<RefCell<AHashMap<TemplateId, TemplateNode<N>>>>,
+pub struct Template<N: GenericNode> {
+    pub init: TemplateInit<N>,
+    pub render: TemplateRender<N>,
 }
 
-impl<N> Default for Templates<N> {
+/// Initializes a [`Template`]. It should return the same node tree after each call
+/// and no side effect should be performed during the invoking.
+pub struct TemplateInit<N: GenericNode> {
+    inner: Box<dyn FnOnce() -> View<N>>,
+}
+
+impl<N: GenericNode> TemplateInit<N> {
+    pub fn new(f: impl 'static + FnOnce() -> View<N>) -> Self {
+        Self { inner: Box::new(f) }
+    }
+
+    pub fn init(self) -> View<N> {
+        (self.inner)()
+    }
+}
+
+/// Renders a initialized [`Template`]. It accepts the first node in the template
+/// and should return the next sibling of the last node in the template. And the
+/// behavior defined by [`BeforeRendering`] should be applied to each node in the
+/// template.
+pub struct TemplateRender<N: GenericNode> {
+    inner: Box<dyn FnOnce(BeforeRendering<N>, N) -> RenderOutput<N>>,
+}
+
+impl<N: GenericNode> TemplateRender<N> {
+    pub fn new(f: impl 'static + FnOnce(BeforeRendering<N>, N) -> RenderOutput<N>) -> Self {
+        Self { inner: Box::new(f) }
+    }
+
+    pub fn render(self, before_rendering: BeforeRendering<N>, node: N) -> RenderOutput<N> {
+        (self.inner)(before_rendering, node)
+    }
+}
+
+pub enum BeforeRendering<'a, N> {
+    AppendTo(&'a N),
+    RemoveFrom(&'a N),
+    Nothing,
+}
+
+impl<N: GenericNode> BeforeRendering<'_, N> {
+    pub fn apply_to(&self, node: &N) {
+        use BeforeRendering::*;
+        match self {
+            AppendTo(parent) => parent.append_child(node),
+            RemoveFrom(parent) => parent.remove_child(node),
+            Nothing => {}
+        }
+    }
+}
+
+impl<N> Clone for BeforeRendering<'_, N> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<N> Copy for BeforeRendering<'_, N> {}
+
+pub struct RenderOutput<N: GenericNode> {
+    pub next: Option<N>,
+    pub view: View<N>,
+}
+
+pub struct GlobalTemplates<N> {
+    inner: Rc<RefCell<AHashMap<usize, TemplateContent<N>>>>,
+}
+
+impl<N: GenericNode> Default for GlobalTemplates<N> {
     fn default() -> Self {
         Self {
             inner: Default::default(),
@@ -22,7 +90,7 @@ impl<N> Default for Templates<N> {
     }
 }
 
-impl<N> Clone for Templates<N> {
+impl<N> Clone for GlobalTemplates<N> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -30,86 +98,55 @@ impl<N> Clone for Templates<N> {
     }
 }
 
-impl<N: GenericNode> Templates<N> {
-    pub(crate) fn get_or_insert_with(
-        &self,
+impl<N: GenericNode> GlobalTemplates<N> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub(crate) fn clone_or_insert_with(
         id: TemplateId,
-        f: impl FnOnce() -> TemplateNode<N>,
-    ) -> TemplateNode<N> {
-        let mut templates = self.inner.borrow_mut();
-        let template = templates.entry(id).or_insert_with(f);
-        TemplateNode {
-            view: template.view.clone(),
-            container: template.container.deep_clone(),
-        }
+        f: impl FnOnce() -> TemplateContent<N>,
+    ) -> TemplateContent<N> {
+        N::global_templates()
+            .inner
+            .borrow_mut()
+            .entry(id.id)
+            .or_insert_with(f)
+            .deep_clone()
     }
 }
 
-#[derive(Clone)]
-pub(crate) struct TemplateNode<N> {
-    pub view: View<N>,
-    pub container: N,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct TemplateId {
+    data: &'static str,
     id: usize,
 }
 
-impl Default for TemplateId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl TemplateId {
-    pub fn new() -> Self {
+    pub fn generate(data: &'static str) -> Self {
         Self {
-            id: GLOBAL_ID.with(|id| {
-                let current = id.get();
-                id.set(current + 1);
-                current
+            id: GLOBAL_ID.with(|global_id| {
+                let id = global_id.get();
+                global_id.set(id + 1);
+                id
             }),
+            data,
         }
     }
-}
 
-impl fmt::Display for TemplateId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.id.fmt(f)
+    pub fn data(&self) -> &'static str {
+        self.data
     }
 }
 
-pub struct Template<N> {
-    pub init: TemplateInit<N>,
-    pub render: TemplateRender<N>,
+pub(crate) struct TemplateContent<N> {
+    pub container: N,
 }
 
-pub struct TemplateInit<N>(Box<dyn FnOnce() -> View<N>>);
-
-impl<N> TemplateInit<N> {
-    pub fn new(f: impl 'static + FnOnce() -> View<N>) -> Self {
-        Self(Box::new(f))
-    }
-
-    pub fn init(self) -> View<N> {
-        (self.0)()
-    }
-}
-
-pub struct TemplateRender<N>(Box<dyn FnOnce(Option<N>) -> TemplateRenderOutput<N>>);
-
-pub struct TemplateRenderOutput<N> {
-    pub next_sibling: Option<N>,
-    pub view: View<N>,
-}
-
-impl<N> TemplateRender<N> {
-    pub fn new(f: impl 'static + FnOnce(Option<N>) -> TemplateRenderOutput<N>) -> Self {
-        Self(Box::new(f))
-    }
-
-    pub fn render(self, node: Option<N>) -> TemplateRenderOutput<N> {
-        (self.0)(node)
+impl<N: GenericNode> TemplateContent<N> {
+    pub fn deep_clone(&self) -> Self {
+        Self {
+            container: self.container.deep_clone(),
+        }
     }
 }

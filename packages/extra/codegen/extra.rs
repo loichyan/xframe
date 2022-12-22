@@ -159,6 +159,7 @@ impl<'a> Element<'a> {
         let default_methods = self.quote_default_methods();
         quote!(
             #[allow(non_camel_case_types)]
+            #[derive(Clone)]
             pub struct #fn_<N> {
                 inner: #BASE_ELEMENT<N>
             }

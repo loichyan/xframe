@@ -5,12 +5,12 @@ use xframe_web::Element;
 
 pub fn view_builtin<N, E>(
     cx: Scope,
-    _: fn(Scope) -> E,
+    el: fn(Scope) -> E,
     render: impl 'static + FnOnce(E) -> E,
-) -> Element<N>
+) -> Element<N, E>
 where
     N: GenericNode,
     E: GenericElement<N>,
 {
-    view(cx, render)
+    view(cx, el).with(render)
 }

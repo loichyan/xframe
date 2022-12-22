@@ -3,6 +3,7 @@ use xframe_core::{Attribute, GenericElement, GenericNode, IntoReactive, NodeType
 use xframe_reactive::Scope;
 
 #[allow(non_camel_case_types)]
+#[derive(Clone)]
 pub struct text<N> {
     cx: Scope,
     node: N,
@@ -10,7 +11,7 @@ pub struct text<N> {
 
 impl<N: GenericNode> From<text<N>> for View<N> {
     fn from(t: text<N>) -> Self {
-        View::Node(t.node)
+        View::node(t.node)
     }
 }
 

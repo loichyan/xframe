@@ -35,12 +35,7 @@ pub mod element_types {}
 pub mod prelude {
     #[doc(inline)]
     pub use {
-        crate::{
-            components::element::{view, view_with},
-            components::*,
-            dom_node::DomNode,
-            render::*,
-        },
+        crate::{components::element::view, components::*, dom_node::DomNode, render::*},
         web_sys::Event,
     };
 }

@@ -1,159 +1,129 @@
+use std::marker::PhantomData;
+
 use xframe_core::{
-    template::{Template, TemplateInit, TemplateRender, TemplateRenderOutput},
+    template::{BeforeRendering, RenderOutput, Template, TemplateInit, TemplateRender},
     Attribute, GenericComponent, GenericElement, GenericNode, IntoReactive, View,
 };
 use xframe_reactive::Scope;
 
-pub fn view<N, E>(cx: Scope, render: impl 'static + FnOnce(E) -> E) -> Element<N>
+pub fn view<N, E>(cx: Scope, _: fn(Scope) -> E) -> Element<N, E>
 where
     N: GenericNode,
     E: GenericElement<N>,
 {
-    Element(cx).root(|root| View::Node(render(root).into_node()))
+    Element(cx)
 }
 
-pub fn view_with<N, E>(cx: Scope, render: impl 'static + FnOnce(E) -> View<N>) -> Element<N>
+pub struct Element<N: GenericNode, E> {
+    cx: Scope,
+    init: PhantomData<E>,
+    render: Option<Box<dyn FnOnce(E) -> View<N>>>,
+    init_children: Box<dyn FnOnce(&N)>,
+    render_children: Box<dyn FnOnce(Option<N>) -> Option<N>>,
+}
+
+impl<N, E> GenericComponent<N> for Element<N, E>
 where
     N: GenericNode,
     E: GenericElement<N>,
 {
-    Element(cx).root(render)
+    fn build_template(self) -> Template<N> {
+        let Self {
+            cx,
+            render,
+            init_children,
+            render_children,
+            ..
+        } = self;
+        Template {
+            init: TemplateInit::<N>::new(move || {
+                let root = E::create(cx);
+                let root = root.into_node();
+                init_children(&root);
+                View::node(root)
+            }),
+            render: TemplateRender::<N>::new(move |before_rendering, root| {
+                let first_child = root.first_child();
+                let output = RenderOutput {
+                    // Save the next sibling be rendering.
+                    next: root.next_sibling(),
+                    view: {
+                        before_rendering.apply_to(&root);
+                        if let Some(render) = render {
+                            render(E::create_with_node(cx, root))
+                        } else {
+                            View::node(root)
+                        }
+                    },
+                };
+                let last_child = render_children(first_child);
+                // All children should be visited.
+                debug_assert!(last_child.is_none());
+                output
+            }),
+        }
+    }
 }
 
 #[allow(non_snake_case)]
-pub fn Element<N: GenericNode>(cx: Scope) -> Element<N> {
+pub fn Element<N, E>(cx: Scope) -> Element<N, E>
+where
+    N: GenericNode,
+    E: GenericElement<N>,
+{
     Element {
         cx,
-        init: ElementInit::new(|| panic!("The root element is not specified!")),
-        render: ElementRender::new(|_| panic!("The root element is not specified!")),
+        init: PhantomData,
+        render: None,
+        init_children: Box::new(|_| {}),
+        render_children: Box::new(|first_child| first_child),
     }
 }
 
-pub struct Element<N> {
-    cx: Scope,
-    init: ElementInit<N>,
-    render: ElementRender<N>,
-}
-
-impl<N: GenericNode> Element<N> {
-    pub fn root<E>(self, render: impl 'static + FnOnce(E) -> View<N>) -> Self
-    where
-        E: GenericElement<N>,
-    {
-        let cx = self.cx;
-        Self {
-            cx,
-            init: ElementInit::new(|| N::create(E::TYPE)),
-            render: ElementRender::<N>::new(move |root| {
-                let root = root.unwrap();
-                (
-                    root.first_child(),
-                    TemplateRenderOutput {
-                        next_sibling: root.next_sibling(),
-                        view: render(E::create_with_node(cx, root)),
-                    },
-                )
-            }),
-        }
-    }
-
-    pub fn build(self) -> impl GenericComponent<N> {
+impl<N, E> Element<N, E>
+where
+    N: GenericNode,
+    E: GenericElement<N>,
+{
+    pub fn build(self) -> Self {
         self
     }
 
-    pub fn child<C>(self, child: C) -> Element<N>
-    where
-        C: GenericComponent<N>,
-    {
-        let child = child.build_template();
-        Element {
-            cx: self.cx,
-            init: self.init.child(child.init),
-            render: self.render.child(child.render),
-        }
+    pub fn with(self, render: impl 'static + FnOnce(E) -> E) -> Self {
+        self.with_view(move |el| View::node(render(el).into_node()))
     }
 
-    pub fn child_element<E>(self, render: impl 'static + FnOnce(E) -> E) -> Element<N>
+    pub fn with_view(mut self, render: impl 'static + FnOnce(E) -> View<N>) -> Self {
+        if self.render.is_some() {
+            panic!("`Element::with_view` should only be called once");
+        }
+        self.render = Some(Box::new(render));
+        self
+    }
+
+    pub fn child<C: GenericComponent<N>>(mut self, child: C) -> Self {
+        let Template { init, render, .. } = child.build_template();
+        self.init_children = Box::new(move |root| {
+            (self.init_children)(root);
+            init.init().append_to(root);
+        });
+        self.render_children = Box::new(move |first| {
+            let node = (self.render_children)(first);
+            render.render(BeforeRendering::Nothing, node.unwrap()).next
+        });
+        self
+    }
+
+    pub fn child_element<Child>(self, render: impl 'static + FnOnce(Child) -> Child) -> Self
     where
-        E: GenericElement<N>,
+        Child: GenericElement<N>,
     {
         let cx = self.cx;
-        self.child(view(cx, render))
+        self.child(Element(cx).with(render))
     }
 
-    pub fn child_text<A: IntoReactive<Attribute>>(self, data: A) -> Element<N> {
+    pub fn child_text<A: IntoReactive<Attribute>>(self, data: A) -> Self {
         let data = data.into_reactive();
         self.child_element(move |text: crate::elements::text<_>| text.data(data))
-    }
-}
-
-impl<N: GenericNode> GenericComponent<N> for Element<N> {
-    fn build_template(self) -> Template<N> {
-        Template {
-            init: self.init.into(),
-            render: self.render.into(),
-        }
-    }
-}
-
-struct ElementInit<N>(Box<dyn FnOnce() -> N>, Box<dyn FnOnce(&N)>);
-
-impl<N: GenericNode> ElementInit<N> {
-    fn new(f: impl 'static + FnOnce() -> N) -> Self {
-        Self(Box::new(f), Box::new(|_| {}))
-    }
-
-    fn child(self, child: TemplateInit<N>) -> Self {
-        Self(
-            self.0,
-            Box::new(move |root| {
-                (self.1)(root);
-                child.init().append_to(root);
-            }),
-        )
-    }
-}
-
-impl<N: GenericNode> From<ElementInit<N>> for TemplateInit<N> {
-    fn from(init: ElementInit<N>) -> Self {
-        TemplateInit::new(move || {
-            let root = (init.0)();
-            (init.1)(&root);
-            View::Node(root)
-        })
-    }
-}
-
-type FirstChildAndOutput<N> = (Option<N>, TemplateRenderOutput<N>);
-
-struct ElementRender<N>(
-    Box<dyn FnOnce(Option<N>) -> FirstChildAndOutput<N>>,
-    Box<dyn FnOnce(Option<N>) -> Option<N>>,
-);
-
-impl<N: GenericNode> ElementRender<N> {
-    fn new(f: impl 'static + FnOnce(Option<N>) -> FirstChildAndOutput<N>) -> Self {
-        Self(Box::new(f), Box::new(|first| first))
-    }
-
-    fn child(self, child: TemplateRender<N>) -> Self {
-        Self(
-            self.0,
-            Box::new(move |node| {
-                let node = (self.1)(node);
-                child.render(node).next_sibling
-            }),
-        )
-    }
-}
-
-impl<N: GenericNode> From<ElementRender<N>> for TemplateRender<N> {
-    fn from(render: ElementRender<N>) -> Self {
-        TemplateRender::new(move |root| {
-            let (first_child, output) = (render.0)(root);
-            let last_child = (render.1)(first_child);
-            debug_assert!(last_child.is_none());
-            output
-        })
     }
 }

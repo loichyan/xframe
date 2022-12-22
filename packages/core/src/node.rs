@@ -1,22 +1,20 @@
-use crate::{
-    attr::Attribute,
-    event::EventHandler,
-    template::{TemplateId, Templates},
-    CowStr,
-};
+use crate::{attr::Attribute, event::EventHandler, template::GlobalTemplates, CowStr};
 
 pub enum NodeType {
     Tag(CowStr),
     Text(CowStr),
     Placeholder(CowStr),
-    Template(Option<TemplateId>),
+    Template(CowStr),
 }
 
 pub trait GenericNode: 'static + Clone + Eq {
     type Event;
 
-    fn global_templates() -> Templates<Self>;
+    fn global_templates() -> GlobalTemplates<Self>;
     fn create(ty: NodeType) -> Self;
+    fn empty_template() -> Self {
+        Self::create(NodeType::Template("".into()))
+    }
     fn deep_clone(&self) -> Self;
     fn set_inner_text(&self, data: &str);
     fn set_property(&self, name: CowStr, attr: Attribute);

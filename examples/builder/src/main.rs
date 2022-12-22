@@ -12,8 +12,9 @@ impl<N: GenericNode> Counter<N> {
         let Self { cx, .. } = self;
         let counter = cx.create_signal(0);
         let increment = move |_| counter.update(|x| *x + 1);
-        view(cx, move |div: div<_>| div).child(
-            view(cx, move |e: button<_>| e.on_click(increment))
+        view(cx, div).child(
+            view(cx, button)
+                .with(move |e| e.on_click(increment))
                 .child_text("Click me: ")
                 .child_text(counter)
                 .child_text(" times!"),

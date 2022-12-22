@@ -11,9 +11,10 @@ pub(crate) type JsString = Attribute;
 
 type CowStr = std::borrow::Cow<'static, str>;
 
+#[derive(Clone)]
 pub(crate) struct BaseElement<N> {
-    node: N,
     cx: Scope,
+    node: N,
 }
 
 #[allow(dead_code)]
