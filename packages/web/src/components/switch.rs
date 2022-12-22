@@ -139,7 +139,7 @@ impl<N: GenericNode> If<N> {
 
     pub fn when<T: IntoReactive<bool>>(mut self, when: T) -> If<N> {
         if self.when.is_some() {
-            panic!("`If::when` has already be specified");
+            panic!("`If::when` has already been specified");
         }
         self.when = Some(when.into_reactive());
         self
@@ -147,7 +147,7 @@ impl<N: GenericNode> If<N> {
 
     pub fn child<C: GenericComponent<N>>(mut self, child: C) -> If<N> {
         if self.children.is_some() {
-            panic!("`If::child` has already be specified");
+            panic!("`If::child` has already been specified");
         }
         self.children = Some(child.into_dyn_component());
         self
@@ -190,7 +190,7 @@ impl<N: GenericNode> Else<N> {
 
     pub fn child<C: GenericComponent<N>>(mut self, child: C) -> Else<N> {
         if self.children.is_some() {
-            panic!("`Else::child` has already be specified");
+            panic!("`Else::child` has already been specified");
         }
         self.children = Some(child.into_dyn_component());
         self

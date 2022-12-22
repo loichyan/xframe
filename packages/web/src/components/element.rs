@@ -94,7 +94,7 @@ where
 
     pub fn with_view(mut self, render: impl 'static + FnOnce(E) -> View<N>) -> Self {
         if self.render.is_some() {
-            panic!("`Element::with_view` has already be specified");
+            panic!("`Element::with_view` has already been specified");
         }
         self.render = Some(Box::new(render));
         self

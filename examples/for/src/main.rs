@@ -1,48 +1,76 @@
-use wasm_bindgen::JsCast;
-use xframe::{view, For, Fragment};
+use rand::seq::SliceRandom;
+use std::cell::Cell;
+use wasm_bindgen::JsValue;
+use web_sys::console;
+use xframe::{view, For, Fragment, If};
+
+thread_local! {
+    static COUNTER: Cell<usize> = Cell::new(0);
+}
+
+fn new_id() -> usize {
+    COUNTER.with(|id| {
+        let current = id.get();
+        id.set(current + 1);
+        current
+    })
+}
 
 fn main() {
     console_error_panic_hook::set_once();
 
-    // TODO: element ref
+    let mut rng = rand::thread_rng();
     xframe::render_to_body(|cx| {
-        let todos = cx.create_signal(vec!["Do a diff?".to_owned()]);
-        let current_input = cx.create_signal(String::new());
-        let update_input = move |ev: xframe::Event| {
-            // TODO: bind target type to associated element
-            let el = ev
-                .current_target()
-                .unwrap()
-                .unchecked_into::<xframe::element::HtmlInputElement>();
-            current_input.set(el.value());
-        };
-        let add_todo = move |_| {
-            let todo = current_input.get_untracked();
-            todos.write(|t| {
-                t.push(todo);
+        let ids = cx.create_signal(vec![]);
+        cx.create_effect(move || {
+            let arr = ids
+                .get()
+                .iter()
+                .map(|&t| JsValue::from_f64(t as f64))
+                .collect::<js_sys::Array>();
+            console::log_1(&arr);
+        });
+        let show = cx.create_signal(true);
+        let insert = move |_| {
+            ids.write(|x| {
+                let i = if x.is_empty() {
+                    0
+                } else {
+                    rand::random::<usize>() % x.len()
+                };
+                x.insert(i, new_id());
             });
         };
-        let sort_todos = move |_| todos.write(|t| t.sort());
-        let clear_todos = move |_| todos.write(|t| t.clear());
+        let remove = move |_| {
+            ids.write(|x| {
+                if !x.is_empty() {
+                    let i = rand::random::<usize>() % x.len();
+                    x.remove(i);
+                }
+            })
+        };
+        let shuffle = move |_| {
+            ids.write(|x| {
+                x.shuffle(&mut rng);
+            })
+        };
+        let clear = move |_| ids.write(Vec::clear);
+        let toggle = move |_| show.update(|x| !*x);
         view! { cx,
-            Fragment {
+            div {
                 div {
-                    label { .html_for("todo") "New todo:" }
-                    input { .on_change(update_input) .id("todo") }
+                    button { .on_click(insert) "Insert" }
+                    button { .on_click(remove) "Remove" }
+                    button { .on_click(shuffle) "Shuffle" }
+                    button { .on_click(clear) "Clear" }
+                    button { .on_click(toggle) "Toggle" }
                 }
-                div {
-                    button { .on_click(add_todo) "Add todo" }
-                    button { .on_click(sort_todos) "Sort todos" }
-                    button { .on_click(clear_todos) "Clear todos" }
-                }
-                ul {
+                If {
+                    .when(show)
                     For {
-                        .each(todos)
-                        .key(Clone::clone)
-                        { move |s| {
-                            let s = s.clone();
-                            view! { cx, li { (s) } }
-                        } }
+                        .each(ids)
+                        .key(|v| *v)
+                        {move |cx, &id| view! { cx, Fragment { hr { } "ID: " (id) } }}
                     }
                 }
             }

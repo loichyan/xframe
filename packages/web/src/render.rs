@@ -17,5 +17,6 @@ where
     xframe_reactive::create_root(|cx| {
         f(cx).mount_to(&DomNode::from(root.clone()));
     })
+    .1
     .leak();
 }

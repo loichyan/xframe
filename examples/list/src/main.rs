@@ -35,7 +35,7 @@ fn main() {
                 x.pop();
             })
         };
-        let clear = move |_| counters.update(|_| Default::default());
+        let clear = move |_| counters.write(Vec::clear);
         let toggle = move |_| show.update(|x| !*x);
         view! { cx,
             div {

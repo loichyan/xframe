@@ -149,18 +149,16 @@ pub fn untrack<U>(f: impl FnOnce() -> U) -> U {
     })
 }
 
-pub fn create_root(f: impl FnOnce(Scope)) -> ScopeDisposer {
+pub fn create_root<U>(f: impl FnOnce(Scope) -> U) -> (U, ScopeDisposer) {
     let disposer = ScopeDisposer::new(None);
-    f(disposer.0);
-    disposer
+    (f(disposer.0), disposer)
 }
 
 impl Scope {
-    pub fn create_child(&self, f: impl FnOnce(Scope)) -> ScopeDisposer {
+    pub fn create_child<U>(&self, f: impl FnOnce(Scope) -> U) -> (U, ScopeDisposer) {
         let disposer = ScopeDisposer::new(Some(self.id));
         self.id.on_cleanup(Cleanup::Scope(disposer.0.id));
-        f(disposer.0);
-        disposer
+        (f(disposer.0), disposer)
     }
 
     pub fn on_cleanup(&self, f: impl 'static + FnOnce()) {
@@ -276,7 +274,7 @@ mod tests {
                 COUNTER.with(|x| x.set(x.get() + 1));
             }
         }
-        let disposer = create_root(|_| {});
+        let disposer = create_root(|_| {}).1;
         let cx = disposer.leak();
         cx.create_signal(DropAndInc);
         drop(ScopeDisposer::from_leaked(cx));

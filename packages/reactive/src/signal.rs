@@ -11,6 +11,7 @@ const INITIAL_SUBCRIBER_SLOTS: usize = 4;
 
 pub(crate) type RawSignal = Rc<RefCell<dyn Any>>;
 
+// TODO: remove 'static restriction here
 pub struct ReadSignal<T: 'static> {
     pub(crate) id: SignalId,
     marker: PhantomData<(T, ThreadLocal)>,

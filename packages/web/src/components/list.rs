@@ -47,10 +47,7 @@ where
             let dyn_view = View::dyn_(cx, placeholder.clone());
             cx.create_effect({
                 let dyn_view = dyn_view.clone();
-                let mut current_fragment = Fragment::<N> {
-                    views: Vec::new(),
-                    disposers: Vec::new(),
-                };
+                let mut current_fragment = Fragment::<N>::default();
                 move || {
                     // Only `each` needs to be tracked.
                     let each = each.clone().into_value();
@@ -63,9 +60,7 @@ where
                         each.visit(|val| {
                             if new_len >= current_len {
                                 // Append new views.
-                                let cx = cx.create_child(|_| {}).leak();
-                                let disposer = ScopeDisposer::from_leaked(cx);
-                                let view = fn_view(cx, val);
+                                let (view, disposer) = cx.create_child(|cx| fn_view(cx, val));
                                 parent.insert_before(&view, next_sibling.as_ref());
                                 current_fragment.push(view, disposer);
                             }
@@ -84,7 +79,7 @@ where
                             new_view = placeholder.clone();
                         } else {
                             if new_len < current_len {
-                                // Remove deleted views.
+                                // Remove extra views.
                                 for (view, _) in current_fragment.drain(new_len..) {
                                     parent.remove_child(&view);
                                 }
@@ -105,7 +100,7 @@ where
 
     pub fn each<E: IntoReactive<I>>(mut self, each: E) -> Self {
         if self.each.is_some() {
-            panic!("`each` has already been provided");
+            panic!("`List::each` has already been specified");
         }
         self.each = Some(each.into_reactive());
         self
@@ -116,7 +111,7 @@ where
         child: impl 'static + Fn(Scope, &T) -> C,
     ) -> Self {
         if self.children.is_some() {
-            panic!("`child` has already been provided");
+            panic!("`List::child` has already been specified");
         }
         self.children = Some(Box::new(move |cx, val| child(cx, val).render()));
         self
@@ -127,6 +122,15 @@ struct Fragment<N: GenericNode> {
     // It should be faster to clone the whole Vec.
     views: Vec<View<N>>,
     disposers: Vec<ScopeDisposer>,
+}
+
+impl<N: GenericNode> Default for Fragment<N> {
+    fn default() -> Self {
+        Self {
+            views: Vec::new(),
+            disposers: Vec::new(),
+        }
+    }
 }
 
 impl<N: GenericNode> Fragment<N> {
