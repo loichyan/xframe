@@ -15,7 +15,7 @@ pub struct Scope {
 
 impl fmt::Debug for Scope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.with_shared(|rt| {
+        RT.with(|rt| {
             self.id.with(rt, |raw| {
                 f.debug_struct("Scope")
                     .field("cleanups", &raw.cleanups as _)
@@ -143,10 +143,6 @@ pub fn create_root(f: impl FnOnce(Scope)) -> ScopeDisposer {
 }
 
 impl Scope {
-    pub(crate) fn with_shared<T>(&self, f: impl FnOnce(&Runtime) -> T) -> T {
-        RT.with(f)
-    }
-
     pub fn create_child(&self, f: impl FnOnce(Scope)) -> ScopeDisposer {
         // TODO: dispose child scope
         let disposer = ScopeDisposer::new(Some(self.id));
@@ -155,11 +151,11 @@ impl Scope {
     }
 
     pub fn untrack<U>(&self, f: impl FnOnce() -> U) -> U {
-        self.with_shared(|rt| rt.untrack(f))
+        RT.with(|rt| rt.untrack(f))
     }
 
     pub fn on_cleanup(&self, f: impl 'static + FnOnce()) {
-        self.with_shared(|rt| {
+        RT.with(|rt| {
             self.id.with(rt, |cx| {
                 cx.cleanups.push(Cleanup::Callback(Box::new(f)));
             })

@@ -44,12 +44,11 @@ impl Scope {
         mut is_equal: impl 'static + FnMut(&T, &T) -> bool,
     ) -> ReadSignal<T> {
         self.create_memo_impl(f, move |new_val, memo| {
-            let updated = memo.write_slient(|old_val| {
+            let mut updated = false;
+            memo.write_slient(|old_val| {
                 if !is_equal(old_val, &new_val) {
                     *old_val = new_val;
-                    true
-                } else {
-                    false
+                    updated = true;
                 }
             });
             if updated {

@@ -5,9 +5,11 @@ use crate::{
 };
 use indexmap::IndexSet;
 use smallvec::SmallVec;
-use std::{any::Any, fmt, marker::PhantomData, ops::Deref, rc::Rc};
+use std::{any::Any, cell::RefCell, fmt, marker::PhantomData, ops::Deref, rc::Rc};
 
 const INITIAL_SUBCRIBER_SLOTS: usize = 4;
+
+pub(crate) type RawSignal = Rc<RefCell<dyn Any>>;
 
 pub struct ReadSignal<T: 'static> {
     pub(crate) id: SignalId,
@@ -87,11 +89,14 @@ impl<T> ReadSignal<T> {
 
     pub fn read_untracked<U>(&self, f: impl FnOnce(&T) -> U) -> U {
         RT.with(|rt| {
-            f(rt.signals
+            let t = rt
+                .signals
                 .borrow()
                 .get(self.id)
                 .unwrap_or_else(|| panic!("tried to access a disposed signal"))
-                .downcast_ref::<T>()
+                .clone();
+            let t = t.borrow();
+            f(t.downcast_ref::<T>()
                 .unwrap_or_else(|| panic!("tried to use a signal in mismatched types")))
         })
     }
@@ -117,21 +122,23 @@ impl<T> Signal<T> {
         RT.with(|rt| self.id.trigger(rt));
     }
 
-    pub fn write<U>(&self, f: impl FnOnce(&mut T) -> U) -> U {
-        let output = self.write_slient(f);
+    pub fn write(&self, f: impl FnOnce(&mut T)) {
+        self.write_slient(f);
         self.trigger();
-        output
     }
 
-    pub fn write_slient<U>(&self, f: impl FnOnce(&mut T) -> U) -> U {
+    pub fn write_slient(&self, f: impl FnOnce(&mut T)) {
         RT.with(|rt| {
-            f(rt.signals
+            let t = rt
+                .signals
                 .borrow_mut()
                 .get_mut(self.id)
                 .unwrap_or_else(|| panic!("tried to access a disposed signal"))
+                .clone();
+            f(t.borrow_mut()
                 .downcast_mut()
-                .unwrap_or_else(|| panic!("tried to use a signal in mismatched types")))
-        })
+                .unwrap_or_else(|| panic!("tried to use a signal in mismatched types")));
+        });
     }
 
     pub fn set(&self, val: T) {
@@ -196,8 +203,8 @@ impl SignalId {
 }
 
 impl Scope {
-    fn create_signal_dyn(&self, t: Box<dyn Any>) -> SignalId {
-        self.with_shared(|rt| {
+    fn create_signal_dyn(&self, t: Rc<RefCell<dyn Any>>) -> SignalId {
+        RT.with(|rt| {
             self.id.with(rt, |cx| {
                 let id = rt.signals.borrow_mut().insert(t);
                 cx.push_cleanup(Cleanup::Signal(id));
@@ -208,7 +215,7 @@ impl Scope {
     }
 
     pub fn create_signal<T>(&self, t: T) -> Signal<T> {
-        let id = self.create_signal_dyn(Box::new(t));
+        let id = self.create_signal_dyn(Rc::new(RefCell::new(t)));
         Signal(ReadSignal {
             id,
             marker: PhantomData,

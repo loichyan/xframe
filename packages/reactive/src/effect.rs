@@ -6,6 +6,8 @@ use crate::{
 use ahash::AHashSet;
 use std::{cell::RefCell, fmt, marker::PhantomData, rc::Rc};
 
+pub(crate) type RawEffect = Rc<RefCell<dyn AnyEffect>>;
+
 /// An effect can track signals and automatically execute whenever the captured
 /// [`Signal`](crate::signal::Signal)s changed.
 #[derive(Clone, Copy)]
@@ -109,7 +111,7 @@ impl EffectId {
 
 impl Scope {
     fn create_effect_dyn(&self, f: Rc<RefCell<dyn AnyEffect>>) -> Effect {
-        self.with_shared(|rt| {
+        RT.with(|rt| {
             let id = rt.effects.borrow_mut().insert(f);
             self.id.with(rt, |cx| cx.push_cleanup(Cleanup::Effect(id)));
             rt.effect_contexts.borrow_mut().insert(id, <_>::default());

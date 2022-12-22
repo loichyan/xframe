@@ -1,5 +1,5 @@
 use crate::{
-    runtime::{Runtime, ScopeId, SignalId},
+    runtime::{Runtime, ScopeId, SignalId, RT},
     scope::Scope,
     signal::{ReadSignal, Signal},
 };
@@ -54,7 +54,7 @@ impl Scope {
     /// If the same context has not been provided then return its reference,
     /// otherwise return the existing one as an error.
     pub fn try_provide_context<T>(&self, t: T) -> Result<Signal<T>, Signal<T>> {
-        self.with_shared(|rt| {
+        RT.with(|rt| {
             if let Some(val) = self.id.find_context::<T>(rt) {
                 Err(val)
             } else {
@@ -83,7 +83,7 @@ impl Scope {
 
     /// Loop up the context in the current and parent scopes.
     pub fn try_use_context<T>(&self) -> Option<Signal<T>> {
-        self.with_shared(|rt| self.id.find_context_recursive::<T>(rt))
+        RT.with(|rt| self.id.find_context_recursive::<T>(rt))
     }
 }
 

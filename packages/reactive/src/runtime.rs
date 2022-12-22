@@ -1,15 +1,11 @@
 use crate::{
     context::ScopeContexts,
-    effect::{AnyEffect, EffectContext},
+    effect::{EffectContext, RawEffect},
     scope::RawScope,
-    signal::SignalContext,
+    signal::{RawSignal, SignalContext},
 };
 use slotmap::{new_key_type, SecondaryMap, SlotMap, SparseSecondaryMap};
-use std::{
-    any::Any,
-    cell::{Cell, RefCell},
-    rc::Rc,
-};
+use std::cell::{Cell, RefCell};
 
 thread_local! {
     pub(crate) static RT: Runtime = <_>::default();
@@ -29,8 +25,8 @@ pub(crate) struct Runtime {
     pub scopes: RefCell<SlotMap<ScopeId, RawScope>>,
     pub scope_parents: RefCell<SecondaryMap<ScopeId, ScopeId>>,
     pub scope_contexts: RefCell<ASparseSecondaryMap<ScopeId, ScopeContexts>>,
-    pub signals: RefCell<SlotMap<SignalId, Box<dyn Any>>>,
+    pub signals: RefCell<SlotMap<SignalId, RawSignal>>,
     pub signal_contexts: RefCell<SecondaryMap<SignalId, SignalContext>>,
-    pub effects: RefCell<SlotMap<EffectId, Rc<RefCell<dyn AnyEffect>>>>,
+    pub effects: RefCell<SlotMap<EffectId, RawEffect>>,
     pub effect_contexts: RefCell<SecondaryMap<EffectId, EffectContext>>,
 }
