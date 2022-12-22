@@ -57,10 +57,17 @@ where
 }
 
 impl EffectId {
-    pub fn with_context<T>(&self, f: impl FnOnce(&mut EffectContext) -> T) -> Option<T> {
+    #[must_use]
+    pub fn try_with_context<T>(&self, f: impl FnOnce(&mut EffectContext) -> T) -> Option<T> {
         RT.with(|rt| rt.effect_contexts.borrow_mut().get_mut(*self).map(f))
     }
 
+    pub fn with_context<T>(&self, f: impl FnOnce(&mut EffectContext) -> T) -> T {
+        self.try_with_context(f)
+            .unwrap_or_else(|| panic!("tried to access a disposed effect"))
+    }
+
+    #[must_use]
     pub fn run(&self) -> Option<()> {
         RT.with(|rt| {
             let effect = rt.effects.borrow().get(*self).cloned();
@@ -70,15 +77,14 @@ impl EffectId {
                 // so we need to clear dependencies both links and backlinks at first.
                 self.with_context(|ctx| {
                     let dependencies = &mut ctx.dependencies;
-                    // TODO: drain
-                    for id in dependencies.iter() {
-                        id.with_context(|ctx| {
+                    for id in dependencies.drain() {
+                        // Signal in child scopes may be disposed.
+                        let _ = id.try_with_context(|ctx| {
                             ctx.unsubscribe(*self);
                         });
                     }
                     dependencies.clear();
-                })
-                .unwrap();
+                });
 
                 // 2) Save observer and change it to this effect.
                 let prev = rt.observer.take();
@@ -93,10 +99,9 @@ impl EffectId {
                 // subscribe after running the closure.
                 self.with_context(|ctx| {
                     for id in ctx.dependencies.iter() {
-                        id.with_context(|ctx| ctx.subscribe(*self));
+                        let _ = id.try_with_context(|ctx| ctx.subscribe(*self));
                     }
-                })
-                .unwrap();
+                });
 
                 // 5) Restore previous observer.
                 rt.observer.set(prev);
@@ -277,21 +282,18 @@ mod tests {
                     first = false;
                 }
             });
-            let (total, active) = eff
-                .id
-                .with_context(|ctx| {
-                    (
-                        ctx.dependencies.len(),
-                        ctx.dependencies
-                            .iter()
-                            // The `Signal` should be removed after the scope is
-                            // disposed.
-                            .map(|id| id.with_context(|_| ()).is_some())
-                            .filter(|x| *x)
-                            .count(),
-                    )
-                })
-                .unwrap();
+            let (total, active) = eff.id.with_context(|ctx| {
+                (
+                    ctx.dependencies.len(),
+                    ctx.dependencies
+                        .iter()
+                        // The `Signal` should be removed after the scope is
+                        // disposed.
+                        .map(|id| id.try_with_context(|_| ()).is_some())
+                        .filter(|x| *x)
+                        .count(),
+                )
+            });
             assert_eq!(total, 1);
             assert_eq!(active, 0);
         });

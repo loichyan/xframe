@@ -29,6 +29,7 @@ pub(crate) struct RawScope {
 }
 
 pub(crate) enum Cleanup {
+    Scope(ScopeId),
     Effect(EffectId),
     Signal(SignalId),
     Callback(Box<(dyn FnOnce())>),
@@ -37,6 +38,7 @@ pub(crate) enum Cleanup {
 impl fmt::Debug for Cleanup {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Cleanup::Scope(_) => f.debug_tuple("Scope"),
             Cleanup::Effect(_) => f.debug_tuple("Effect"),
             Cleanup::Signal(_) => f.debug_tuple("Signal"),
             Cleanup::Callback(_) => f.debug_tuple("Callback"),
@@ -79,43 +81,57 @@ impl ScopeDisposer {
 
 impl Drop for ScopeDisposer {
     fn drop(&mut self) {
-        RT.with(|rt| {
-            let Scope { id, .. } = self.0;
-            // 1) Cleanup resources created inside this `Scope`.
-            let cleanups = id.with(|cx| std::mem::take(&mut cx.cleanups));
-            for cl in cleanups.into_iter().rev() {
-                match cl {
-                    Cleanup::Signal(id) => {
-                        // Use let binding to let the mutable borrow of `signals`
-                        // get dropped before `_t`.
-                        let _t = rt.signals.borrow_mut().remove(id).unwrap();
-                        let _t = rt.signal_contexts.borrow_mut().remove(id).unwrap();
-                    }
-                    Cleanup::Effect(id) => {
-                        let _t = rt.effects.borrow_mut().remove(id).unwrap();
-                        _t.try_borrow_mut()
-                            .unwrap_or_else(|_| panic!("tried to dispose an effect in use"));
-                        let _t = rt.effect_contexts.borrow_mut().remove(id).unwrap();
-                    }
-                    Cleanup::Callback(cb) => untrack(cb),
-                }
-            }
-            // 2) Cleanup resources onwed by this `Scope`.
-            rt.scopes.borrow_mut().remove(id).unwrap();
-            rt.scope_contexts.borrow_mut().remove(id);
-            rt.scope_parents.borrow_mut().remove(id);
-        });
+        // May be disposed by its parent.
+        let _ = self.0.id.try_drop();
     }
 }
 
 impl ScopeId {
+    #[must_use]
+    fn try_with<T>(&self, f: impl FnOnce(&mut RawScope) -> T) -> Option<T> {
+        RT.with(|rt| rt.scopes.borrow_mut().get_mut(*self).map(f))
+    }
+
     fn with<T>(&self, f: impl FnOnce(&mut RawScope) -> T) -> T {
+        self.try_with(f)
+            .unwrap_or_else(|| panic!("tried to access a disposed scope"))
+    }
+
+    #[must_use]
+    fn try_drop(&self) -> Option<()> {
         RT.with(|rt| {
-            rt.scopes
-                .borrow_mut()
-                .get_mut(*self)
-                .map(f)
-                .unwrap_or_else(|| panic!("tried to access a disposed scope"))
+            if let Some(cleanups) = self.try_with(|cx| std::mem::take(&mut cx.cleanups)) {
+                // 1) Cleanup resources created inside this `Scope`.
+                for cl in cleanups.into_iter().rev() {
+                    match cl {
+                        Cleanup::Scope(id) => {
+                            // May be manually disposed.
+                            let _ = id.try_drop();
+                        }
+                        Cleanup::Signal(id) => {
+                            // Use let binding to let the mutable borrow of `signals`
+                            // get dropped before `_t`.
+                            let _t = rt.signals.borrow_mut().remove(id).unwrap();
+                            let _t = rt.signal_contexts.borrow_mut().remove(id).unwrap();
+                        }
+                        Cleanup::Effect(id) => {
+                            let _t = rt.effects.borrow_mut().remove(id).unwrap();
+                            _t.try_borrow_mut()
+                                .unwrap_or_else(|_| panic!("tried to dispose an effect in use"));
+                            let _t = rt.effect_contexts.borrow_mut().remove(id).unwrap();
+                        }
+                        Cleanup::Callback(cb) => untrack(cb),
+                    }
+                }
+                // 2) Cleanup resources onwed by this `Scope`.
+                let id = *self;
+                rt.scopes.borrow_mut().remove(id).unwrap();
+                rt.scope_contexts.borrow_mut().remove(id);
+                rt.scope_parents.borrow_mut().remove(id);
+                Some(())
+            } else {
+                None
+            }
         })
     }
 
@@ -141,8 +157,8 @@ pub fn create_root(f: impl FnOnce(Scope)) -> ScopeDisposer {
 
 impl Scope {
     pub fn create_child(&self, f: impl FnOnce(Scope)) -> ScopeDisposer {
-        // TODO: dispose child scope
         let disposer = ScopeDisposer::new(Some(self.id));
+        self.id.on_cleanup(Cleanup::Scope(disposer.0.id));
         f(disposer.0);
         disposer
     }

@@ -76,7 +76,7 @@ impl<T> ReadSignal<T> {
     pub fn track(&self) {
         RT.with(|rt| {
             if let Some(id) = rt.observer.get() {
-                id.with_context(|ctx| ctx.add_dependency(self.id)).unwrap();
+                id.with_context(|ctx| ctx.add_dependency(self.id));
             }
         });
     }
@@ -175,24 +175,29 @@ impl SignalContext {
 }
 
 impl SignalId {
-    pub fn with_context<T>(&self, f: impl FnOnce(&mut SignalContext) -> T) -> Option<T> {
+    #[must_use]
+    pub fn try_with_context<T>(&self, f: impl FnOnce(&mut SignalContext) -> T) -> Option<T> {
         RT.with(|rt| rt.signal_contexts.borrow_mut().get_mut(*self).map(f))
     }
 
+    pub fn with_context<T>(&self, f: impl FnOnce(&mut SignalContext) -> T) -> T {
+        RT.with(|rt| rt.signal_contexts.borrow_mut().get_mut(*self).map(f))
+            .unwrap_or_else(|| panic!("tried to access a disposed signal"))
+    }
+
     pub fn trigger(&self) {
-        let subscribers = self
-            .with_context(|ctx| {
-                ctx.subscribers
-                    .drain(..)
-                    .collect::<SmallVec<[_; INITIAL_SUBCRIBER_SLOTS]>>()
-            })
-            .unwrap_or_else(|| panic!("tried to access a disposed signal"));
+        let subscribers = self.with_context(|ctx| {
+            ctx.subscribers
+                .drain(..)
+                .collect::<SmallVec<[_; INITIAL_SUBCRIBER_SLOTS]>>()
+        });
         // Effects attach to subscribers at the end of the effect scope, an effect
         // created inside another scope might send signals to its outer scope,
         // so we should ensure the inner effects re-execute before outer ones to
         // avoid potential double executions.
         for id in subscribers {
-            id.run();
+            // Effect in child scopes may be disposed.
+            let _ = id.run();
         }
     }
 
