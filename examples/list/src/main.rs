@@ -1,49 +1,51 @@
-use xframe::{view, Else, If, List, Switch};
+use xframe::{view, Else, GenericComponent, GenericNode, If, List, Scope, Switch};
+
+fn make_counter<N: GenericNode>(cx: Scope, init: usize) -> impl GenericComponent<N> {
+    let counter = cx.create_signal(init);
+    let increment = move |_| counter.update(|x| *x + 1);
+    let is_even = move || counter.get() % 2 == 0;
+    view! { cx,
+        fieldset {
+            div {
+                "Number " (counter) " is "
+                Switch {
+                    If { .when(is_even) "even" }
+                    Else { "odd" }
+                }
+                "."
+            }
+            button {
+                .type_("button")
+                .on_click(increment)
+                "Click me: " (counter) " times!"
+            }
+        }
+    }
+}
 
 fn main() {
     console_error_panic_hook::set_once();
 
     xframe::render_to_body(|cx| {
         let counters = cx.create_signal(vec![1, 2, 3, 4]);
-        let make_counter = move |&initial: &usize| {
-            let counter = cx.create_signal(initial);
-            let increment = move |_| counter.update(|x| *x + 1);
-            let is_even = move || counter.get() % 2 == 0;
-            view! { cx,
-                fieldset {
-                    div {
-                        "Number " (counter) " is "
-                        Switch {
-                            If { .when(is_even) "even" }
-                            Else { "odd" }
-                        }
-                        "."
-                    }
-                    button {
-                        .type_("button")
-                        .on_click(increment)
-                        "Click me: " (counter) " times!"
-                    }
-                }
-            }
-        };
-        let new_counter = move |_| counters.write(|x| x.push(x.len() + 1));
-        let remove_counter = move |_| {
+        let show = cx.create_signal(true);
+        let push = move |_| counters.write(|x| x.push(x.len() + 1));
+        let pop = move |_| {
             counters.write(|x| {
                 x.pop();
             })
         };
+        let clear = move |_| counters.update(|_| Default::default());
+        let toggle = move |_| show.update(|x| !*x);
         view! { cx,
             div {
-                div { button {
-                    .on_click(new_counter)
-                    "Click me to add new a counter"
-                } }
-                div { button {
-                    .on_click(remove_counter)
-                    "Click me to remove the last counter"
-                } }
-                List { .each(counters) {make_counter} }
+                div {
+                    button { .on_click(push) "Push" }
+                    button { .on_click(pop) "Pop" }
+                    button { .on_click(clear) "Clear" }
+                    button { .on_click(toggle) "Toggle" }
+                }
+                If { .when(show) List { .each(counters) {|cx, &init| make_counter(cx, init)} } }
             }
         }
     });

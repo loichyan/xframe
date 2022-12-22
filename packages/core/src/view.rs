@@ -117,21 +117,24 @@ impl<N: GenericNode> View<N> {
 
     /// Visit all nodes in this view and check if they are mounted in the same order.
     pub fn check_mount_order(&self) -> bool {
-        let mut correct = true;
+        let mut same = true;
         let mut current = Some(self.first());
         self.visit(|node| {
             if node.parent().is_some() {
-                if let Some(real) = current.as_ref() {
-                    if real.ne(node) {
-                        correct = false;
+                if let Some(mounted) = current.as_ref() {
+                    if mounted.ne(node) {
+                        same = false;
+                        current = None;
+                    } else {
+                        current = mounted.next_sibling();
                     }
-                    current = real.next_sibling();
                 } else {
-                    correct = false;
+                    same = false;
+                    current = None;
                 }
             }
         });
-        correct
+        same
     }
 }
 

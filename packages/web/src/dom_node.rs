@@ -50,7 +50,7 @@ pub struct DomNode {
 
 impl PartialEq for DomNode {
     fn eq(&self, other: &Self) -> bool {
-        self.id.eq(&other.id)
+        self.id.eq(&other.id) || self.node.eq(&other.node)
     }
 }
 
