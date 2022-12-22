@@ -1,8 +1,8 @@
 use crate::Element;
 use smallvec::SmallVec;
 use xframe_core::{
-    component::DynComponent, is_dev, GenericComponent, GenericElement, GenericNode, IntoReactive,
-    Reactive, Template, Value, View,
+    component::DynComponent, is_dev, view::ViewParentExt, GenericComponent, GenericElement,
+    GenericNode, IntoReactive, Reactive, Template, Value, View,
 };
 use xframe_reactive::{untrack, Scope};
 
@@ -38,38 +38,43 @@ impl<N: GenericNode> GenericComponent<N> for Switch<N> {
         let Self { cx, children } = self;
         Element(cx)
             .with_view(move |placeholder: Placeholder<N>| {
-                let placeholder = placeholder.into_node();
-                let branches = children
-                    .into_iter()
-                    .map(|SwitchChild { cond, content }| Branch {
-                        cond,
-                        view: untrack(|| content.render()),
-                    })
-                    // Add a default branch.
-                    .chain(Some(Branch {
-                        cond: Value(true),
-                        view: View::node(placeholder.clone()),
-                    }))
-                    .collect::<SmallVec<[_; INITIAL_BRANCH_SLOTS]>>();
-                let dyn_view = View::dyn_(cx, View::node(placeholder));
+                let placeholder = View::node(placeholder.into_node());
+                let dyn_view = View::dyn_(cx, placeholder.clone());
                 cx.create_effect({
                     let dyn_view = dyn_view.clone();
+                    let branches = children
+                        .into_iter()
+                        .map(|SwitchChild { cond, content }| Branch {
+                            cond,
+                            // TODO: lazy rendering
+                            view: content.render(),
+                        })
+                        // Fallback to a placeholder.
+                        .chain(Some(Branch {
+                            cond: Value(true),
+                            view: placeholder,
+                        }))
+                        .collect::<SmallVec<[_; INITIAL_BRANCH_SLOTS]>>();
+                    let mut current_index = branches.len() - 1;
                     move || {
-                        for branch in branches.iter() {
+                        for (index, branch) in branches.iter().enumerate() {
                             let Branch::<N> {
                                 cond,
                                 view: new_view,
                             } = branch;
+                            // Only `cond` need to be tracked.
                             if cond.clone().into_value() {
                                 untrack(|| {
                                     let current_view = dyn_view.get();
-                                    let current_first = current_view.first();
-                                    let parent = current_first.parent().unwrap();
-                                    let new_first = new_view.first();
-                                    if current_first.ne(&new_first) {
-                                        current_view.replace_with(&parent, new_view);
+                                    // `dyn_view` may be moved or deleted, we need to
+                                    // get its latest parent node.
+                                    let parent = current_view.parent();
+                                    if current_index != index {
+                                        parent.replace_child(new_view, &current_view);
+                                        current_index = index;
+                                        debug_assert!(new_view.check_mount_order());
                                         dyn_view.set(new_view.clone());
-                                    }
+                                    };
                                 });
                                 break;
                             }

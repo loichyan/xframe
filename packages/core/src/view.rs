@@ -155,3 +155,50 @@ impl<N: GenericNode> DynView<N> {
         self.inner.set(view);
     }
 }
+
+/// Helper trait, node operations will be ignored when parent is [`None`].
+pub trait ViewParentExt<N: GenericNode> {
+    fn with_parent(&self, f: impl FnOnce(&N));
+
+    fn append_child(&self, new_view: &View<N>) {
+        self.with_parent(|parent| {
+            new_view.remove_from(parent);
+        });
+    }
+
+    fn replace_child(&self, new_view: &View<N>, old_view: &View<N>) {
+        self.with_parent(|parent| {
+            old_view.replace_with(parent, new_view);
+        });
+    }
+
+    fn remove_child(&self, position: &View<N>) {
+        self.with_parent(|parent| {
+            position.remove_from(parent);
+        });
+    }
+
+    fn insert_before(&self, new_view: &View<N>, position: Option<&N>) {
+        self.with_parent(|parent| {
+            new_view.move_before(parent, position);
+        });
+    }
+}
+
+impl<N: GenericNode> ViewParentExt<N> for N {
+    fn with_parent(&self, f: impl FnOnce(&N)) {
+        f(self);
+    }
+}
+
+impl<N: GenericNode> ViewParentExt<N> for Option<N> {
+    fn with_parent(&self, f: impl FnOnce(&N)) {
+        self.as_ref().with_parent(f);
+    }
+}
+
+impl<N: GenericNode> ViewParentExt<N> for Option<&N> {
+    fn with_parent(&self, f: impl FnOnce(&N)) {
+        self.map(|n| n.with_parent(f));
+    }
+}
