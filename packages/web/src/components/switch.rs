@@ -18,17 +18,17 @@ pub fn Switch<N: GenericNode>(cx: Scope) -> Switch<N> {
     }
 }
 
-pub struct Switch<N: GenericNode> {
+pub struct Switch<N> {
     cx: Scope,
     children: SmallVec<[SwitchChild<N>; INITIAL_BRANCH_SLOTS]>,
 }
 
-pub struct SwitchChild<N: GenericNode> {
+pub struct SwitchChild<N> {
     cond: Reactive<bool>,
     content: DynComponent<N>,
 }
 
-struct Branch<N: GenericNode> {
+struct Branch<N> {
     cond: Reactive<bool>,
     view: View<N>,
 }
@@ -110,13 +110,13 @@ pub fn If<N: GenericNode>(cx: Scope) -> If<N> {
     }
 }
 
-pub struct If<N: GenericNode> {
+pub struct If<N> {
     cx: Scope,
     when: Option<Reactive<bool>>,
     children: Option<DynComponent<N>>,
 }
 
-impl<N: GenericNode> From<If<N>> for SwitchChild<N> {
+impl<N> From<If<N>> for SwitchChild<N> {
     fn from(value: If<N>) -> Self {
         SwitchChild {
             cond: value.when.expect("`If::when` was not specified"),
@@ -159,12 +159,12 @@ pub fn Else<N: GenericNode>(cx: Scope) -> Else<N> {
     Else { cx, children: None }
 }
 
-pub struct Else<N: GenericNode> {
+pub struct Else<N> {
     cx: Scope,
     children: Option<DynComponent<N>>,
 }
 
-impl<N: GenericNode> From<Else<N>> for SwitchChild<N> {
+impl<N> From<Else<N>> for SwitchChild<N> {
     fn from(value: Else<N>) -> Self {
         SwitchChild {
             cond: Value(true),

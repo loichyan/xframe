@@ -18,7 +18,7 @@ pub fn Fragment<N: GenericNode>(cx: Scope) -> Fragment<N> {
     }
 }
 
-pub struct Fragment<N: GenericNode> {
+pub struct Fragment<N> {
     cx: Scope,
     init: Box<dyn FnOnce(&mut Views<N>)>,
     render: Box<dyn FnOnce(BeforeRendering<N>, N, &mut Views<N>) -> Option<N>>,

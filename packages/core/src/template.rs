@@ -9,18 +9,18 @@ thread_local! {
     static GLOBAL_ID: Cell<usize> = Cell::new(0);
 }
 
-pub struct Template<N: GenericNode> {
+pub struct Template<N> {
     pub init: TemplateInit<N>,
     pub render: TemplateRender<N>,
 }
 
 /// Initializes a [`Template`]. It should return the same node tree after each call
 /// and no side effect should be performed during the invoking.
-pub struct TemplateInit<N: GenericNode> {
+pub struct TemplateInit<N> {
     inner: Box<dyn FnOnce() -> View<N>>,
 }
 
-impl<N: GenericNode> TemplateInit<N> {
+impl<N> TemplateInit<N> {
     pub fn new(f: impl 'static + FnOnce() -> View<N>) -> Self {
         Self { inner: Box::new(f) }
     }
@@ -34,11 +34,11 @@ impl<N: GenericNode> TemplateInit<N> {
 /// and should return the next sibling of the last node in the template. And the
 /// behavior defined by [`BeforeRendering`] should be applied to each node in the
 /// template.
-pub struct TemplateRender<N: GenericNode> {
+pub struct TemplateRender<N> {
     inner: Box<dyn FnOnce(BeforeRendering<N>, N) -> RenderOutput<N>>,
 }
 
-impl<N: GenericNode> TemplateRender<N> {
+impl<N> TemplateRender<N> {
     pub fn new(f: impl 'static + FnOnce(BeforeRendering<N>, N) -> RenderOutput<N>) -> Self {
         Self { inner: Box::new(f) }
     }
@@ -73,7 +73,7 @@ impl<N> Clone for BeforeRendering<'_, N> {
 
 impl<N> Copy for BeforeRendering<'_, N> {}
 
-pub struct RenderOutput<N: GenericNode> {
+pub struct RenderOutput<N> {
     pub next: Option<N>,
     pub view: View<N>,
 }
@@ -82,7 +82,7 @@ pub struct GlobalTemplates<N> {
     inner: Rc<RefCell<AHashMap<usize, TemplateContent<N>>>>,
 }
 
-impl<N: GenericNode> Default for GlobalTemplates<N> {
+impl<N> Default for GlobalTemplates<N> {
     fn default() -> Self {
         Self {
             inner: Default::default(),

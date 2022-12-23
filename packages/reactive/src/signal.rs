@@ -11,19 +11,18 @@ const INITIAL_SUBCRIBER_SLOTS: usize = 4;
 
 pub(crate) type RawSignal = Rc<RefCell<dyn Any>>;
 
-// TODO: remove 'static restriction here
-pub struct ReadSignal<T: 'static> {
+pub struct ReadSignal<T> {
     pub(crate) id: SignalId,
     marker: PhantomData<(T, ThreadLocal)>,
 }
 
-impl<T: fmt::Debug> fmt::Debug for ReadSignal<T> {
+impl<T: 'static + fmt::Debug> fmt::Debug for ReadSignal<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.read(|v| f.debug_tuple("Signal").field(v).finish())
     }
 }
 
-impl<T: fmt::Display> fmt::Display for ReadSignal<T> {
+impl<T: 'static + fmt::Display> fmt::Display for ReadSignal<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.read(|v| v.fmt(f))
     }
@@ -43,15 +42,15 @@ impl<T> From<Signal<T>> for ReadSignal<T> {
     }
 }
 
-pub struct Signal<T: 'static>(ReadSignal<T>);
+pub struct Signal<T>(ReadSignal<T>);
 
-impl<T: fmt::Debug> fmt::Debug for Signal<T> {
+impl<T: 'static + fmt::Debug> fmt::Debug for Signal<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.deref().fmt(f)
     }
 }
 
-impl<T: fmt::Display> fmt::Display for Signal<T> {
+impl<T: 'static + fmt::Display> fmt::Display for Signal<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.deref().fmt(f)
     }
@@ -73,7 +72,7 @@ impl<T> Clone for Signal<T> {
 
 impl<T> Copy for Signal<T> {}
 
-impl<T> ReadSignal<T> {
+impl<T: 'static> ReadSignal<T> {
     pub fn ref_eq(&self, other: &Self) -> bool {
         self.id == other.id
     }
@@ -121,7 +120,7 @@ impl<T> ReadSignal<T> {
     }
 }
 
-impl<T> Signal<T> {
+impl<T: 'static> Signal<T> {
     pub fn trigger(&self) {
         self.id.trigger()
     }
@@ -224,7 +223,7 @@ impl Scope {
         })
     }
 
-    pub fn create_signal<T>(&self, t: T) -> Signal<T> {
+    pub fn create_signal<T: 'static>(&self, t: T) -> Signal<T> {
         self.create_signal_dyn(Rc::new(RefCell::new(t)))
             .make_signal()
     }

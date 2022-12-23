@@ -3,18 +3,18 @@ use std::rc::Rc;
 use xframe_reactive::{Scope, Signal};
 
 #[derive(Clone)]
-pub struct View<N: GenericNode>(ViewType<N>);
+pub struct View<N>(ViewType<N>);
 
 use ViewType as VT;
 
 #[derive(Clone)]
-enum ViewType<N: GenericNode> {
+enum ViewType<N> {
     Node(N),
     Fragment(Rc<[View<N>]>),
     Dyn(Signal<View<N>>),
 }
 
-impl<N: GenericNode> ViewType<N> {
+impl<N> ViewType<N> {
     fn fragment(views: Vec<View<N>>) -> Self {
         Self::Fragment(views.into_boxed_slice().into())
     }
@@ -139,11 +139,11 @@ impl<N: GenericNode> View<N> {
 }
 
 #[derive(Clone)]
-pub struct DynView<N: GenericNode> {
+pub struct DynView<N> {
     inner: Signal<View<N>>,
 }
 
-impl<N: GenericNode> From<DynView<N>> for View<N> {
+impl<N> From<DynView<N>> for View<N> {
     fn from(value: DynView<N>) -> Self {
         View(ViewType::Dyn(value.inner))
     }

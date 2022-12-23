@@ -11,7 +11,6 @@ define_placeholder!(Placeholder("PLACEHOLDER FOR `xframe::List` COMPONENT"));
 
 pub struct List<N, T, I>
 where
-    N: GenericNode,
     I: 'static + Visit<T>,
 {
     cx: Scope,
@@ -118,13 +117,13 @@ where
     }
 }
 
-struct Fragment<N: GenericNode> {
+struct Fragment<N> {
     // It should be faster to clone the whole Vec.
     views: Vec<View<N>>,
     disposers: Vec<ScopeDisposer>,
 }
 
-impl<N: GenericNode> Default for Fragment<N> {
+impl<N> Default for Fragment<N> {
     fn default() -> Self {
         Self {
             views: Vec::new(),
@@ -133,7 +132,7 @@ impl<N: GenericNode> Default for Fragment<N> {
     }
 }
 
-impl<N: GenericNode> Fragment<N> {
+impl<N> Fragment<N> {
     fn len(&self) -> usize {
         self.views.len()
     }

@@ -57,7 +57,7 @@ where
 
 impl<T, U> From<Signal<U>> for Reactive<T>
 where
-    U: Clone + IntoReactive<T>,
+    U: 'static + Clone + IntoReactive<T>,
 {
     fn from(t: Signal<U>) -> Self {
         Reactive::Fn(Rc::new(move || t.get().into()))
@@ -66,7 +66,7 @@ where
 
 impl<T, U> From<ReadSignal<U>> for Reactive<T>
 where
-    U: Clone + IntoReactive<T>,
+    U: 'static + Clone + IntoReactive<T>,
 {
     fn from(t: ReadSignal<U>) -> Self {
         Reactive::Fn(Rc::new(move || t.get().into()))

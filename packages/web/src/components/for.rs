@@ -11,7 +11,6 @@ define_placeholder!(Placeholder("PLACEHOLDER FOR `xframe::For` COMPONENT"));
 
 pub struct For<N, T, K, I>
 where
-    N: GenericNode,
     I: 'static + Visit<T>,
 {
     cx: Scope,
@@ -40,7 +39,6 @@ where
     T: 'static,
     K: 'static + Clone + Eq + Hash,
     I: 'static + Clone + Visit<T>,
-    N: GenericNode,
 {
     pub fn build(self) -> impl GenericComponent<N> {
         let Self {
@@ -152,19 +150,19 @@ where
     }
 }
 
-struct Cached<N: GenericNode> {
+struct Cached<N> {
     view: View<N>,
     moved: bool,
     #[allow(dead_code)]
     disposer: ScopeDisposer,
 }
 
-struct Fragment<N: GenericNode, K> {
+struct Fragment<N, K> {
     views: Vec<View<N>>,
     keys: Vec<K>,
 }
 
-impl<N: GenericNode, K> Default for Fragment<N, K> {
+impl<N, K> Default for Fragment<N, K> {
     fn default() -> Self {
         Self {
             views: Vec::new(),
@@ -173,7 +171,7 @@ impl<N: GenericNode, K> Default for Fragment<N, K> {
     }
 }
 
-impl<N: GenericNode, K> Fragment<N, K> {
+impl<N, K> Fragment<N, K> {
     fn len(&self) -> usize {
         self.views.len()
     }

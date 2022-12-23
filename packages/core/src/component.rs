@@ -37,7 +37,7 @@ pub trait GenericComponent<N: GenericNode>: 'static + Sized {
 ///
 /// NOTE: you should call the [`DynComponent::id`] instead of [`GenericComponent::id`]
 /// to get the [`TemplateId`] of the source component.
-pub struct DynComponent<N: GenericNode> {
+pub struct DynComponent<N> {
     id: Option<TemplateId>,
     template: Template<N>,
 }

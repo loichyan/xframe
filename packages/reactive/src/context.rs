@@ -18,7 +18,7 @@ fn context_id<T: 'static>() -> TypeId {
 }
 
 impl ScopeId {
-    fn find_context<T>(&self) -> Option<Signal<T>> {
+    fn find_context<T: 'static>(&self) -> Option<Signal<T>> {
         RT.with(|rt| {
             rt.scope_contexts.borrow().get(*self).and_then(|contexts| {
                 contexts
@@ -29,7 +29,7 @@ impl ScopeId {
         })
     }
 
-    fn find_context_recursive<T>(&self) -> Option<Signal<T>> {
+    fn find_context_recursive<T: 'static>(&self) -> Option<Signal<T>> {
         RT.with(|rt| {
             self.find_context::<T>().or_else(|| {
                 rt.scope_parents
@@ -47,7 +47,7 @@ impl Scope {
     /// # Panics
     ///
     /// Panics if the same context has already been provided.
-    pub fn provide_context<T>(&self, t: T) -> Signal<T> {
+    pub fn provide_context<T: 'static>(&self, t: T) -> Signal<T> {
         self.try_provide_context(t)
             .unwrap_or_else(|_| panic!("tried to provide a duplicated context in the same scope"))
     }
@@ -55,7 +55,7 @@ impl Scope {
     /// Provide a context in current scope which is identified by the [`TypeId`].
     /// If the same context has not been provided then return its reference,
     /// otherwise return the existing one as an error.
-    pub fn try_provide_context<T>(&self, t: T) -> Result<Signal<T>, Signal<T>> {
+    pub fn try_provide_context<T: 'static>(&self, t: T) -> Result<Signal<T>, Signal<T>> {
         RT.with(|rt| {
             if let Some(val) = self.id.find_context::<T>() {
                 Err(val)
@@ -78,13 +78,13 @@ impl Scope {
     /// # Panics
     ///
     /// Panics if the context is not provided.
-    pub fn use_context<T>(&self) -> Signal<T> {
+    pub fn use_context<T: 'static>(&self) -> Signal<T> {
         self.try_use_context::<T>()
             .unwrap_or_else(|| panic!("tried to use a nonexistent context"))
     }
 
     /// Loop up the context in the current and parent scopes.
-    pub fn try_use_context<T>(&self) -> Option<Signal<T>> {
+    pub fn try_use_context<T: 'static>(&self) -> Option<Signal<T>> {
         self.id.find_context_recursive::<T>()
     }
 }

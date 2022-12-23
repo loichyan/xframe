@@ -28,7 +28,7 @@ where
     }
 }
 
-pub struct Element<N: GenericNode, E> {
+pub struct Element<N, E> {
     cx: Scope,
     init: PhantomData<E>,
     render: Option<Box<dyn FnOnce(E) -> View<N>>>,
