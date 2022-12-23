@@ -81,6 +81,7 @@ events = [
     "web-sys/ClipboardEvent",
     "web-sys/CompositionEvent",
     "web-sys/DragEvent",
+    "web-sys/ErrorEvent",
     "web-sys/Event",
     "web-sys/FocusEvent",
     "web-sys/GamepadEvent",

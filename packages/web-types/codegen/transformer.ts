@@ -46,29 +46,55 @@ class PropertyCollector {
 
   collect(property: ts.Symbol): ts.PropertyAssignment {
     const type = this.checker.getTypeOfSymbolAtLocation(property, this.node);
-    const collected = [];
-    for (const prop of this.checker.getPropertiesOfType(
-      this.getPropertyType(type, "props")
-    )) {
-      const collectedProp = this.collectProperty(prop);
-      if (collectedProp !== undefined) {
-        collected.push(collectedProp);
-      }
-    }
     return factory.createPropertyAssignment(
       property.name,
       createObjectLiteral({
-        className: factory.createStringLiteral(
-          this.getPropertyType(type, "className").symbol.name
+        className: this.collectClassName(
+          this.getPropertyType(type, "className")
         ),
-        props: factory.createObjectLiteralExpression(collected, true),
+        props: this.collectProperties(this.getPropertyType(type, "props")),
+        events: this.collectEvents(this.getPropertyType(type, "events")),
       })
     );
   }
 
   private getPropertyType(type: ts.Type, property: string): ts.Type {
     const sym = this.checker.getPropertyOfType(type, property)!;
-    return this.checker.getTypeOfSymbolAtLocation(sym, this.node);
+    return this.checker
+      .getTypeOfSymbolAtLocation(sym, this.node)
+      .getNonNullableType();
+  }
+
+  private collectEvents(type: ts.Type): ts.ObjectLiteralExpression {
+    const checker = this.checker;
+    const k = type.getCallSignatures()[0].typeParameters![0].symbol
+      .declarations![0] as ts.TypeParameterDeclaration;
+    const eventMap = checker.getTypeFromTypeNode(
+      (k.constraint! as ts.TypeOperatorNode).type
+    );
+    const events = eventMap.getProperties().map((sym) => {
+      const name = sym.getName();
+      const type = checker
+        .getTypeOfSymbolAtLocation(sym, this.node)
+        .symbol.getName();
+      return factory.createPropertyAssignment(
+        name,
+        factory.createStringLiteral(type)
+      );
+    });
+    return factory.createObjectLiteralExpression(events, true);
+  }
+
+  private collectClassName(type: ts.Type): ts.StringLiteral {
+    return factory.createStringLiteral(type.symbol.name);
+  }
+
+  private collectProperties(type: ts.Type): ts.ObjectLiteralExpression {
+    const collected = type
+      .getProperties()
+      .map((sym) => this.collectProperty(sym))
+      .filter((t): t is ts.PropertyAssignment => t !== undefined);
+    return factory.createObjectLiteralExpression(collected, true);
   }
 
   private collectProperty(
@@ -84,43 +110,27 @@ class PropertyCollector {
     const type = this.checker
       .getTypeOfSymbolAtLocation(property, this.node)
       .getNonNullableType();
-    if (property.name.startsWith("on")) {
-      const def = type.symbol.declarations![0];
-      if (!ts.isFunctionTypeNode(def)) {
+    if (type.flags & ts.TypeFlags.Boolean) {
+      value = factory.createStringLiteral("boolean");
+    } else if (type.flags & ts.TypeFlags.Number) {
+      value = factory.createStringLiteral("number");
+    } else if (type.flags & ts.TypeFlags.String) {
+      value = factory.createStringLiteral("string");
+    } else if (type.isUnion()) {
+      const lit = this.collectLiteralProperty(type);
+      if (lit === undefined) {
         return;
       }
-      value = this.collectEventProperty(def);
+      value = lit;
     } else {
-      if (type.flags & ts.TypeFlags.Boolean) {
-        value = factory.createStringLiteral("boolean");
-      } else if (type.flags & ts.TypeFlags.Number) {
-        value = factory.createStringLiteral("number");
-      } else if (type.flags & ts.TypeFlags.String) {
-        value = factory.createStringLiteral("string");
-      } else if (type.isUnion()) {
-        const lit = this.collectLiteralProperty(type);
-        if (lit === undefined) {
-          return;
-        }
-        value = lit;
-      } else {
-        return;
-      }
+      return;
     }
     return factory.createPropertyAssignment(property.name, value);
   }
 
-  private collectEventProperty(type: ts.FunctionTypeNode): ts.Expression {
-    const eventType = type.parameters[1].type!.getText();
-    return createObjectLiteral({
-      type: factory.createStringLiteral("event"),
-      eventType: factory.createStringLiteral(eventType),
-    });
-  }
-
   private collectLiteralProperty(
     type: ts.UnionType
-  ): ts.Expression | undefined {
+  ): ts.ArrayLiteralExpression | undefined {
     const literals = [];
     for (const lit of type.types) {
       if (lit.isStringLiteral()) {
@@ -130,12 +140,9 @@ class PropertyCollector {
     if (literals.length === 0) {
       return;
     }
-    return createObjectLiteral({
-      type: factory.createStringLiteral("literals"),
-      values: factory.createArrayLiteralExpression(
-        literals.map((lit) => factory.createStringLiteral(lit))
-      ),
-    });
+    return factory.createArrayLiteralExpression(
+      literals.map((lit) => factory.createStringLiteral(lit))
+    );
   }
 }
 

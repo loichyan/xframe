@@ -90,8 +90,7 @@ fn make_todo<N: WebNode>(
                         .class("edit")
                         .ref_(edit_input)
                         .value(content)
-                        // TODO: on_focusout
-                        .on_blur(save_editing)
+                        .on_focusout(save_editing)
                         .on_keydown(done_editing)
                     }
                 }]
