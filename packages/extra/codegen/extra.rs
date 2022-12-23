@@ -55,8 +55,8 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
     let mut element_types = BTreeSet::default();
     for element in input {
         let element = Element::from_web(element);
-        if !element_types.contains(&element.ty) {
-            element_types.insert(element.ty.clone());
+        if !element_types.contains(&element.js_ty) {
+            element_types.insert(element.js_ty.clone());
         }
         for attr in element.attributes.iter() {
             if let JsType::Literals(lits) = &attr.original.js_type {
@@ -77,12 +77,18 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
                 continue;
             }
             let unstable = matches!(event.original.js_class, "ClipboardEvent");
-            event_types.insert(event.ty.clone(), EventType { unstable });
+            event_types.insert(
+                event.ty.clone(),
+                EventType {
+                    unstable,
+                    js_ty: event.js_ty.clone(),
+                },
+            );
         }
         elements.push(element);
     }
     let attr_types = attr_types.iter().map(QuoteAttrType);
-    let event_types = event_types.iter().map(QuoteEventType);
+    let event_types = event_types.iter().map(|(k, v)| QuoteEventType((k, v)));
     let element_definitions = elements.iter().map(Element::quote);
     let element_types = element_types.iter().map(QuoteElementType);
     quote!(
@@ -107,7 +113,7 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
 
 struct Element<'a> {
     key: LitStr,
-    ty: Ident,
+    js_ty: Ident,
     fn_: Ident,
     attributes: Vec<Attribute<'a>>,
     events: Vec<Event<'a>>,
@@ -121,7 +127,7 @@ impl<'a> Element<'a> {
             events,
             attributes,
         } = input;
-        let ty = match *js_class {
+        let js_ty = match *js_class {
             "HTMLBRElement" => "HtmlBrElement".to_ident(),
             "HTMLHRElement" => "HtmlHrElement".to_ident(),
             "HTMLLIElement" => "HtmlLiElement".to_ident(),
@@ -129,7 +135,7 @@ impl<'a> Element<'a> {
         };
         Self {
             key: name.to_kebab_case().to_lit_str(),
-            ty,
+            js_ty,
             fn_: name.to_ident(),
             attributes: attributes
                 .iter()
@@ -147,7 +153,7 @@ impl<'a> Element<'a> {
 
     fn quote(&self) -> TokenStream {
         let Self {
-            ty,
+            js_ty: ty,
             fn_,
             attributes,
             events,
@@ -285,13 +291,14 @@ struct Event<'a> {
     original: &'a web_types::Event<'a>,
     key: LitStr,
     ty: Ident,
+    js_ty: Ident,
     fn_: Ident,
 }
 
 impl<'a> Event<'a> {
     fn from_web(input: &'a web_types::Event<'a>) -> Self {
         let web_types::Event { name, js_class } = input;
-        let ty = match *js_class {
+        let js_ty = match *js_class {
             "UIEvent" => "UiEvent".to_ident(),
             "FormDataEvent" => "Event".to_ident(),
             _ => js_class.to_ident(),
@@ -299,7 +306,8 @@ impl<'a> Event<'a> {
         Self {
             original: input,
             key: name.to_kebab_case().to_lit_str(),
-            ty,
+            ty: name.to_pascal_case().to_ident(),
+            js_ty,
             fn_: format_ident!("on_{}", name.to_ident()),
         }
     }
@@ -341,23 +349,24 @@ impl Variant {
 
 struct EventType {
     unstable: bool,
+    js_ty: Ident,
 }
 
 struct QuoteEventType<'a>((&'a Ident, &'a EventType));
 
 impl ToTokens for QuoteEventType<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let Self((name, ty)) = self;
-        if ty.unstable {
+        let Self((name, EventType { unstable, js_ty })) = self;
+        if *unstable {
             quote!(
                 #[cfg(web_sys_unstable_apis)]
-                pub type #name = #WEB_SYS::#name;
+                pub type #name = #WEB_SYS::#js_ty;
                 #[cfg(not(web_sys_unstable_apis))]
                 pub type #name = #WEB_SYS::Event;
             )
         } else {
             quote!(
-                pub type #name = #WEB_SYS::#name;
+                pub type #name = #WEB_SYS::#js_ty;
             )
         }
         .to_tokens(tokens);
