@@ -6,7 +6,7 @@ use xframe_core::{
 };
 use xframe_reactive::{untrack, Scope};
 
-const INITIAL_BRANCH_SLOTS: usize = 4;
+const INITIAL_BRANCH_SLOTS: usize = 2;
 
 define_placeholder!(Placeholder("PLACEHOLDER FOR `xframe::Switch` COMPONENT"));
 

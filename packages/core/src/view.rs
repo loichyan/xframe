@@ -5,8 +5,6 @@ use xframe_reactive::{Scope, Signal};
 #[derive(Clone)]
 pub struct View<N>(ViewType<N>);
 
-use ViewType as VT;
-
 #[derive(Clone)]
 enum ViewType<N> {
     Node(N),
@@ -14,11 +12,7 @@ enum ViewType<N> {
     Dyn(Signal<View<N>>),
 }
 
-impl<N> ViewType<N> {
-    fn fragment(views: Vec<View<N>>) -> Self {
-        Self::Fragment(views.into_boxed_slice().into())
-    }
-}
+use ViewType as VT;
 
 impl<N: GenericNode> View<N> {
     pub fn node(node: N) -> Self {
@@ -26,10 +20,14 @@ impl<N: GenericNode> View<N> {
     }
 
     pub fn fragment(views: Vec<View<N>>) -> Self {
+        Self(VT::Fragment(views.into_boxed_slice().into()))
+    }
+
+    pub fn fragment_shared(views: Rc<[View<N>]>) -> Self {
         if views.is_empty() {
             panic!("empty `View` is not allowed")
         }
-        Self(VT::fragment(views))
+        Self(VT::Fragment(views))
     }
 
     pub fn dyn_(cx: Scope, init: View<N>) -> DynView<N> {
