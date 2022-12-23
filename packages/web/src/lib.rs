@@ -3,6 +3,7 @@
 #[macro_use]
 mod utils;
 mod dom_node;
+mod event_delegation;
 mod render;
 
 pub mod components {

@@ -22,6 +22,6 @@ where
 }
 
 /// A trait alias of [`xframe_core::GenericNode`].
-pub trait WebNode: xframe_core::GenericNode<Event = crate::Event> {}
+pub trait WebNode: xframe_core::GenericNode<Event = web_sys::Event> {}
 
-impl<T: GenericNode<Event = crate::Event>> WebNode for T {}
+impl<T: GenericNode<Event = web_sys::Event>> WebNode for T {}

@@ -5,7 +5,7 @@ use std::{
     cell::Cell,
 };
 use wasm_bindgen::{intern, prelude::*, JsCast};
-use web_sys::{AddEventListenerOptions, HtmlTemplateElement};
+use web_sys::HtmlTemplateElement;
 use xframe_core::{template::GlobalTemplates, Attribute, EventHandler, GenericNode, NodeType};
 
 thread_local! {
@@ -166,19 +166,7 @@ impl GenericNode for DomNode {
     }
 
     fn listen_event(&self, event: CowStr, handler: EventHandler<Self::Event>) {
-        let mut options = AddEventListenerOptions::default();
-        options.capture(handler.options.capture);
-        options.once(handler.options.once);
-        options.passive(handler.options.passive);
-        self.node
-            .add_event_listener_with_callback_and_add_event_listener_options(
-                event.intern(),
-                &Closure::wrap(handler.handler)
-                    .into_js_value()
-                    .unchecked_into(),
-                &options,
-            )
-            .unwrap_throw_val();
+        crate::event_delegation::add_event_listener(&self.node, event, handler);
     }
 
     fn parent(&self) -> Option<Self> {

@@ -1,8 +1,6 @@
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct EventOptions {
     pub capture: bool,
-    pub once: bool,
-    pub passive: bool,
 }
 
 pub struct EventHandler<Ev> {
@@ -18,18 +16,6 @@ pub trait IntoEventHandler<Ev: 'static>: Into<EventHandler<Ev>> {
     fn captured(self, val: bool) -> EventHandler<Ev> {
         let mut t = self.into_event_handler();
         t.options.capture = val;
-        t
-    }
-
-    fn once(self, val: bool) -> EventHandler<Ev> {
-        let mut t = self.into_event_handler();
-        t.options.once = val;
-        t
-    }
-
-    fn passive(self, val: bool) -> EventHandler<Ev> {
-        let mut t = self.into_event_handler();
-        t.options.passive = val;
         t
     }
 
