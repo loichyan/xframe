@@ -72,6 +72,19 @@ impl<N: GenericNode> BaseElement<N> {
         self.node.add_class(name.into());
     }
 
+    pub fn toggle_class(&self, name: impl Into<CowStr>, toggle: impl IntoReactive<bool>) {
+        let name = name.into();
+        let toggle = toggle.into_reactive();
+        let node = self.node.clone();
+        self.cx.create_effect(move || {
+            if toggle.clone().into_value() {
+                node.add_class(name.clone());
+            } else {
+                node.remove_class(name.clone());
+            }
+        });
+    }
+
     pub fn append_child<E>(&self, element: E)
     where
         E: GenericElement<N>,

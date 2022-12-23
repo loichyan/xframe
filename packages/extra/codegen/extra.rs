@@ -228,6 +228,16 @@ impl<'a> Element<'a> {
                 self
             }
 
+            /// Toggle class when `toggle` changes.
+            pub fn classx<K, V>(self, name: K, toggle: V) -> Self
+            where
+                K: Into<#COW_STR>,
+                V: #INTO_REACTIVE<bool>,
+            {
+                self.inner.toggle_class(name, toggle);
+                self
+            }
+
             pub fn child<E>(self, element: E) -> Self
             where
                 E: #GENERIC_ELEMENT<N>,

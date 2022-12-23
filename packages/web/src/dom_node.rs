@@ -58,22 +58,19 @@ impl Eq for DomNode {}
 
 impl From<web_sys::Node> for DomNode {
     fn from(node: web_sys::Node) -> Self {
-        Self {
-            id: NodeId::new(),
-            node,
-        }
+        Self::from_js(node)
     }
 }
 
 impl From<DomNode> for web_sys::Node {
     fn from(t: DomNode) -> Self {
-        t.node
+        t.into_js()
     }
 }
 
 impl AsRef<web_sys::Node> for DomNode {
     fn as_ref(&self) -> &web_sys::Node {
-        &self.node
+        self.as_js()
     }
 }
 
@@ -148,6 +145,14 @@ impl GenericNode for DomNode {
             .unwrap_throw_val();
     }
 
+    fn remove_class(&self, name: CowStr) {
+        self.node
+            .unchecked_ref::<web_sys::Element>()
+            .class_list()
+            .remove_1(name.intern())
+            .unwrap_throw_val();
+    }
+
     fn listen_event(&self, event: CowStr, handler: EventHandler<Self::Event>) {
         let mut options = AddEventListenerOptions::default();
         options.capture(handler.options.capture);
@@ -164,8 +169,8 @@ impl GenericNode for DomNode {
             .unwrap_throw_val();
     }
 
-    fn append_child(&self, child: &Self) {
-        self.node.append_child(&child.node).unwrap_throw_val();
+    fn parent(&self) -> Option<Self> {
+        self.node.parent_node().map(Self::from)
     }
 
     fn first_child(&self) -> Option<Self> {
@@ -176,8 +181,8 @@ impl GenericNode for DomNode {
         self.node.next_sibling().map(Self::from)
     }
 
-    fn parent(&self) -> Option<Self> {
-        self.node.parent_node().map(Self::from)
+    fn append_child(&self, child: &Self) {
+        self.node.append_child(&child.node).unwrap_throw_val();
     }
 
     fn replace_child(&self, new_node: &Self, old_node: &Self) {
@@ -194,5 +199,22 @@ impl GenericNode for DomNode {
         self.node
             .insert_before(&new_node.node, ref_node.map(|node| &node.node))
             .unwrap_throw_val();
+    }
+}
+
+impl DomNode {
+    pub fn from_js(node: web_sys::Node) -> Self {
+        Self {
+            id: NodeId::new(),
+            node,
+        }
+    }
+
+    pub fn into_js(self) -> web_sys::Node {
+        self.node
+    }
+
+    pub fn as_js(&self) -> &web_sys::Node {
+        &self.node
     }
 }
