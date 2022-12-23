@@ -1,7 +1,5 @@
 use crate::{attr::Attribute, event::EventHandler, template::GlobalTemplates, CowStr};
 
-// TODO: node ref
-// TODO: bind target type to associated element
 pub enum NodeType {
     Tag(CowStr),
     Text(CowStr),

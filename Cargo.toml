@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 edition = "2021"
 
 [features]
+default = ["extra"]
 extra = ["extra-elements", "extra-attributes", "extra-events"]
 extra-elements = ["xframe-extra/elements"]
 extra-attributes = ["xframe-extra/attributes"]
