@@ -1,7 +1,7 @@
 use heck::{ToKebabCase, ToPascalCase, ToSnakeCase};
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, ToTokens};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use syn::{Ident, LitStr};
 use web_types::JsType;
 
@@ -52,11 +52,11 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
     let mut elements = Vec::default();
     let mut attr_types = BTreeMap::default();
     let mut event_types = BTreeMap::default();
-    let mut element_types = BTreeSet::default();
+    let mut element_types = BTreeMap::default();
     for element in input {
         let element = Element::from_web(element);
-        if !element_types.contains(&element.js_ty) {
-            element_types.insert(element.js_ty.clone());
+        if !element_types.contains_key(&element.ty) {
+            element_types.insert(element.ty.clone(), element.js_ty.clone());
         }
         for attr in element.attributes.iter() {
             if let JsType::Literals(lits) = &attr.original.js_type {
@@ -113,6 +113,7 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
 
 struct Element<'a> {
     key: LitStr,
+    ty: Ident,
     js_ty: Ident,
     fn_: Ident,
     attributes: Vec<Attribute<'a>>,
@@ -135,6 +136,7 @@ impl<'a> Element<'a> {
         };
         Self {
             key: name.to_kebab_case().to_lit_str(),
+            ty: name.to_pascal_case().to_ident(),
             js_ty,
             fn_: name.to_ident(),
             attributes: attributes
@@ -153,7 +155,7 @@ impl<'a> Element<'a> {
 
     fn quote(&self) -> TokenStream {
         let Self {
-            js_ty: ty,
+            ty,
             fn_,
             attributes,
             events,
@@ -424,13 +426,13 @@ impl ToTokens for QuoteAttrType<'_> {
     }
 }
 
-struct QuoteElementType<'a>(&'a Ident);
+struct QuoteElementType<'a>((&'a Ident, &'a Ident));
 
 impl ToTokens for QuoteElementType<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let Self(name) = self;
+        let Self((ty, js_ty)) = self;
         quote!(
-            pub type #name = #WEB_SYS::#name;
+            pub type #ty = #WEB_SYS::#js_ty;
         )
         .to_tokens(tokens);
     }
