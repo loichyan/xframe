@@ -1,11 +1,12 @@
-use crate::DOCUMENT;
+use crate::{utils::UnwrapThrowValExt, DOCUMENT};
 use js_sys::Reflect;
-use std::{borrow::Cow, cell::Cell};
+use std::{
+    borrow::{Borrow, Cow},
+    cell::Cell,
+};
 use wasm_bindgen::{intern, prelude::*, JsCast};
 use web_sys::{AddEventListenerOptions, HtmlTemplateElement};
-use xframe_core::{
-    template::GlobalTemplates, Attribute, EventHandler, GenericNode, NodeType, UnwrapThrowValExt,
-};
+use xframe_core::{template::GlobalTemplates, Attribute, EventHandler, GenericNode, NodeType};
 
 thread_local! {
     static TEMPLATES: GlobalTemplates<DomNode> = GlobalTemplates::default();
@@ -14,18 +15,29 @@ thread_local! {
 
 type CowStr = std::borrow::Cow<'static, str>;
 
-trait CowStrExt {
-    fn intern(&self) -> &str;
-}
-
-impl CowStrExt for CowStr {
+trait CowStrExt: Borrow<CowStr> {
     fn intern(&self) -> &str {
-        match self {
+        match self.borrow() {
             Cow::Borrowed(s) => intern(s),
             Cow::Owned(s) => s,
         }
     }
 }
+
+impl<T: Borrow<CowStr>> CowStrExt for T {}
+
+trait AttrExt: Into<Attribute> {
+    fn into_js_value(self) -> JsValue {
+        match self.into() {
+            Attribute::Boolean(t) => JsValue::from_bool(t),
+            Attribute::Number(t) => JsValue::from_f64(t),
+            Attribute::Static(t) => JsValue::from_str(t),
+            Attribute::String(t) => JsValue::from_str(&t),
+        }
+    }
+}
+
+impl<T: Into<Attribute>> AttrExt for T {}
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct NodeId {
@@ -133,7 +145,7 @@ impl GenericNode for DomNode {
     fn set_attribute(&self, name: CowStr, val: Attribute) {
         self.node
             .unchecked_ref::<web_sys::Element>()
-            .set_attribute(name.intern(), val.into_string_only().as_str())
+            .set_attribute(name.intern(), val.into_string().intern())
             .unwrap_throw_val();
     }
 

@@ -18,23 +18,27 @@ macro_rules! new_type_quote {
     };
 }
 
-new_type_quote!(INPUT(super::input));
-new_type_quote!(WEB_SYS(#INPUT::web_sys));
-new_type_quote!(XFRAME(#INPUT::xframe));
-new_type_quote!(SCOPE(#XFRAME::Scope));
-new_type_quote!(BASE_ELEMENT(#INPUT::BaseElement));
-new_type_quote!(CORE(#INPUT::core));
-new_type_quote!(GENERIC_NODE(#CORE::GenericNode));
-new_type_quote!(NODE_TYPE(#CORE::NodeType));
-new_type_quote!(GENERIC_ELEMENT(#CORE::GenericElement));
-new_type_quote!(ATTRIBUTE(#CORE::Attribute));
-new_type_quote!(REACTIVE(#CORE::Reactive));
-new_type_quote!(INTO_REACTIVE(#CORE::IntoReactive));
-new_type_quote!(INTO_EVENT_HANDLER(#CORE::IntoEventHandler));
+new_type_quote!(M_CORE(#M_INPUT::core));
+new_type_quote!(M_INPUT(super::input));
+new_type_quote!(M_REACTIVE(#M_INPUT::reactive));
+new_type_quote!(M_WEB_SYS(#M_INPUT::web_sys));
+
+new_type_quote!(M_ATTR_TYPES(super::attr_types));
+new_type_quote!(M_ELEMENT_TYPES(super::element_types));
+new_type_quote!(M_EVENT_TYPES(super::event_types));
+
+new_type_quote!(T_WEB_NODE(#M_INPUT::web::WebNode));
+new_type_quote!(T_GENERIC_NODE(#M_CORE::GenericNode));
+new_type_quote!(T_GENERIC_ELEMENT(#M_CORE::GenericElement));
+new_type_quote!(T_INTO_REACTIVE(#M_CORE::IntoReactive));
+new_type_quote!(T_INTO_EVENT_HANDLER(#M_CORE::IntoEventHandler));
+
+new_type_quote!(ATTRIBUTE(#M_CORE::Attribute));
+new_type_quote!(BASE_ELEMENT(#M_INPUT::BaseElement));
 new_type_quote!(COW_STR(::std::borrow::Cow::<'static, str>));
-new_type_quote!(ELEMENT_TYPES(super::element_types));
-new_type_quote!(ATTR_TYPES(super::attr_types));
-new_type_quote!(EVENT_TYPES(super::event_types));
+new_type_quote!(NODE_TYPE(#M_CORE::NodeType));
+new_type_quote!(REACTIVE(#M_CORE::Reactive));
+new_type_quote!(SCOPE(#M_REACTIVE::Scope));
 
 trait StrExt: AsRef<str> {
     fn to_lit_str(&self) -> LitStr {
@@ -100,9 +104,9 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
             pub mod element_types { #(#element_types)* }
             #[cfg(feature = "attributes")]
             pub mod attr_types {
-                pub(super) type JsBoolean = #INPUT::JsBoolean;
-                pub(super) type JsNumber = #INPUT::JsNumber;
-                pub(super) type JsString = #INPUT::JsString;
+                pub(super) type JsBoolean = #M_INPUT::JsBoolean;
+                pub(super) type JsNumber = #M_INPUT::JsNumber;
+                pub(super) type JsString = #M_INPUT::JsString;
                 #(#attr_types)*
             }
             #[cfg(feature = "events")]
@@ -172,11 +176,11 @@ impl<'a> Element<'a> {
                 inner: #BASE_ELEMENT<N>
             }
 
-            pub fn #fn_<N: #GENERIC_NODE>(cx: #SCOPE) -> #fn_<N> {
-                #GENERIC_ELEMENT::create(cx)
+            pub fn #fn_<N: #T_GENERIC_NODE>(cx: #SCOPE) -> #fn_<N> {
+                #T_GENERIC_ELEMENT::create(cx)
             }
 
-            impl<N: #GENERIC_NODE> #GENERIC_ELEMENT<N>
+            impl<N: #T_GENERIC_NODE> #T_GENERIC_ELEMENT<N>
             for #fn_<N>
             {
                 const TYPE: #NODE_TYPE = #NODE_TYPE::Tag(#COW_STR::Borrowed(#key));
@@ -192,28 +196,28 @@ impl<'a> Element<'a> {
                 }
             }
 
-            impl<N> AsRef<#ELEMENT_TYPES::#ty> for #fn_<N>
+            impl<N> AsRef<#M_ELEMENT_TYPES::#ty> for #fn_<N>
             where
-                N: #GENERIC_NODE + AsRef<#WEB_SYS::Node>,
+                N: #T_GENERIC_NODE + AsRef<#M_WEB_SYS::Node>,
             {
-                fn as_ref(&self) -> &#ELEMENT_TYPES::#ty {
+                fn as_ref(&self) -> &#M_ELEMENT_TYPES::#ty {
                     self.inner.as_web_sys_element()
                 }
             }
 
-            impl<N: #GENERIC_NODE> #fn_<N> { #default_methods }
+            impl<N: #T_GENERIC_NODE> #fn_<N> { #default_methods }
 
             #[cfg(feature = "attributes")]
-            impl<N: #GENERIC_NODE> #fn_<N> { #(#attr_fns)* }
+            impl<N: #T_GENERIC_NODE> #fn_<N> { #(#attr_fns)* }
 
             #[cfg(feature = "events")]
-            impl<N: #GENERIC_NODE<Event = #WEB_SYS::Event>> #fn_<N> { #(#event_fns)* }
+            impl<N: #T_WEB_NODE> #fn_<N> { #(#event_fns)* }
         )
     }
 
     fn quote_default_methods(&self) -> TokenStream {
         quote!(
-            pub fn attr<K: Into<#COW_STR>, V: #INTO_REACTIVE<#ATTRIBUTE>>(
+            pub fn attr<K: Into<#COW_STR>, V: #T_INTO_REACTIVE<#ATTRIBUTE>>(
                 self,
                 name: K,
                 val: V,
@@ -232,7 +236,7 @@ impl<'a> Element<'a> {
             pub fn classx<K, V>(self, name: K, toggle: V) -> Self
             where
                 K: Into<#COW_STR>,
-                V: #INTO_REACTIVE<bool>,
+                V: #T_INTO_REACTIVE<bool>,
             {
                 self.inner.toggle_class(name, toggle);
                 self
@@ -240,7 +244,7 @@ impl<'a> Element<'a> {
 
             pub fn child<E>(self, element: E) -> Self
             where
-                E: #GENERIC_ELEMENT<N>,
+                E: #T_GENERIC_ELEMENT<N>,
             {
                 self.inner.append_child(element);
                 self
@@ -291,7 +295,7 @@ impl<'a> Attribute<'a> {
     fn quote_fn(&self) -> TokenStream {
         let Self { key, ty, fn_, .. } = self;
         quote!(
-            pub fn #fn_<T: #INTO_REACTIVE<#ATTR_TYPES::#ty>>(self, val: T) -> Self {
+            pub fn #fn_<T: #T_INTO_REACTIVE<#M_ATTR_TYPES::#ty>>(self, val: T) -> Self {
                 self.inner.set_property_literal(#key, val);
                 self
             }
@@ -329,7 +333,7 @@ impl<'a> Event<'a> {
         quote!(
             pub fn #fn_(
                 self,
-                handler: impl #INTO_EVENT_HANDLER<#EVENT_TYPES::#ty>,
+                handler: impl #T_INTO_EVENT_HANDLER<#M_EVENT_TYPES::#ty>,
             ) -> Self {
                 self.inner.listen_event(#key, handler);
                 self
@@ -372,13 +376,13 @@ impl ToTokens for QuoteEventType<'_> {
         if *unstable {
             quote!(
                 #[cfg(web_sys_unstable_apis)]
-                pub type #name = #WEB_SYS::#js_ty;
+                pub type #name = #M_WEB_SYS::#js_ty;
                 #[cfg(not(web_sys_unstable_apis))]
-                pub type #name = #WEB_SYS::Event;
+                pub type #name = #M_WEB_SYS::Event;
             )
         } else {
             quote!(
-                pub type #name = #WEB_SYS::#js_ty;
+                pub type #name = #M_WEB_SYS::#js_ty;
             )
         }
         .to_tokens(tokens);
@@ -416,7 +420,7 @@ impl ToTokens for QuoteAttrType<'_> {
 
             impl From<#name> for #ATTRIBUTE {
                 fn from(t: #name) -> Self {
-                    #ATTRIBUTE::String(t.into())
+                    #ATTRIBUTE::Static(t.into())
                 }
             }
 
@@ -442,7 +446,7 @@ impl ToTokens for QuoteElementType<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self((ty, js_ty)) = self;
         quote!(
-            pub type #ty = #WEB_SYS::#js_ty;
+            pub type #ty = #M_WEB_SYS::#js_ty;
         )
         .to_tokens(tokens);
     }

@@ -5,58 +5,58 @@ pub struct EventOptions {
     pub passive: bool,
 }
 
-pub struct EventHandler<T: 'static> {
-    pub handler: Box<dyn FnMut(T)>,
+pub struct EventHandler<Ev> {
+    pub handler: Box<dyn FnMut(Ev)>,
     pub options: EventOptions,
 }
 
-pub trait IntoEventHandler<T: 'static>: Into<EventHandler<T>> {
-    fn into_event_handler(self) -> EventHandler<T> {
+pub trait IntoEventHandler<Ev: 'static>: Into<EventHandler<Ev>> {
+    fn into_event_handler(self) -> EventHandler<Ev> {
         self.into()
     }
 
-    fn captured(self, val: bool) -> EventHandler<T> {
+    fn captured(self, val: bool) -> EventHandler<Ev> {
         let mut t = self.into_event_handler();
         t.options.capture = val;
         t
     }
 
-    fn once(self, val: bool) -> EventHandler<T> {
+    fn once(self, val: bool) -> EventHandler<Ev> {
         let mut t = self.into_event_handler();
         t.options.once = val;
         t
     }
 
-    fn passive(self, val: bool) -> EventHandler<T> {
+    fn passive(self, val: bool) -> EventHandler<Ev> {
         let mut t = self.into_event_handler();
         t.options.passive = val;
         t
     }
 
-    fn cast<U>(self) -> EventHandler<U>
+    fn cast<Ev2>(self) -> EventHandler<Ev2>
     where
-        U: 'static + Into<T>,
+        Ev2: 'static + Into<Ev>,
     {
-        self.cast_with(U::into)
+        self.cast_with(Ev2::into)
     }
 
-    fn cast_with<U>(self, f: fn(U) -> T) -> EventHandler<U>
+    fn cast_with<Ev2>(self, mut f: impl 'static + FnMut(Ev2) -> Ev) -> EventHandler<Ev2>
     where
-        U: 'static,
+        Ev2: 'static,
     {
         let mut handler = self.into_event_handler();
         EventHandler {
-            handler: Box::new(move |ev: U| (handler.handler)(f(ev))),
+            handler: Box::new(move |ev: Ev2| (handler.handler)(f(ev))),
             options: handler.options,
         }
     }
 }
 
-impl<T: 'static, U: Into<EventHandler<T>>> IntoEventHandler<T> for U {}
+impl<Ev: 'static, U: Into<EventHandler<Ev>>> IntoEventHandler<Ev> for U {}
 
-impl<T, F> From<F> for EventHandler<T>
+impl<Ev, F> From<F> for EventHandler<Ev>
 where
-    F: 'static + FnMut(T),
+    F: 'static + FnMut(Ev),
 {
     fn from(t: F) -> Self {
         EventHandler {

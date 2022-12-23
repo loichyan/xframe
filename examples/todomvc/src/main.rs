@@ -1,7 +1,7 @@
 use wasm_bindgen::{JsCast, UnwrapThrowExt};
 use xframe::{
-    element as el, event as ev, view, DomNode, GenericComponent, GenericElement, GenericNode, If,
-    List, Scope, ScopeExt, Signal,
+    element as el, event as ev, view, DomNode, GenericComponent, GenericElement, If, List, Scope,
+    ScopeExt, Signal, WebNode,
 };
 
 #[derive(Clone)]
@@ -19,7 +19,7 @@ enum ShowMode {
     Completed,
 }
 
-fn make_todo<N: GenericNode>(
+fn make_todo<N: WebNode>(
     cx: Scope,
     show_mode: Signal<ShowMode>,
     todo: &Todo,

@@ -59,7 +59,7 @@ impl View {
             impl<N, F> #T_GENERIC_COMPONENT<N>
             for #T_COMPONENT<F>
             where
-                N: #XFRAME::GenericNode,
+                N: #XFRAME::WebNode,
                 F: 'static + FnOnce() -> #T_TEMPLATE<N>,
             {
                 fn id() -> Option<#T_TEMPLATE_ID> {

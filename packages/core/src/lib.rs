@@ -37,14 +37,3 @@ macro_rules! is_dev {
         cfg!(debug_assertions)
     };
 }
-
-// TODO: move to `xframe-web`
-pub trait UnwrapThrowValExt<T> {
-    fn unwrap_throw_val(self) -> T;
-}
-
-impl<T> UnwrapThrowValExt<T> for Result<T, wasm_bindgen::JsValue> {
-    fn unwrap_throw_val(self) -> T {
-        self.unwrap_or_else(|e| wasm_bindgen::throw_val(e))
-    }
-}

@@ -1,38 +1,21 @@
-use crate::reactive::*;
-use std::{borrow::Cow, rc::Rc};
-use wasm_bindgen::{intern, JsValue};
+use crate::{reactive::*, CowStr};
+use std::borrow::Cow;
 
 #[derive(Clone)]
 pub enum Attribute {
     Boolean(bool),
     Number(f64),
-    String(&'static str),
-    Shared(Rc<String>),
+    Static(&'static str),
+    String(String),
 }
 
 impl Attribute {
-    pub fn into_js_value(self) -> JsValue {
+    pub fn into_string(self) -> CowStr {
         match self {
-            Self::Boolean(t) => JsValue::from_bool(t),
-            Self::Number(t) => JsValue::from_f64(t),
-            Self::String(t) => JsValue::from_str(intern(t)),
-            Self::Shared(t) => JsValue::from_str(&t),
-        }
-    }
-
-    pub fn into_string_only(self) -> Attribute {
-        match self {
-            Self::Boolean(t) => intern(if t { "true" } else { "false" }).into(),
+            Self::Boolean(t) => if t { "true" } else { "false" }.into(),
             Self::Number(t) => t.to_string().into(),
-            _ => self,
-        }
-    }
-
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::Shared(s) => s,
-            Self::String(s) => intern(s),
-            _ => panic!("expected a string value"),
+            Self::Static(t) => t.into(),
+            Self::String(t) => t.into(),
         }
     }
 }
@@ -77,9 +60,8 @@ macro_rules! impl_from_for_types_into {
 impl_from_for_types_into! {
     Boolean => bool,
     Number  => f64,
-    String  => &'static str,
-    Shared  => String,
-    Shared  => Rc<String>,
+    Static  => &'static str,
+    String  => String,
 }
 
 macro_rules! impl_for_small_nums {

@@ -1,5 +1,5 @@
 use crate::{dom_node::DomNode, DOCUMENT};
-use xframe_core::GenericComponent;
+use xframe_core::{GenericComponent, GenericNode};
 use xframe_reactive::Scope;
 
 pub fn mount_to_body<C>(f: impl FnOnce(Scope) -> C)
@@ -20,3 +20,8 @@ where
     .1
     .leak();
 }
+
+/// A trait alias of [`xframe_core::GenericNode`].
+pub trait WebNode: xframe_core::GenericNode<Event = crate::Event> {}
+
+impl<T: GenericNode<Event = crate::Event>> WebNode for T {}

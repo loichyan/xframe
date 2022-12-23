@@ -1,6 +1,6 @@
-use xframe::{view, Else, GenericComponent, GenericNode, If, List, Scope, Switch};
+use xframe::{view, Else, GenericComponent, If, List, Scope, Switch, WebNode};
 
-fn make_counter<N: GenericNode>(cx: Scope, init: usize) -> impl GenericComponent<N> {
+fn make_counter<N: WebNode>(cx: Scope, init: usize) -> impl GenericComponent<N> {
     let counter = cx.create_signal(init);
     let increment = move |_| counter.update(|x| *x + 1);
     let is_even = move || counter.get() % 2 == 0;

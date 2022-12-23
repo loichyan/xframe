@@ -1,13 +1,13 @@
 use std::marker::PhantomData;
 use xframe::element::prelude::*;
-use xframe::{view, GenericComponent, GenericNode, Scope};
+use xframe::{view, GenericComponent, GenericNode, Scope, WebNode};
 
 struct Counter<N> {
     cx: Scope,
     marker: PhantomData<N>,
 }
 
-impl<N: GenericNode> Counter<N> {
+impl<N: WebNode> Counter<N> {
     pub fn build(self) -> impl GenericComponent<N> {
         let Self { cx, .. } = self;
         let counter = cx.create_signal(0);

@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use wasm_bindgen::JsCast;
 use xframe_core::{Attribute, GenericElement, GenericNode, IntoEventHandler, IntoReactive};
 use xframe_reactive::Scope;
+use xframe_web::WebNode;
 
 pub(crate) type JsBoolean = bool;
 pub(crate) type JsNumber = f64;
@@ -58,13 +59,13 @@ impl<N: GenericNode> BaseElement<N> {
     pub fn listen_event<Ev>(&self, event: impl Into<CowStr>, handler: impl IntoEventHandler<Ev>)
     where
         Ev: 'static + JsCast,
-        N: GenericNode<Event = web_sys::Event>,
+        N: WebNode,
     {
         self.node.listen_event(
             event.into(),
             handler
                 .into_event_handler()
-                .cast_with(|ev| ev.unchecked_into()),
+                .cast_with(|ev: web_sys::Event| ev.unchecked_into()),
         );
     }
 
