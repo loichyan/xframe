@@ -6,7 +6,9 @@ use std::{
 };
 use wasm_bindgen::{intern, prelude::*, JsCast};
 use web_sys::HtmlTemplateElement;
-use xframe_core::{template::GlobalTemplates, Attribute, EventHandler, GenericNode, NodeType};
+use xframe_core::{
+    is_debug, template::GlobalTemplates, Attribute, EventHandler, GenericNode, NodeType,
+};
 
 thread_local! {
     static TEMPLATES: GlobalTemplates<DomNode> = GlobalTemplates::default();
@@ -99,7 +101,7 @@ impl GenericNode for DomNode {
             NodeType::Text(data) => doc.create_text_node(data.intern()).into(),
             NodeType::Placeholder(desc) => doc.create_comment(desc.intern()).into(),
             NodeType::Template(data) => {
-                if cfg!(debug_assertions) && !data.is_empty() {
+                if is_debug!() && !data.is_empty() {
                     let template = doc.create_element("template").unwrap_throw_val();
                     template
                         .set_attribute("data-xframe-template-id", &data)

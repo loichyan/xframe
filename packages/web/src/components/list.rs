@@ -1,4 +1,4 @@
-use crate::{utils::Visit, Element};
+use crate::Element;
 use std::rc::Rc;
 use xframe_core::{
     view::ViewParentExt, GenericComponent, GenericElement, GenericNode, IntoReactive, Reactive,
@@ -8,20 +8,16 @@ use xframe_reactive::{untrack, Scope, ScopeDisposer};
 
 define_placeholder!(Placeholder("PLACEHOLDER FOR `xframe::List` COMPONENT"));
 
-pub struct List<N, T, I>
-where
-    I: 'static + Visit<T>,
-{
+pub struct List<N, T> {
     cx: Scope,
-    each: Option<Reactive<I>>,
+    each: Option<Reactive<Vec<T>>>,
     children: Option<Box<dyn Fn(Scope, &T) -> View<N>>>,
 }
 
 #[allow(non_snake_case)]
-pub fn List<N, T, I>(cx: Scope) -> List<N, T, I>
+pub fn List<N, T>(cx: Scope) -> List<N, T>
 where
     N: GenericNode,
-    I: 'static + Clone + Visit<T>,
 {
     List {
         cx,
@@ -30,11 +26,10 @@ where
     }
 }
 
-impl<N, T, I> List<N, T, I>
+impl<N, T> List<N, T>
 where
     N: GenericNode,
-    T: 'static,
-    I: 'static + Clone + Visit<T>,
+    T: 'static + Clone,
 {
     pub fn build(self) -> impl GenericComponent<N> {
         let Self { cx, each, children } = self;
@@ -49,27 +44,12 @@ where
                 let mut current_disposers = Vec::<ScopeDisposer>::new();
                 move || {
                     // Only `each` needs to be tracked.
-                    let each = each.clone().into_value();
+                    let new_vals = each.clone().into_value();
                     untrack(|| {
                         let current_view = dyn_view.get();
                         let parent = current_view.parent();
                         let current_len = current_fragment.len();
-                        let next_sibling = current_view.next_sibling();
-                        let mut new_fragment = Vec::new();
-                        let mut new_len = 0;
-                        each.visit(|val| {
-                            if new_len >= current_len {
-                                if new_len == current_len {
-                                    new_fragment = current_fragment.to_vec();
-                                }
-                                // Append new views.
-                                let (view, disposer) = cx.create_child(|cx| fn_view(cx, val));
-                                parent.insert_before(&view, next_sibling.as_ref());
-                                new_fragment.push(view);
-                                current_disposers.push(disposer);
-                            }
-                            new_len += 1;
-                        });
+                        let new_len = new_vals.len();
                         let new_view;
                         if new_len == 0 {
                             if current_len == 0 {
@@ -86,10 +66,19 @@ where
                             for view in rhs {
                                 parent.remove_child(view);
                             }
-                            current_disposers.drain(new_len..);
                             current_fragment = lhs.to_vec().into_boxed_slice().into();
+                            current_disposers.truncate(new_len);
                             new_view = View::fragment_shared(current_fragment.clone());
                         } else if new_len > current_len {
+                            let next_sibling = current_view.next_sibling();
+                            let mut new_fragment = current_fragment.to_vec();
+                            for val in new_vals[current_len..].iter() {
+                                // Append new views.
+                                let (view, disposer) = cx.create_child(|cx| fn_view(cx, val));
+                                parent.insert_before(&view, next_sibling.as_ref());
+                                new_fragment.push(view);
+                                current_disposers.push(disposer);
+                            }
                             if current_len == 0 {
                                 // Remove the placeholder.
                                 parent.remove_child(&placeholder);
@@ -109,7 +98,7 @@ where
         })
     }
 
-    pub fn each<E: IntoReactive<I>>(mut self, each: E) -> Self {
+    pub fn each<E: IntoReactive<Vec<T>>>(mut self, each: E) -> Self {
         if self.each.is_some() {
             panic!("`List::each` has already been specified");
         }

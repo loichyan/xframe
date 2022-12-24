@@ -32,7 +32,7 @@ pub mod prelude {
 type CowStr = std::borrow::Cow<'static, str>;
 
 #[macro_export]
-macro_rules! is_dev {
+macro_rules! is_debug {
     () => {
         cfg!(debug_assertions)
     };

@@ -1,7 +1,7 @@
 use xframe_reactive::untrack;
 
 use crate::{
-    is_dev,
+    is_debug,
     node::{GenericNode, NodeType},
     template::*,
     view::View,
@@ -44,7 +44,7 @@ pub struct DynComponent<N> {
 
 impl<N: GenericNode> GenericComponent<N> for DynComponent<N> {
     fn id() -> Option<TemplateId> {
-        if is_dev!() {
+        if is_debug!() {
             panic!("`<DynComponent as GenericComponent>::id` should not be invoked, use `DynComponent::id` instead")
         }
         None

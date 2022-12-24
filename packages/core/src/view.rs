@@ -9,6 +9,7 @@ pub struct View<N>(ViewType<N>);
 enum ViewType<N> {
     Node(N),
     Fragment(Rc<[View<N>]>),
+    // TODO: use Rc<RefCell> instead
     Dyn(Signal<View<N>>),
 }
 

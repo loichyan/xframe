@@ -1,29 +1,25 @@
-use crate::{utils::Visit, Element};
+use crate::Element;
 use ahash::AHashMap;
-use std::hash::Hash;
+use std::{hash::Hash, rc::Rc};
 use xframe_core::{
-    view::ViewParentExt, GenericComponent, GenericElement, GenericNode, IntoReactive, Reactive,
-    View,
+    is_debug, view::ViewParentExt, GenericComponent, GenericElement, GenericNode, IntoReactive,
+    Reactive, View,
 };
 use xframe_reactive::{untrack, Scope, ScopeDisposer};
 
 define_placeholder!(Placeholder("PLACEHOLDER FOR `xframe::For` COMPONENT"));
 
-pub struct For<N, T, K, I>
-where
-    I: 'static + Visit<T>,
-{
+pub struct For<N, T, K> {
     cx: Scope,
-    each: Option<Reactive<I>>,
+    each: Option<Reactive<Vec<T>>>,
     key: Option<Box<dyn Fn(&T) -> K>>,
     children: Option<Box<dyn Fn(Scope, &T) -> View<N>>>,
 }
 
 #[allow(non_snake_case)]
-pub fn For<N, T, K, I>(cx: Scope) -> For<N, T, K, I>
+pub fn For<N, T, K>(cx: Scope) -> For<N, T, K>
 where
     N: GenericNode,
-    I: 'static + Clone + Visit<T>,
 {
     For {
         cx,
@@ -33,12 +29,11 @@ where
     }
 }
 
-impl<N, T, K, I> For<N, T, K, I>
+impl<N, T, K> For<N, T, K>
 where
     N: GenericNode,
-    T: 'static,
+    T: 'static + Clone,
     K: 'static + Clone + Eq + Hash,
-    I: 'static + Clone + Visit<T>,
 {
     pub fn build(self) -> impl GenericComponent<N> {
         let Self {
@@ -55,65 +50,58 @@ where
             let dyn_view = View::dyn_(cx, placeholder.clone());
             cx.create_effect({
                 let dyn_view = dyn_view.clone();
-                let mut current_fragment = Fragment::default();
-                let mut cached_views = AHashMap::<K, Cached<N>>::new();
+                let mut current_vals = Vec::<T>::new();
+                let mut current_fragment: Rc<[View<N>]> = Rc::new([]);
+                let mut current_disposers = Vec::<Option<ScopeDisposer>>::new();
                 move || {
-                    let each = each.clone().into_value();
+                    let new_vals = each.clone().into_value();
                     untrack(|| {
                         let current_view = dyn_view.get();
                         let parent = current_view.parent();
-                        // Reuse cached or create new views.
-                        let mut new_fragment = Fragment::default();
-                        each.visit(|val| {
-                            let key = fn_key(val);
-                            let Cached { view, moved, .. } =
-                                cached_views.entry(key.clone()).or_insert_with(|| {
-                                    let (view, disposer) = cx.create_child(|cx| fn_view(cx, val));
-                                    Cached {
-                                        view,
-                                        moved: false,
-                                        disposer,
-                                    }
-                                });
-                            // Skip duplicated keys.
-                            if !*moved {
-                                *moved = true;
-                                new_fragment.push(view.clone(), key);
-                            }
-                        });
                         let new_view;
-                        if new_fragment.is_empty() {
+                        if new_vals.is_empty() {
                             if current_fragment.is_empty() {
                                 return;
                             }
                             // Replace empty view with placeholder.
                             parent.replace_child(&placeholder, &current_view);
-                            current_fragment.clear();
-                            cached_views.clear();
+                            current_fragment = Rc::new([]);
+                            current_disposers.clear();
                             new_view = placeholder.clone();
                         } else {
-                            new_view = View::fragment(new_fragment.views.clone());
+                            let mut new_fragment;
+                            let mut new_disposers;
                             if current_fragment.is_empty() {
-                                // Replace placeholder directly.
-                                parent.replace_child(&new_view, &placeholder);
+                                new_fragment = Vec::with_capacity(new_vals.len());
+                                new_disposers = Vec::with_capacity(new_vals.len());
+                                let position = placeholder.first();
+                                for val in new_vals.iter() {
+                                    let (view, disposer) = cx.create_child(|cx| fn_view(cx, val));
+                                    parent.insert_before(&view, Some(&position));
+                                    new_fragment.push(view);
+                                    new_disposers.push(Some(disposer));
+                                }
+                                // Remove the placeholder.
+                                parent.remove_child(&placeholder);
                             } else {
                                 // Diff two fragments.
-                                reconcile(
-                                    &mut cached_views,
+                                (new_fragment, new_disposers) = reconcile(
                                     parent.as_ref(),
+                                    &current_vals,
                                     &current_fragment,
-                                    &new_fragment,
+                                    &mut current_disposers,
+                                    &new_vals,
+                                    &fn_key,
+                                    |val| cx.create_child(|cx| fn_view(cx, val)),
+                                    View::fragment_shared(Rc::new([placeholder.clone()])),
                                 );
                             }
-                            current_fragment = new_fragment;
+                            current_fragment = new_fragment.into_boxed_slice().into();
+                            current_disposers = new_disposers;
+                            new_view = View::fragment_shared(current_fragment.clone());
                         }
-                        // Reset cache state.
-                        for v in cached_views.values_mut() {
-                            debug_assert!(v.moved);
-                            v.moved = false;
-                        }
-                        debug_assert_eq!(cached_views.len(), current_fragment.len());
                         debug_assert!(new_view.check_mount_order());
+                        current_vals = new_vals;
                         dyn_view.set(new_view);
                     });
                 }
@@ -122,7 +110,7 @@ where
         })
     }
 
-    pub fn each<E: IntoReactive<I>>(mut self, each: E) -> Self {
+    pub fn each<E: IntoReactive<Vec<T>>>(mut self, each: E) -> Self {
         if self.each.is_some() {
             panic!("`For::each` has already been provided");
         }
@@ -150,155 +138,163 @@ where
     }
 }
 
-struct Cached<N> {
-    view: View<N>,
-    moved: bool,
-    #[allow(dead_code)]
-    disposer: ScopeDisposer,
-}
-
-struct Fragment<N, K> {
-    views: Vec<View<N>>,
-    keys: Vec<K>,
-}
-
-impl<N, K> Default for Fragment<N, K> {
-    fn default() -> Self {
-        Self {
-            views: Vec::new(),
-            keys: Vec::new(),
-        }
-    }
-}
-
-impl<N, K> Fragment<N, K> {
-    fn len(&self) -> usize {
-        self.views.len()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    fn push(&mut self, view: View<N>, key: K) {
-        self.views.push(view);
-        self.keys.push(key);
-    }
-
-    fn clear(&mut self) {
-        self.views.clear();
-        self.keys.clear();
-    }
-
-    fn iter(&self, start: usize, end: usize) -> impl '_ + Iterator<Item = (&View<N>, &K)> {
-        self.views[start..end]
-            .iter()
-            .zip(self.keys[start..end].iter())
-    }
-}
-
 // Modified from: https://github.com/sycamore-rs/sycamore/
-fn reconcile<N, K>(
-    cached_views: &mut AHashMap<K, Cached<N>>,
+#[allow(clippy::too_many_arguments)]
+fn reconcile<N, K, V>(
     parent: Option<&N>,
-    a: &Fragment<N, K>,
-    b: &Fragment<N, K>,
-) where
+    current_vals: &[V],
+    current_fragment: &Rc<[View<N>]>,
+    current_disposers: &mut [Option<ScopeDisposer>],
+    new_vals: &[V],
+    fn_key: impl Fn(&V) -> K,
+    fn_view: impl Fn(&V) -> (View<N>, ScopeDisposer),
+    dummy_view: View<N>,
+) -> (Vec<View<N>>, Vec<Option<ScopeDisposer>>)
+where
     N: GenericNode,
-    K: Clone + Eq + Hash,
+    K: Eq + Hash,
 {
-    let a_len = a.len();
-    let b_len = b.len();
-    let a_next = a.views.last().unwrap().next_sibling();
+    let a_len = current_vals.len();
+    let b_len = new_vals.len();
+    let after_last = current_fragment.last().unwrap().next_sibling();
+
+    let mut new_fragment = Vec::new();
+    new_fragment.resize_with(new_vals.len(), || dummy_view.clone());
+    let mut new_disposers = Vec::new();
+    new_disposers.resize_with(new_vals.len(), || None::<ScopeDisposer>);
 
     let mut a_start = 0;
     let mut b_start = 0;
     let mut a_end = a_len;
     let mut b_end = b_len;
+    let mut a_map = None::<AHashMap<K, usize>>;
     let mut b_map = None::<AHashMap<K, usize>>;
+
+    macro_rules! init_a_map {
+        () => {
+            a_map.get_or_insert_with(|| {
+                current_vals[a_start..a_end]
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| (fn_key(v), a_start + i))
+                    .collect()
+            })
+        };
+    }
+
+    macro_rules! init_b_map {
+        () => {
+            b_map.get_or_insert_with(|| {
+                new_vals[b_start..b_end]
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| (fn_key(v), b_start + i))
+                    .collect()
+            })
+        };
+    }
+
+    macro_rules! take_or_new_views {
+        ($pos:expr, $start:expr, $end:expr) => {
+            let a_map = &*init_a_map!();
+            for (i, val) in new_vals[$start..$end].iter().enumerate() {
+                // Ignore moved views.
+                if let Some((view, disposer)) = a_map
+                    .get(&fn_key(val))
+                    .map(|&i| {
+                        current_disposers[i]
+                            .take()
+                            .map(|t| (current_fragment[i].clone(), t))
+                    })
+                    .unwrap_or_else(|| Some(fn_view(val)))
+                {
+                    parent.insert_before(&view, $pos);
+                    new_fragment[b_start + i] = view;
+                    new_disposers[b_start + i] = Some(disposer);
+                }
+            }
+        };
+    }
+
+    macro_rules! take_view {
+        ($ia:expr, $ib:expr) => {
+            new_fragment[$ib] = current_fragment[$ia].clone();
+            new_disposers[$ib] = current_disposers[$ia].take();
+        };
+    }
 
     while a_start < a_end || b_start < b_end {
         if a_start == a_end {
             // Append new views.
             let position = if b_end < b_len {
-                if b_start == 0 {
-                    // a: 4
-                    // b: 1 2 3 4
-                    //    ^^^^^
-                    Some(b.views[b_end].first())
-                } else {
-                    // a: 1 4
-                    // b: 1 2 3 4
-                    //      ^^^
-                    b.views[b_start - 1].next_sibling()
-                }
+                // a: 0 4
+                // b: 0 1 2 3 4
+                //      ^^^^^
+                Some(current_fragment[a_end].first())
             } else {
                 // All nodes in `a` should be removed, so we need to save the
                 // next sibling before the loop.
                 // a: 1 2 3 4
                 // b: 5 6 7 8
                 //    ^^^^^^^
-                a_next
+                after_last
             };
-            for view in b.views[b_start..b_end].iter() {
-                parent.insert_before(view, position.as_ref());
-            }
+            take_or_new_views!(position.as_ref(), b_start, b_end);
             b_start = b_end;
             break;
         } else if b_start == b_end {
             // Remove extra views.
-            for (view, key) in a.iter(a_start, a_end) {
-                if b_map.as_ref().map(|m| m.contains_key(key)) != Some(true) {
+            for (view, val) in current_fragment[a_start..a_end]
+                .iter()
+                .zip(current_vals[a_start..a_end].iter())
+            {
+                if b_map.as_ref().map(|m| m.contains_key(&fn_key(val))) != Some(true) {
                     parent.remove_child(view);
-                    cached_views.remove(key);
                 }
             }
             a_start = a_end;
             break;
         }
 
-        let a_start_k = &a.keys[a_start];
-        let a_end_k = &a.keys[a_end - 1];
-        let b_start_k = &b.keys[b_start];
-        let b_end_k = &b.keys[b_end - 1];
-        let a_start_v = &a.views[a_start];
-        let a_end_v = &a.views[a_end - 1];
+        let a_start_k = fn_key(&current_vals[a_start]);
+        let a_end_k = fn_key(&current_vals[a_end - 1]);
+        let b_start_k = fn_key(&new_vals[b_start]);
+        let b_end_k = fn_key(&new_vals[b_end - 1]);
+        let a_start_v = &current_fragment[a_start];
+        let a_end_v = &current_fragment[a_end - 1];
 
         if a_start_k == b_start_k {
             // Skip common preifx.
+            take_view!(a_start, b_start);
             a_start += 1;
             b_start += 1;
         } else if a_end_k == b_end_k {
             // Skip common suffix.
             a_end -= 1;
             b_end -= 1;
+            take_view!(a_end, b_end);
         } else if a_start_k == b_end_k && a_end_k == b_start_k {
             // Swap backwards.
             let start_next = a_start_v.next_sibling();
             let end_next = a_end_v.next_sibling();
             parent.insert_before(a_start_v, end_next.as_ref());
             parent.insert_before(a_end_v, start_next.as_ref());
-            a_start += 1;
-            b_start += 1;
             a_end -= 1;
             b_end -= 1;
+            take_view!(a_start, b_end);
+            take_view!(a_end, b_start);
+            a_start += 1;
+            b_start += 1;
         } else {
-            let map = &*b_map.get_or_insert_with(|| {
-                b.keys[b_start..b_end]
-                    .iter()
-                    .enumerate()
-                    .map(|(i, k)| (k.clone(), b_start + i))
-                    .collect()
-            });
-            if let Some(&index) = map.get(a_start_k) {
+            let b_map = &*init_b_map!();
+            if let Some(&index) = b_map.get(&a_start_k) {
                 if index > b_start && index < b_end {
+                    // Insert new views.
                     // a: 4
                     // b: 1 2 3 4
                     //    ^^^^^
                     let position = a_start_v.first();
-                    for view in b.views[b_start..index].iter() {
-                        parent.insert_before(view, Some(&position));
-                    }
+                    take_or_new_views!(Some(&position), b_start, index);
                     b_start = index;
                 } else {
                     // Ignore inserted views.
@@ -310,12 +306,18 @@ fn reconcile<N, K>(
             } else {
                 // Remove deleted views.
                 parent.remove_child(a_start_v);
-                cached_views.remove(a_start_k);
                 a_start += 1;
             }
         }
     }
 
-    debug_assert_eq!(a_start, a_end);
-    debug_assert_eq!(b_start, b_end);
+    if is_debug!() {
+        for view in new_fragment.iter() {
+            assert!(!dummy_view.ref_eq(view));
+        }
+        assert_eq!(new_fragment.len(), new_disposers.len());
+        assert_eq!(a_start, a_end);
+        assert_eq!(b_start, b_end);
+    }
+    (new_fragment, new_disposers)
 }

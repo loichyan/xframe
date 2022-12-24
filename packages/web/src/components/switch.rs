@@ -1,7 +1,7 @@
 use crate::Element;
 use smallvec::SmallVec;
 use xframe_core::{
-    component::DynComponent, is_dev, view::ViewParentExt, GenericComponent, GenericElement,
+    component::DynComponent, is_debug, view::ViewParentExt, GenericComponent, GenericElement,
     GenericNode, IntoReactive, Reactive, Template, Value, View,
 };
 use xframe_reactive::{untrack, Scope};
@@ -176,7 +176,7 @@ impl<N> From<Else<N>> for SwitchChild<N> {
 impl<N: GenericNode> GenericComponent<N> for Else<N> {
     fn build_template(self) -> Template<N> {
         let cx = self.cx;
-        if is_dev!() {
+        if is_debug!() {
             panic!("`Else` should only be used within `Switch`");
         }
         Switch(cx).child(self).build_template()

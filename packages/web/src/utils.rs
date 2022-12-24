@@ -1,5 +1,3 @@
-use std::{cell::RefCell, rc::Rc};
-
 macro_rules! define_placeholder {
     ($vis:vis $name:ident($desc:literal)) => {
         #[derive(Clone)]
@@ -20,28 +18,6 @@ macro_rules! define_placeholder {
             }
         }
     };
-}
-
-pub trait Visit<T> {
-    fn visit(&self, f: impl FnMut(&T));
-}
-
-impl<T, U: Visit<T>> Visit<T> for Rc<U> {
-    fn visit(&self, f: impl FnMut(&T)) {
-        U::visit(self, f);
-    }
-}
-
-impl<T, U: Visit<T>> Visit<T> for RefCell<U> {
-    fn visit(&self, f: impl FnMut(&T)) {
-        self.borrow().visit(f);
-    }
-}
-
-impl<T> Visit<T> for Vec<T> {
-    fn visit(&self, f: impl FnMut(&T)) {
-        self.iter().for_each(f);
-    }
 }
 
 pub trait UnwrapThrowValExt<T> {
