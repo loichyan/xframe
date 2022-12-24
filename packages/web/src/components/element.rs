@@ -50,11 +50,11 @@ where
             ..
         } = self;
         Template {
-            init: TemplateInit::<N>::new(move || {
+            init: TemplateInit::<N>::new(move |parent| {
                 let root = E::create(cx);
                 let root = root.into_node();
+                parent.append_child(&root);
                 init_children(&root);
-                View::node(root)
             }),
             render: TemplateRender::<N>::new(move |before_rendering, root| {
                 let first_child = root.first_child();
@@ -104,7 +104,7 @@ where
         let Template { init, render, .. } = child.build_template();
         self.init_children = Box::new(move |root| {
             (self.init_children)(root);
-            init.init().append_to(root);
+            init.init(root);
         });
         self.render_children = Box::new(move |first| {
             let node = (self.render_children)(first);

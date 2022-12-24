@@ -83,7 +83,7 @@ impl<N: GenericNode> DynComponent<N> {
                 let container = N::create(NodeType::Template(
                     id.map(|id| id.data()).unwrap_or("").into(),
                 ));
-                init.init().append_to(&container);
+                init.init(&container);
                 TemplateContent { container }
             };
             if let Some(id) = id {

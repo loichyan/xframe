@@ -13,14 +13,14 @@ type Views<N> = Vec<View<N>>;
 pub fn Fragment<N: GenericNode>(cx: Scope) -> Fragment<N> {
     Fragment {
         cx,
-        init: Box::new(|_| {}),
+        init: None,
         render: Box::new(|_, first_node, _| Some(first_node)),
     }
 }
 
 pub struct Fragment<N> {
     cx: Scope,
-    init: Box<dyn FnOnce(&mut Views<N>)>,
+    init: Option<Box<dyn FnOnce(&N)>>,
     render: Box<dyn FnOnce(BeforeRendering<N>, N, &mut Views<N>) -> Option<N>>,
 }
 
@@ -28,14 +28,12 @@ impl<N: GenericNode> GenericComponent<N> for Fragment<N> {
     fn build_template(self) -> Template<N> {
         let Self { init, render, .. } = self;
         Template {
-            init: TemplateInit::new(move || {
-                let mut views = Views::default();
-                init(&mut views);
-                if views.is_empty() {
-                    // Fallback to a placeholder.
-                    View::node(N::create(Placeholder::<N>::TYPE))
+            init: TemplateInit::new(move |parent| {
+                if let Some(init) = init {
+                    init(parent);
                 } else {
-                    View::fragment(views)
+                    // Fallback to a placeholder.
+                    parent.append_child(&N::create(Placeholder::<N>::TYPE));
                 }
             }),
             render: TemplateRender::new(move |before_rendering, node| {
@@ -69,10 +67,12 @@ impl<N: GenericNode> Fragment<N> {
 
     pub fn child<C: GenericComponent<N>>(mut self, child: C) -> Self {
         let Template { init, render, .. } = child.build_template();
-        self.init = Box::new(move |views| {
-            (self.init)(views);
-            views.push(init.init());
-        });
+        self.init = Some(Box::new(move |parent| {
+            if let Some(init) = self.init {
+                init(parent);
+            }
+            init.init(parent);
+        }));
         self.render = Box::new(move |before_rendering, first, views| {
             let node = (self.render)(before_rendering, first, views);
             let RenderOutput { next, view } = render.render(before_rendering, node.unwrap());

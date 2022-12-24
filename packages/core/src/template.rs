@@ -14,19 +14,19 @@ pub struct Template<N> {
     pub render: TemplateRender<N>,
 }
 
-/// Initializes a [`Template`]. It should return the same node tree after each call
+/// Initializes a [`Template`]. It should append the same node tree after each call
 /// and no side effect should be performed during the invoking.
 pub struct TemplateInit<N> {
-    inner: Box<dyn FnOnce() -> View<N>>,
+    inner: Box<dyn FnOnce(&N)>,
 }
 
 impl<N> TemplateInit<N> {
-    pub fn new(f: impl 'static + FnOnce() -> View<N>) -> Self {
+    pub fn new(f: impl 'static + FnOnce(&N)) -> Self {
         Self { inner: Box::new(f) }
     }
 
-    pub fn init(self) -> View<N> {
-        (self.inner)()
+    pub fn init(self, parent: &N) {
+        (self.inner)(parent);
     }
 }
 
