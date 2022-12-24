@@ -1,12 +1,9 @@
 use crate::Element;
-use smallvec::SmallVec;
 use xframe_core::{
     component::DynComponent, is_debug, view::ViewParentExt, GenericComponent, GenericElement,
     GenericNode, IntoReactive, Reactive, Template, Value, View,
 };
 use xframe_reactive::{untrack, Scope};
-
-const INITIAL_BRANCH_SLOTS: usize = 2;
 
 define_placeholder!(Placeholder("PLACEHOLDER FOR `xframe::Switch` COMPONENT"));
 
@@ -20,7 +17,7 @@ pub fn Switch<N: GenericNode>(cx: Scope) -> Switch<N> {
 
 pub struct Switch<N> {
     cx: Scope,
-    children: SmallVec<[SwitchChild<N>; INITIAL_BRANCH_SLOTS]>,
+    children: Vec<SwitchChild<N>>,
 }
 
 pub struct SwitchChild<N> {
@@ -54,7 +51,7 @@ impl<N: GenericNode> GenericComponent<N> for Switch<N> {
                             cond: Value(true),
                             view: placeholder,
                         }))
-                        .collect::<SmallVec<[_; INITIAL_BRANCH_SLOTS]>>();
+                        .collect::<Vec<_>>();
                     let mut current_index = branches.len() - 1;
                     move || {
                         for (index, branch) in branches.iter().enumerate() {

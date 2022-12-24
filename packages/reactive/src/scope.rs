@@ -2,10 +2,7 @@ use crate::{
     runtime::{EffectId, ScopeId, SignalId, RT},
     ThreadLocal,
 };
-use smallvec::SmallVec;
 use std::{fmt, marker::PhantomData};
-
-const INITIAL_CLEANUP_SLOTS: usize = 4;
 
 #[derive(Clone, Copy)]
 pub struct Scope {
@@ -25,7 +22,7 @@ impl fmt::Debug for Scope {
 
 #[derive(Default)]
 pub(crate) struct RawScope {
-    cleanups: SmallVec<[Cleanup; INITIAL_CLEANUP_SLOTS]>,
+    cleanups: Vec<Cleanup>,
 }
 
 pub(crate) enum Cleanup {
