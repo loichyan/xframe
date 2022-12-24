@@ -8,45 +8,49 @@ pub struct EventHandler<Ev> {
     pub options: EventOptions,
 }
 
-pub trait IntoEventHandler<Ev: 'static>: Into<EventHandler<Ev>> {
-    fn into_event_handler(self) -> EventHandler<Ev> {
-        self.into()
-    }
-
-    fn captured(self, val: bool) -> EventHandler<Ev> {
-        let mut t = self.into_event_handler();
-        t.options.capture = val;
-        t
-    }
-
-    fn cast<Ev2>(self) -> EventHandler<Ev2>
+impl<Ev: 'static> EventHandler<Ev> {
+    pub fn cast<Ev2>(self) -> EventHandler<Ev2>
     where
         Ev2: 'static + Into<Ev>,
     {
         self.cast_with(Ev2::into)
     }
 
-    fn cast_with<Ev2>(self, mut f: impl 'static + FnMut(Ev2) -> Ev) -> EventHandler<Ev2>
+    pub fn cast_with<Ev2>(mut self, mut f: impl 'static + FnMut(Ev2) -> Ev) -> EventHandler<Ev2>
     where
         Ev2: 'static,
     {
-        let mut handler = self.into_event_handler();
         EventHandler {
-            handler: Box::new(move |ev: Ev2| (handler.handler)(f(ev))),
-            options: handler.options,
+            handler: Box::new(move |ev: Ev2| (self.handler)(f(ev))),
+            options: self.options,
         }
     }
 }
 
-impl<Ev: 'static, U: Into<EventHandler<Ev>>> IntoEventHandler<Ev> for U {}
+pub trait IntoEventHandler<Ev: 'static>: Sized {
+    fn into_event_handler(self) -> EventHandler<Ev>;
 
-impl<Ev, F> From<F> for EventHandler<Ev>
+    fn captured(self, val: bool) -> EventHandler<Ev> {
+        let mut t = self.into_event_handler();
+        t.options.capture = val;
+        t
+    }
+}
+
+impl<Ev: 'static> IntoEventHandler<Ev> for EventHandler<Ev> {
+    fn into_event_handler(self) -> EventHandler<Ev> {
+        self
+    }
+}
+
+impl<Ev, F> IntoEventHandler<Ev> for F
 where
+    Ev: 'static,
     F: 'static + FnMut(Ev),
 {
-    fn from(t: F) -> Self {
+    fn into_event_handler(self) -> EventHandler<Ev> {
         EventHandler {
-            handler: Box::new(t),
+            handler: Box::new(self),
             options: Default::default(),
         }
     }

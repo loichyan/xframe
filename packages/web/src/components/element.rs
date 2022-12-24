@@ -122,7 +122,7 @@ where
     }
 
     pub fn child_text<A: IntoReactive<Attribute>>(self, data: A) -> Self {
-        let data = data.into_reactive();
+        let data = data.into_reactive(self.cx);
         self.child_element(move |text: crate::elements::text<_>| text.data(data))
     }
 }

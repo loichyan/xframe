@@ -141,7 +141,7 @@ impl<N: GenericNode> If<N> {
         if self.when.is_some() {
             panic!("`If::when` has already been specified");
         }
-        self.when = Some(when.into_reactive());
+        self.when = Some(when.into_reactive(self.cx));
         self
     }
 

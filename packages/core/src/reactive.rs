@@ -2,7 +2,7 @@ use std::{
     cell::{Cell, RefCell},
     rc::Rc,
 };
-use xframe_reactive::{ReadSignal, Signal};
+use xframe_reactive::{ReadSignal, Scope, Signal};
 
 #[doc(inline)]
 pub use Reactive::Value;
@@ -10,78 +10,81 @@ pub use Reactive::Value;
 #[derive(Clone)]
 pub enum Reactive<T> {
     Value(T),
-    // TODO: use `ReadSignal` instead
-    Fn(Rc<dyn Fn() -> Reactive<T>>),
+    Dyn(Rc<dyn Fn() -> Reactive<T>>),
 }
 
-pub trait IntoReactive<T: 'static>: Into<Reactive<T>> {
-    fn into_reactive(self) -> Reactive<T> {
-        self.into()
-    }
-
-    fn into_value(self) -> T {
-        let mut val = self.into_reactive();
+impl<T: 'static> Reactive<T> {
+    pub fn into_value(self) -> T {
+        let mut val = self;
         loop {
             match val {
                 Value(t) => return t,
-                Reactive::Fn(f) => val = f(),
+                Reactive::Dyn(f) => val = f(),
             }
         }
     }
 
-    fn cast<U: 'static>(self) -> Reactive<U>
+    pub fn cast<U: 'static>(self) -> Reactive<U>
     where
         T: Into<U>,
     {
         self.cast_with(T::into)
     }
 
-    fn cast_with<U: 'static>(self, f: fn(T) -> U) -> Reactive<U> {
-        match self.into_reactive() {
+    pub fn cast_with<U: 'static>(self, f: fn(T) -> U) -> Reactive<U> {
+        match self {
             Value(t) => Value(f(t)),
-            Reactive::Fn(t) => Reactive::Fn(Rc::new(move || Value(f(t().into_value())))),
+            Reactive::Dyn(t) => Reactive::Dyn(Rc::new(move || Value(f(t().into_value())))),
         }
     }
 }
 
-impl<T: 'static, U: 'static + Into<Reactive<T>>> IntoReactive<T> for U {}
+pub trait IntoReactive<T: 'static> {
+    fn into_reactive(self, cx: Scope) -> Reactive<T>;
+}
 
-impl<T, F, U> From<F> for Reactive<T>
+impl<T: 'static> IntoReactive<T> for Reactive<T> {
+    fn into_reactive(self, _: Scope) -> Reactive<T> {
+        self
+    }
+}
+
+impl<T, F, U> IntoReactive<T> for F
 where
     T: 'static,
     F: 'static + Fn() -> U,
     U: IntoReactive<T>,
 {
-    fn from(t: F) -> Self {
-        Reactive::Fn(Rc::new(move || (t)().into()))
+    fn into_reactive(self, cx: Scope) -> Reactive<T> {
+        Reactive::Dyn(Rc::new(move || self().into_reactive(cx)))
     }
 }
 
-impl<T, U> From<Signal<U>> for Reactive<T>
+impl<T, U> IntoReactive<T> for Signal<U>
 where
     T: 'static,
     U: 'static + Clone + IntoReactive<T>,
 {
-    fn from(t: Signal<U>) -> Self {
-        Reactive::Fn(Rc::new(move || t.get().into()))
+    fn into_reactive(self, cx: Scope) -> Reactive<T> {
+        ReadSignal::from(self).into_reactive(cx)
     }
 }
 
-impl<T, U> From<ReadSignal<U>> for Reactive<T>
+impl<T, U> IntoReactive<T> for ReadSignal<U>
 where
     T: 'static,
     U: 'static + Clone + IntoReactive<T>,
 {
-    fn from(t: ReadSignal<U>) -> Self {
-        Reactive::Fn(Rc::new(move || t.get().into()))
+    fn into_reactive(self, cx: Scope) -> Reactive<T> {
+        Reactive::Dyn(Rc::new(move || self.get().into_reactive(cx)))
     }
 }
 
 macro_rules! impl_into_reactive {
     ($($ty:ident),*$(,)?) => {$(
-        impl From<$ty> for Reactive<$ty> {
-            fn from(t: $ty) -> Self {
-                Value(t)
+        impl IntoReactive<$ty> for $ty {
+            fn into_reactive(self, _: Scope) -> Reactive<$ty> {
+                Value(self)
             }
         }
     )*};
@@ -93,9 +96,9 @@ impl_into_reactive!(
 
 macro_rules! impl_into_reactive_generic {
     ($($ty:ident),*$(,)?) => {$(
-        impl<T> From<$ty<T>> for Reactive<$ty<T>> {
-            fn from(t: $ty<T>) -> Self {
-                Value(t)
+        impl<T: 'static> IntoReactive<$ty<T>> for $ty<T> {
+            fn into_reactive(self, _: Scope) -> Reactive<$ty<T>> {
+                Value(self)
             }
         }
     )*};

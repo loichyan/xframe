@@ -1,9 +1,11 @@
 use crate::{reactive::*, CowStr};
 use std::borrow::Cow;
+use xframe_reactive::Scope;
 
 #[derive(Clone)]
 pub enum Attribute {
     Boolean(bool),
+    // TODO: Add integer
     Number(f64),
     Static(&'static str),
     String(String),
@@ -29,17 +31,17 @@ impl From<Cow<'static, str>> for Attribute {
     }
 }
 
-macro_rules! impl_for_types_into {
+macro_rules! impl_into_reactive_using_into {
     ($($ty:ty),*) => {$(
-        impl From<$ty> for Reactive<Attribute> {
-            fn from(t: $ty) -> Reactive<Attribute> {
-                Value(t.into())
+        impl IntoReactive<Attribute> for $ty {
+            fn into_reactive(self, _: Scope) -> Reactive<Attribute> {
+                Value(self.into())
             }
         }
     )*};
 }
 
-impl_for_types_into!(Cow<'static, str>);
+impl_into_reactive_using_into!(Cow<'static, str>);
 
 macro_rules! impl_from_for_types_into {
     ($($variant:ident => $ty:ty,)*) => {$(
@@ -49,11 +51,7 @@ macro_rules! impl_from_for_types_into {
             }
         }
 
-        impl From<$ty> for Reactive<Attribute> {
-            fn from(t: $ty) -> Reactive<Attribute> {
-                Value(t.into())
-            }
-        }
+        impl_into_reactive_using_into!($ty);
     )*};
 }
 
@@ -72,11 +70,7 @@ macro_rules! impl_for_small_nums {
             }
         }
 
-        impl From<$ty> for Reactive<Attribute> {
-            fn from(t: $ty) -> Reactive<Attribute> {
-                Value(t.into())
-            }
-        }
+        impl_into_reactive_using_into!($ty);
     )*};
 }
 
@@ -94,11 +88,7 @@ macro_rules! impl_for_big_nums {
             }
         }
 
-        impl From<$ty> for Reactive<Attribute> {
-            fn from(t: $ty) -> Reactive<Attribute> {
-                Value(t.into())
-            }
-        }
+        impl_into_reactive_using_into!($ty);
     )*};
 }
 

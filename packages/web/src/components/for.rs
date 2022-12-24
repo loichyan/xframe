@@ -114,7 +114,7 @@ where
         if self.each.is_some() {
             panic!("`For::each` has already been provided");
         }
-        self.each = Some(each.into_reactive());
+        self.each = Some(each.into_reactive(self.cx));
         self
     }
 

@@ -25,7 +25,7 @@ pub fn view_text<N, V: IntoReactive<Attribute>>(
 where
     N: GenericNode,
 {
-    let reactive = data.into_reactive();
+    let reactive = data.into_reactive(cx);
     Element(cx).with(|t: crate::element::text<N>| t.data(reactive))
 }
 

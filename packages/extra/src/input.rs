@@ -44,13 +44,13 @@ impl<N: GenericNode> BaseElement<N> {
     where
         T: 'static + Into<Attribute>,
     {
-        self.set_property(Cow::Borrowed(name), val.into_reactive().cast());
+        self.set_property(Cow::Borrowed(name), val.into_reactive(self.cx).cast());
     }
 
     pub fn set_property(&self, name: impl Into<CowStr>, val: impl IntoReactive<Attribute>) {
-        let attr = val.into();
-        let name = name.into();
         let node = self.node.clone();
+        let name = name.into();
+        let attr = val.into_reactive(self.cx);
         self.cx.create_effect(move || {
             node.set_property(name.clone(), attr.clone().into_value());
         });
@@ -69,14 +69,16 @@ impl<N: GenericNode> BaseElement<N> {
         );
     }
 
+    // TODO: pub fn classes(...)
+
     pub fn add_class(&self, name: impl Into<CowStr>) {
         self.node.add_class(name.into());
     }
 
     pub fn toggle_class(&self, name: impl Into<CowStr>, toggle: impl IntoReactive<bool>) {
-        let name = name.into();
-        let toggle = toggle.into_reactive();
         let node = self.node.clone();
+        let name = name.into();
+        let toggle = toggle.into_reactive(self.cx);
         self.cx.create_effect(move || {
             if toggle.clone().into_value() {
                 node.add_class(name.clone());
