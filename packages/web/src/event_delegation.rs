@@ -1,7 +1,6 @@
 use crate::{utils::UnwrapThrowValExt, DOCUMENT};
-use ahash::AHashMap;
 use js_sys::{Function, Object, Reflect};
-use std::{borrow::Cow, cell::RefCell};
+use std::{borrow::Cow, cell::RefCell, collections::HashMap};
 use wasm_bindgen::{prelude::*, JsCast, JsValue};
 use web_sys::{Event, EventTarget};
 use xframe_core::EventHandler;
@@ -64,7 +63,7 @@ extern "C" {
     fn set_inner(this: &CurrentTarget, inner: &EventTargetX);
 }
 
-type DelegatedEvents = AHashMap<&'static str, bool>;
+type DelegatedEvents = HashMap<&'static str, bool>;
 
 thread_local! {
     static GLOBAL_EVENTS: RefCell<DelegatedEvents> = RefCell::new(delegated_events());

@@ -1,9 +1,8 @@
 use crate::{
-    runtime::{EffectId, SignalId, RT},
+    runtime::{EffectId, IndexSet, SignalId, RT},
     scope::{Cleanup, Scope},
     ThreadLocal,
 };
-use indexmap::IndexSet;
 use std::{any::Any, cell::RefCell, fmt, marker::PhantomData, ops::Deref, rc::Rc};
 
 pub(crate) type RawSignal = Rc<RefCell<dyn Any>>;
@@ -162,7 +161,7 @@ impl<T: 'static> Signal<T> {
 
 #[derive(Default)]
 pub(crate) struct SignalContext {
-    subscribers: IndexSet<EffectId, ahash::RandomState>,
+    subscribers: IndexSet<EffectId>,
 }
 
 impl SignalContext {
@@ -210,7 +209,9 @@ impl Scope {
     fn create_signal_dyn(&self, t: Rc<RefCell<dyn Any>>) -> SignalId {
         RT.with(|rt| {
             let id = rt.signals.borrow_mut().insert(t);
-            rt.signal_contexts.borrow_mut().insert(id, <_>::default());
+            rt.signal_contexts
+                .borrow_mut()
+                .insert(id, Default::default());
             self.id.on_cleanup(Cleanup::Signal(id));
             id
         })

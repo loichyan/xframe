@@ -53,7 +53,7 @@ pub struct ScopeDisposer(Scope);
 impl ScopeDisposer {
     fn new(parent: Option<ScopeId>) -> Self {
         RT.with(|rt| {
-            let id = rt.scopes.borrow_mut().insert(<_>::default());
+            let id = rt.scopes.borrow_mut().insert(Default::default());
             if let Some(parent) = parent {
                 rt.scope_parents.borrow_mut().insert(id, parent);
             }

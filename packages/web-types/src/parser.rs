@@ -24,8 +24,8 @@ impl<'a> Parser<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
             lexer: Lexer::new(source),
-            predefined: <_>::default(),
-            elements: <_>::default(),
+            predefined: Default::default(),
+            elements: Default::default(),
         }
     }
 
@@ -81,7 +81,7 @@ impl<'a> Parser<'a> {
         ParseContent {
             predefined: &self.predefined,
             lexer: &mut self.lexer,
-            content: <_>::default(),
+            content: Default::default(),
         }
         .parse()
     }

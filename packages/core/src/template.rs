@@ -1,7 +1,7 @@
 use crate::{GenericNode, View};
-use ahash::AHashMap;
 use std::{
     cell::{Cell, RefCell},
+    collections::HashMap,
     rc::Rc,
 };
 
@@ -79,7 +79,7 @@ pub struct RenderOutput<N> {
 }
 
 pub struct GlobalTemplates<N> {
-    inner: Rc<RefCell<AHashMap<usize, TemplateContent<N>>>>,
+    inner: Rc<RefCell<HashMap<usize, TemplateContent<N>>>>,
 }
 
 impl<N> Default for GlobalTemplates<N> {

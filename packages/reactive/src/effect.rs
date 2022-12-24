@@ -1,9 +1,8 @@
 use crate::{
-    runtime::{EffectId, SignalId, RT},
+    runtime::{EffectId, HashSet, SignalId, RT},
     scope::{Cleanup, Scope},
     ThreadLocal,
 };
-use ahash::AHashSet;
 use std::{cell::RefCell, fmt, marker::PhantomData, rc::Rc};
 
 pub(crate) type RawEffect = Rc<RefCell<dyn AnyEffect>>;
@@ -32,7 +31,7 @@ impl Effect {
 
 #[derive(Default)]
 pub(crate) struct EffectContext {
-    dependencies: AHashSet<SignalId>,
+    dependencies: HashSet<SignalId>,
 }
 
 impl EffectContext {
@@ -113,7 +112,9 @@ impl Scope {
     fn create_effect_dyn(&self, f: Rc<RefCell<dyn AnyEffect>>) -> Effect {
         RT.with(|rt| {
             let id = rt.effects.borrow_mut().insert(f);
-            rt.effect_contexts.borrow_mut().insert(id, <_>::default());
+            rt.effect_contexts
+                .borrow_mut()
+                .insert(id, Default::default());
             self.id.on_cleanup(Cleanup::Effect(id));
             id.run().unwrap();
             Effect {

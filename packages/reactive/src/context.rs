@@ -1,14 +1,13 @@
 use crate::{
-    runtime::{ScopeId, SignalId, RT},
+    runtime::{HashMap, ScopeId, SignalId, RT},
     scope::Scope,
     signal::Signal,
 };
-use ahash::AHashMap;
 use std::{any::TypeId, marker::PhantomData};
 
 #[derive(Default)]
 pub(crate) struct ScopeContexts {
-    content: AHashMap<TypeId, SignalId>,
+    content: HashMap<TypeId, SignalId>,
 }
 
 struct ContextId<T>(PhantomData<T>);

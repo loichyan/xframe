@@ -1,6 +1,5 @@
 use crate::Element;
-use ahash::AHashMap;
-use std::{hash::Hash, rc::Rc};
+use std::{collections::HashMap, hash::Hash, rc::Rc};
 use xframe_core::{
     is_debug, view::ViewParentExt, GenericComponent, GenericElement, GenericNode, IntoReactive,
     Reactive, View,
@@ -75,6 +74,7 @@ where
                                 new_fragment = Vec::with_capacity(new_vals.len());
                                 new_disposers = Vec::with_capacity(new_vals.len());
                                 let position = placeholder.first();
+                                // Append new views.
                                 for val in new_vals.iter() {
                                     let (view, disposer) = cx.create_child(|cx| fn_view(cx, val));
                                     parent.insert_before(&view, Some(&position));
@@ -167,8 +167,8 @@ where
     let mut b_start = 0;
     let mut a_end = a_len;
     let mut b_end = b_len;
-    let mut a_map = None::<AHashMap<K, usize>>;
-    let mut b_map = None::<AHashMap<K, usize>>;
+    let mut a_map = None::<HashMap<K, usize>>;
+    let mut b_map = None::<HashMap<K, usize>>;
 
     macro_rules! init_a_map {
         () => {
