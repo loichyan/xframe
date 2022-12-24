@@ -22,12 +22,7 @@ pub struct Switch<N> {
 
 pub struct SwitchChild<N> {
     cond: Reactive<bool>,
-    content: DynComponent<N>,
-}
-
-struct Branch<N> {
-    cond: Reactive<bool>,
-    view: View<N>,
+    content: LazyRender<N>,
 }
 
 impl<N: GenericNode> GenericComponent<N> for Switch<N> {
@@ -39,43 +34,32 @@ impl<N: GenericNode> GenericComponent<N> for Switch<N> {
                 let dyn_view = View::dyn_(cx, placeholder.clone());
                 cx.create_effect({
                     let dyn_view = dyn_view.clone();
-                    let branches = children
-                        .into_iter()
-                        .map(|SwitchChild { cond, content }| Branch {
-                            cond,
-                            // TODO: lazy rendering
-                            view: content.render(),
-                        })
-                        // Fallback to a placeholder.
-                        .chain(Some(Branch {
-                            cond: Value(true),
-                            view: placeholder,
-                        }))
-                        .collect::<Vec<_>>();
-                    let mut current_index = branches.len() - 1;
+                    let mut branches = children;
+                    let mut current_index = None;
                     move || {
+                        let mut new_index = None;
                         for (index, branch) in branches.iter().enumerate() {
-                            let Branch::<N> {
-                                cond,
-                                view: new_view,
-                            } = branch;
                             // Only `cond` need to be tracked.
-                            if cond.clone().into_value() {
-                                untrack(|| {
-                                    let current_view = dyn_view.get();
-                                    // `dyn_view` may be moved or deleted, we need to
-                                    // get its latest parent node.
-                                    let parent = current_view.parent();
-                                    if current_index != index {
-                                        parent.replace_child(new_view, &current_view);
-                                        current_index = index;
-                                        debug_assert!(new_view.check_mount_order());
-                                        dyn_view.set(new_view.clone());
-                                    };
-                                });
+                            if branch.cond.clone().into_value() {
+                                new_index = Some(index);
                                 break;
                             }
                         }
+                        if new_index == current_index {
+                            return;
+                        }
+                        current_index = new_index;
+                        untrack(|| {
+                            let current_view = dyn_view.get();
+                            let parent = current_view.parent();
+                            let new_view = new_index
+                                .map(|i| branches[i].content.render())
+                                // Fallback to a placeholder.
+                                .unwrap_or_else(|| placeholder.clone());
+                            parent.replace_child(&new_view, &current_view);
+                            debug_assert!(new_view.check_mount_order());
+                            dyn_view.set(new_view);
+                        });
                     }
                 });
                 View::from(dyn_view)
@@ -113,11 +97,14 @@ pub struct If<N> {
     children: Option<DynComponent<N>>,
 }
 
-impl<N> From<If<N>> for SwitchChild<N> {
+impl<N: GenericNode> From<If<N>> for SwitchChild<N> {
     fn from(value: If<N>) -> Self {
         SwitchChild {
             cond: value.when.expect("`If::when` was not specified"),
-            content: value.children.expect("`If::child` was not specified"),
+            content: value
+                .children
+                .expect("`If::child` was not specified")
+                .into(),
         }
     }
 }
@@ -161,11 +148,14 @@ pub struct Else<N> {
     children: Option<DynComponent<N>>,
 }
 
-impl<N> From<Else<N>> for SwitchChild<N> {
+impl<N: GenericNode> From<Else<N>> for SwitchChild<N> {
     fn from(value: Else<N>) -> Self {
         SwitchChild {
             cond: Value(true),
-            content: value.children.expect("`Else::child` was not specified"),
+            content: value
+                .children
+                .expect("`Else::child` was not specified")
+                .into(),
         }
     }
 }
@@ -191,5 +181,31 @@ impl<N: GenericNode> Else<N> {
         }
         self.children = Some(child.into_dyn_component());
         self
+    }
+}
+
+struct LazyRender<N> {
+    component: Option<DynComponent<N>>,
+    view: Option<View<N>>,
+}
+
+impl<N: GenericNode> From<DynComponent<N>> for LazyRender<N> {
+    fn from(value: DynComponent<N>) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<N: GenericNode> LazyRender<N> {
+    fn new(component: DynComponent<N>) -> Self {
+        Self {
+            component: Some(component),
+            view: None,
+        }
+    }
+
+    fn render(&mut self) -> View<N> {
+        self.view
+            .get_or_insert_with(|| self.component.take().unwrap().render())
+            .clone()
     }
 }
