@@ -4,10 +4,7 @@ use crate::{
     ThreadLocal,
 };
 use indexmap::IndexSet;
-use smallvec::SmallVec;
 use std::{any::Any, cell::RefCell, fmt, marker::PhantomData, ops::Deref, rc::Rc};
-
-const INITIAL_SUBCRIBER_SLOTS: usize = 4;
 
 pub(crate) type RawSignal = Rc<RefCell<dyn Any>>;
 
@@ -190,11 +187,7 @@ impl SignalId {
     }
 
     pub fn trigger(&self) {
-        let subscribers = self.with_context(|ctx| {
-            ctx.subscribers
-                .drain(..)
-                .collect::<SmallVec<[_; INITIAL_SUBCRIBER_SLOTS]>>()
-        });
+        let subscribers = self.with_context(|ctx| std::mem::take(&mut ctx.subscribers));
         // Effects attach to subscribers at the end of the effect scope, an effect
         // created inside another scope might send signals to its outer scope,
         // so we should ensure the inner effects re-execute before outer ones to

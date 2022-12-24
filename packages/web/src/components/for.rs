@@ -66,7 +66,7 @@ where
                             // Replace empty view with placeholder.
                             parent.replace_child(&placeholder, &current_view);
                             current_fragment = Rc::new([]);
-                            current_disposers.clear();
+                            current_disposers = Vec::new();
                             new_view = placeholder.clone();
                         } else {
                             let mut new_fragment;
