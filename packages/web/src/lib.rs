@@ -12,6 +12,7 @@ pub mod components {
     mod for_;
     mod fragment;
     mod list;
+    mod root;
     mod switch;
 
     #[doc(inline)]
@@ -20,6 +21,7 @@ pub mod components {
         for_::For,
         fragment::Fragment,
         list::List,
+        root::Root,
         switch::{Else, If, Switch},
     };
 }

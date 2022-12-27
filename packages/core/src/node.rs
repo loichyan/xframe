@@ -1,5 +1,6 @@
 use crate::{attr::Attribute, event::EventHandler, template::GlobalTemplates, CowStr};
 
+#[derive(Clone)]
 pub enum NodeType {
     Tag(CowStr),
     Text(CowStr),

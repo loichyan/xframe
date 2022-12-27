@@ -1,15 +1,15 @@
 use crate::Element;
 use std::{collections::HashMap, hash::Hash, rc::Rc};
 use xframe_core::{
-    is_debug, view::ViewParentExt, GenericComponent, GenericElement, GenericNode, IntoReactive,
-    Reactive, View,
+    is_debug, view::ViewParentExt, GenericComponent, GenericNode, IntoReactive, Reactive,
+    RenderInput, RenderOutput, View,
 };
 use xframe_reactive::{untrack, Scope, ScopeDisposer};
 
 define_placeholder!(Placeholder("PLACEHOLDER FOR `xframe::For` COMPONENT"));
 
 pub struct For<N, T, K> {
-    cx: Scope,
+    input: RenderInput<N>,
     each: Option<Reactive<Vec<T>>>,
     key: Option<Box<dyn Fn(&T) -> K>>,
     children: Option<Box<dyn Fn(Scope, &T) -> View<N>>>,
@@ -19,12 +19,97 @@ pub struct For<N, T, K> {
 pub fn For<N, T, K>(cx: Scope) -> For<N, T, K>
 where
     N: GenericNode,
+    T: 'static + Clone,
+    K: 'static + Clone + Eq + Hash,
 {
-    For {
-        cx,
-        each: None,
-        key: None,
-        children: None,
+    GenericComponent::new(cx)
+}
+
+impl<N, T, K> GenericComponent<N> for For<N, T, K>
+where
+    N: GenericNode,
+    T: 'static + Clone,
+    K: 'static + Clone + Eq + Hash,
+{
+    fn new_with_input(input: RenderInput<N>) -> Self {
+        Self {
+            input,
+            each: None,
+            key: None,
+            children: None,
+        }
+    }
+
+    fn render_to_output(self) -> RenderOutput<N> {
+        let Self {
+            input,
+            each,
+            key,
+            children,
+        } = self;
+        let cx = input.cx;
+        let each = each.expect("`For::each` was not specified");
+        let fn_key = key.expect("`For::key` was not specified");
+        let fn_view = children.expect("`For::child` was not specified");
+        let mut current_vals = Vec::<T>::new();
+        let mut current_fragment: Rc<[View<N>]> = Rc::new([]);
+        let mut current_disposers = Vec::<Option<ScopeDisposer>>::new();
+        let mut placeholder = None;
+        Element::<_, Placeholder<_>>::new_with_input(input)
+            .dyn_view(move |current_view| {
+                let placeholder = &*placeholder.get_or_insert_with(|| current_view.clone());
+                let new_vals = each.clone().into_value();
+                untrack(|| {
+                    let parent = current_view.parent();
+                    let new_view;
+                    if new_vals.is_empty() {
+                        if current_fragment.is_empty() {
+                            return current_view;
+                        }
+                        // Replace empty view with placeholder.
+                        parent.replace_child(placeholder, &current_view);
+                        current_fragment = Rc::new([]);
+                        current_disposers = Vec::new();
+                        new_view = placeholder.clone();
+                    } else {
+                        let mut new_fragment;
+                        let mut new_disposers;
+                        if current_fragment.is_empty() {
+                            new_fragment = Vec::with_capacity(new_vals.len());
+                            new_disposers = Vec::with_capacity(new_vals.len());
+                            let position = placeholder.first();
+                            // Append new views.
+                            for val in new_vals.iter() {
+                                let (view, disposer) = cx.create_child(|cx| fn_view(cx, val));
+                                parent.insert_before(&view, Some(&position));
+                                new_fragment.push(view);
+                                new_disposers.push(Some(disposer));
+                            }
+                            // Remove the placeholder.
+                            parent.remove_child(placeholder);
+                        } else {
+                            // Diff two fragments.
+                            (new_fragment, new_disposers) = reconcile(
+                                parent.as_ref(),
+                                &current_vals,
+                                &current_fragment,
+                                &mut current_disposers,
+                                &new_vals,
+                                &fn_key,
+                                |val| cx.create_child(|cx| fn_view(cx, val)),
+                                View::fragment_shared(Rc::new([placeholder.clone()])),
+                            );
+                        }
+                        current_fragment = new_fragment.into_boxed_slice().into();
+                        current_disposers = new_disposers;
+                        new_view = View::fragment_shared(current_fragment.clone());
+                    }
+                    debug_assert!(new_view.check_mount_order());
+                    current_vals = new_vals;
+                    new_view
+                })
+            })
+            .render_to_output()
     }
 }
 
@@ -34,93 +119,17 @@ where
     T: 'static + Clone,
     K: 'static + Clone + Eq + Hash,
 {
-    pub fn build(self) -> impl GenericComponent<N> {
-        let Self {
-            cx,
-            each,
-            key,
-            children,
-        } = self;
-        let each = each.expect("`For::each` was not specified");
-        let fn_key = key.expect("`For::key` was not specified");
-        let fn_view = children.expect("`For::child` was not specified");
-        Element(cx).with_view(move |placeholder: Placeholder<N>| {
-            let placeholder = View::node(placeholder.into_node());
-            let dyn_view = View::dyn_(cx, placeholder.clone());
-            cx.create_effect({
-                let dyn_view = dyn_view.clone();
-                let mut current_vals = Vec::<T>::new();
-                let mut current_fragment: Rc<[View<N>]> = Rc::new([]);
-                let mut current_disposers = Vec::<Option<ScopeDisposer>>::new();
-                move || {
-                    let new_vals = each.clone().into_value();
-                    untrack(|| {
-                        let current_view = dyn_view.get();
-                        let parent = current_view.parent();
-                        let new_view;
-                        if new_vals.is_empty() {
-                            if current_fragment.is_empty() {
-                                return;
-                            }
-                            // Replace empty view with placeholder.
-                            parent.replace_child(&placeholder, &current_view);
-                            current_fragment = Rc::new([]);
-                            current_disposers = Vec::new();
-                            new_view = placeholder.clone();
-                        } else {
-                            let mut new_fragment;
-                            let mut new_disposers;
-                            if current_fragment.is_empty() {
-                                new_fragment = Vec::with_capacity(new_vals.len());
-                                new_disposers = Vec::with_capacity(new_vals.len());
-                                let position = placeholder.first();
-                                // Append new views.
-                                for val in new_vals.iter() {
-                                    let (view, disposer) = cx.create_child(|cx| fn_view(cx, val));
-                                    parent.insert_before(&view, Some(&position));
-                                    new_fragment.push(view);
-                                    new_disposers.push(Some(disposer));
-                                }
-                                // Remove the placeholder.
-                                parent.remove_child(&placeholder);
-                            } else {
-                                // Diff two fragments.
-                                (new_fragment, new_disposers) = reconcile(
-                                    parent.as_ref(),
-                                    &current_vals,
-                                    &current_fragment,
-                                    &mut current_disposers,
-                                    &new_vals,
-                                    &fn_key,
-                                    |val| cx.create_child(|cx| fn_view(cx, val)),
-                                    View::fragment_shared(Rc::new([placeholder.clone()])),
-                                );
-                            }
-                            current_fragment = new_fragment.into_boxed_slice().into();
-                            current_disposers = new_disposers;
-                            new_view = View::fragment_shared(current_fragment.clone());
-                        }
-                        debug_assert!(new_view.check_mount_order());
-                        current_vals = new_vals;
-                        dyn_view.set(new_view);
-                    });
-                }
-            });
-            View::from(dyn_view)
-        })
-    }
-
     pub fn each<E: IntoReactive<Vec<T>>>(mut self, each: E) -> Self {
         if self.each.is_some() {
-            panic!("`For::each` has already been provided");
+            panic!("`For::each` has been provided");
         }
-        self.each = Some(each.into_reactive(self.cx));
+        self.each = Some(each.into_reactive(self.input.cx));
         self
     }
 
     pub fn key(mut self, key: impl 'static + Fn(&T) -> K) -> Self {
         if self.key.is_some() {
-            panic!("`For::child` has already been provided");
+            panic!("`For::child` has been provided");
         }
         self.key = Some(Box::new(key));
         self
@@ -131,7 +140,7 @@ where
         child: impl 'static + Fn(Scope, &T) -> C,
     ) -> Self {
         if self.children.is_some() {
-            panic!("`For::child` has already been provided");
+            panic!("`For::child` has been provided");
         }
         self.children = Some(Box::new(move |cx, val| child(cx, val).render()));
         self

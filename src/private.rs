@@ -1,53 +1,59 @@
 use crate::GenericNode;
-use xframe_core::{Attribute, GenericElement, IntoReactive};
+use xframe_core::{Attribute, GenericComponent, GenericElement, IntoReactive, TemplateId};
 use xframe_reactive::Scope;
-use xframe_web::{Element, Fragment};
+use xframe_web::{Element, Fragment, Root};
+
+pub fn view_root<N, C>(
+    cx: Scope,
+    id: fn() -> TemplateId,
+    component: impl 'static + FnOnce(C) -> C,
+) -> Root<N>
+where
+    N: GenericNode,
+    C: GenericComponent<N>,
+{
+    Root(cx).id(id).child(component)
+}
 
 pub fn view_element<N, E>(
-    cx: Scope,
-    create: fn(Scope) -> E,
+    _cx: Scope,
+    _marker: fn(Scope) -> E,
     props: impl 'static + FnOnce(E) -> E,
     children: impl 'static + FnOnce(Element<N, E>) -> Element<N, E>,
-) -> Element<N, E>
+) -> impl 'static + FnOnce(Element<N, E>) -> Element<N, E>
 where
     N: GenericNode,
     E: GenericElement<N>,
 {
-    let _ = create;
-    let element = Element(cx).with(props);
-    children(element)
+    move |t| children(t.then(props))
 }
 
 pub fn view_text<N, V: IntoReactive<Attribute>>(
     cx: Scope,
     data: V,
-) -> Element<N, crate::element::text<N>>
+) -> impl 'static + FnOnce(Element<N, crate::element::text<N>>) -> Element<N, crate::element::text<N>>
 where
     N: GenericNode,
 {
-    let reactive = data.into_reactive(cx);
-    Element(cx).with(|t: crate::element::text<N>| t.data(reactive))
+    let data = data.into_reactive(cx);
+    move |t| t.then(|t| t.data(data))
 }
 
-pub fn view_component<Init, U1, U2, Final>(
-    cx: Scope,
-    create: fn(Scope) -> Init,
-    props: impl 'static + FnOnce(Init) -> U1,
-    children: impl 'static + FnOnce(U1) -> U2,
-    build: impl 'static + FnOnce(U2) -> Final,
-) -> Final {
-    let component = create(cx);
-    let u1 = props(component);
-    let u2 = children(u1);
-    build(u2)
+pub fn view_component<C>(
+    _cx: Scope,
+    _marker: fn(Scope) -> C,
+    props: impl 'static + FnOnce(C) -> C,
+    children: impl 'static + FnOnce(C) -> C,
+) -> impl 'static + FnOnce(C) -> C {
+    move |t| children(props(t))
 }
 
 pub fn view_fragment<N>(
-    cx: Scope,
+    _cx: Scope,
     children: impl 'static + FnOnce(Fragment<N>) -> Fragment<N>,
-) -> Fragment<N>
+) -> impl 'static + FnOnce(Fragment<N>) -> Fragment<N>
 where
     N: GenericNode,
 {
-    children(Fragment(cx))
+    children
 }

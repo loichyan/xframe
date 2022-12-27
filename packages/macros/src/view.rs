@@ -20,7 +20,6 @@ new_type_quote! {
     T_TEMPLATE_ID(#XFRAME::TemplateId);
     T_TEXT(#M_ELEMENT::text);
     FN_CHILD(child);
-    FN_BUILD(build);
     FN_VIEW_ELEMENT(#RT::view_element);
     FN_VIEW_TEXT(#RT::view_text);
     FN_VIEW_COMPONENT(#RT::view_component);
@@ -54,27 +53,12 @@ impl View {
         let View { cx, root, .. } = self;
         let root = root.quote();
         quote!({
-            struct #T_COMPONENT<F>(F);
-
-            impl<N, F> #T_GENERIC_COMPONENT<N>
-            for #T_COMPONENT<F>
-            where
-                N: #XFRAME::WebNode,
-                F: 'static + FnOnce() -> #T_TEMPLATE<N>,
-            {
-                fn id() -> Option<#T_TEMPLATE_ID> {
-                    Some(#XFRAME::id!())
-                }
-
-                fn build_template(self) -> #T_TEMPLATE<N> {
-                    (self.0)()
-                }
-            }
-
-            #T_COMPONENT(move || {
-                let #VAR_CX = #cx;
-                #T_GENERIC_COMPONENT::build_template(#root)
-            })
+            let #VAR_CX = #cx;
+            #RT::view_root(
+                #VAR_CX,
+                #XFRAME::id!(),
+                #root,
+            )
         })
     }
 }
@@ -255,7 +239,6 @@ impl ViewElement {
                 #path,
                 move |#VAR_VIEW| { #VAR_VIEW #props },
                 move |#VAR_VIEW| { #VAR_VIEW #children },
-                move |#VAR_VIEW| { #VAR_VIEW .build() }
             ) })
         }
     }

@@ -45,7 +45,7 @@ impl Scope {
     ///
     /// # Panics
     ///
-    /// Panics if the same context has already been provided.
+    /// Panics if the same context has been provided.
     pub fn provide_context<T: 'static>(&self, t: T) -> Signal<T> {
         self.try_provide_context(t)
             .unwrap_or_else(|_| panic!("tried to provide a duplicated context in the same scope"))

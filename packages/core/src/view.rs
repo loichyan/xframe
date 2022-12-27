@@ -49,6 +49,14 @@ impl<N: GenericNode> View<N> {
         }
     }
 
+    pub fn deep_clone(&self) -> Self {
+        match &self.0 {
+            VT::Node(t) => Self(VT::Node(t.deep_clone())),
+            VT::Fragment(t) => Self::fragment(t.iter().map(Self::deep_clone).collect()),
+            VT::Dyn(t) => Self(VT::Dyn(*t)),
+        }
+    }
+
     pub fn ref_eq(&self, other: &Self) -> bool {
         match (&self.0, &other.0) {
             (VT::Node(t1), VT::Node(t2)) => t1.eq(t2),

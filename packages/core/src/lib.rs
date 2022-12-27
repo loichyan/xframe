@@ -18,13 +18,13 @@ pub mod prelude {
     #[doc(inline)]
     pub use crate::{
         attr::Attribute,
-        component::GenericComponent,
+        component::{GenericComponent, RenderInput, RenderOutput},
         element::{GenericElement, NodeRef},
         event::{EventHandler, EventOptions, IntoEventHandler},
         ext::ScopeExt,
         node::{GenericNode, NodeType},
         reactive::{IntoReactive, Reactive, Value},
-        template::{Template, TemplateId},
+        template::TemplateId,
         view::View,
     };
 }

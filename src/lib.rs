@@ -43,10 +43,13 @@ pub mod __private;
 #[macro_export]
 macro_rules! id {
     () => {{
-        thread_local! {
-            static __ID: $crate::template::TemplateId =
-                $crate::template::TemplateId::generate(concat!(module_path!(), ":", line!(), ":", column!()));
+        fn __id() -> $crate::template::TemplateId {
+            thread_local! {
+                static __ID: $crate::template::TemplateId =
+                    $crate::template::TemplateId::generate(concat!(module_path!(), ":", line!(), ":", column!()));
+            }
+            __ID.with(Clone::clone)
         }
-        __ID.with(Clone::clone)
+        __id
     }};
 }
