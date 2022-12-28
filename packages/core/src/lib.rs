@@ -4,9 +4,9 @@ mod attr;
 mod event;
 mod node;
 mod reactive;
+mod template;
 
 pub mod component;
-pub mod template;
 pub mod view;
 
 #[doc(inline)]

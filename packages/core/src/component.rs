@@ -377,7 +377,7 @@ impl<N: GenericNode> Root<N> {
         } else if let Some(id) = id {
             let id = id();
             let input_mode = mode;
-            match GlobalTemplates::<N>::get(id) {
+            match GlobalTemplates::get::<N>(id) {
                 Some(TemplateContent {
                     container,
                     dehydrated,

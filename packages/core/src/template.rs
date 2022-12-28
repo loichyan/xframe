@@ -1,54 +1,35 @@
 use crate::{GenericNode, View};
-use std::{
-    cell::{Cell, RefCell},
-    rc::Rc,
-};
+use std::{any::Any, cell::RefCell};
 
 thread_local! {
-    static GLOBAL_ID: Cell<usize> = Cell::new(0);
+    static TEMPLATES: GlobalTemplates = GlobalTemplates::default();
 }
 
-pub struct GlobalTemplates<N> {
-    inner: Rc<RefCell<Vec<Option<TemplateContent<N>>>>>,
+struct NoneTemplate;
+
+#[derive(Default)]
+pub(crate) struct GlobalTemplates {
+    inner: RefCell<Vec<Box<dyn Any>>>,
 }
 
-impl<N> Default for GlobalTemplates<N> {
-    fn default() -> Self {
-        Self {
-            inner: Default::default(),
-        }
-    }
-}
-
-impl<N> Clone for GlobalTemplates<N> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
-    }
-}
-
-impl<N: GenericNode> GlobalTemplates<N> {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    fn entry<U>(id: TemplateId, f: impl FnOnce(&mut Option<TemplateContent<N>>) -> U) -> U {
+impl GlobalTemplates {
+    fn entry<U>(id: TemplateId, f: impl FnOnce(&mut Box<dyn Any>) -> U) -> U {
         let TemplateId { id, .. } = id;
-        let templates = N::global_templates().inner;
-        let templates = &mut *templates.borrow_mut();
-        if id >= templates.len() {
-            templates.resize_with(id + 1, || None);
-        }
-        f(&mut templates[id])
+        TEMPLATES.with(|templates| f(&mut templates.inner.borrow_mut()[id]))
     }
 
-    pub(crate) fn get(id: TemplateId) -> Option<TemplateContent<N>> {
-        Self::entry(id, |t| t.clone())
+    pub(crate) fn get<N: GenericNode>(id: TemplateId) -> Option<TemplateContent<N>> {
+        Self::entry(id, |t| {
+            if t.downcast_ref::<NoneTemplate>().is_some() {
+                None
+            } else {
+                Some(t.downcast_ref::<TemplateContent<N>>().unwrap().clone())
+            }
+        })
     }
 
-    pub(crate) fn set(id: TemplateId, template: TemplateContent<N>) {
-        Self::entry(id, |t| *t = Some(template));
+    pub(crate) fn set<N: GenericNode>(id: TemplateId, template: TemplateContent<N>) {
+        Self::entry(id, |t| *t = Box::new(template));
     }
 }
 
@@ -60,16 +41,12 @@ pub struct TemplateId {
 
 impl TemplateId {
     pub fn generate(data: &'static str) -> Self {
-        let id = GLOBAL_ID.with(|global| {
-            let id = global.get();
-            global.set(id + 1);
-            id
-        });
-        // let templates = N::global_templates();
-        // let templates = &mut templates.inner.borrow_mut();
-        // let id = templates.len();
-        // templates.push(None);
-        Self { id, data }
+        TEMPLATES.with(|templates| {
+            let mut templates = templates.inner.borrow_mut();
+            let id = templates.len();
+            templates.push(Box::new(NoneTemplate));
+            Self { id, data }
+        })
     }
 
     pub fn data(&self) -> &'static str {

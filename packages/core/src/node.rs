@@ -1,4 +1,4 @@
-use crate::{attr::Attribute, event::EventHandler, template::GlobalTemplates, CowStr};
+use crate::{attr::Attribute, event::EventHandler, CowStr};
 
 #[derive(Clone)]
 pub enum NodeType {
@@ -11,7 +11,6 @@ pub enum NodeType {
 pub trait GenericNode: 'static + Clone + Eq {
     type Event;
 
-    fn global_templates() -> GlobalTemplates<Self>;
     fn create(ty: NodeType) -> Self;
     fn deep_clone(&self) -> Self;
 

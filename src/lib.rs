@@ -27,7 +27,7 @@ pub mod event {
 
 #[doc(inline)]
 pub use {
-    xframe_core::{component, prelude::*, template},
+    xframe_core::{component, prelude::*},
     xframe_macros::view,
     xframe_reactive::*,
     xframe_web::prelude::*,
@@ -43,10 +43,10 @@ pub mod __private;
 #[macro_export]
 macro_rules! id {
     () => {{
-        fn __id() -> $crate::template::TemplateId {
+        fn __id() -> $crate::TemplateId {
             thread_local! {
-                static __ID: $crate::template::TemplateId =
-                    $crate::template::TemplateId::generate(concat!(module_path!(), ":", line!(), ":", column!()));
+                static __ID: $crate::TemplateId =
+                    $crate::TemplateId::generate(concat!(module_path!(), ":", line!(), ":", column!()));
             }
             __ID.with(Clone::clone)
         }
