@@ -1,15 +1,14 @@
 use crate::element::GenericElement;
 use std::rc::Rc;
 use xframe_core::{
-    view::ViewParentExt, GenericComponent, GenericNode, IntoReactive, Reactive, RenderInput,
-    RenderOutput, View,
+    view::ViewParentExt, GenericComponent, GenericNode, IntoReactive, Reactive, RenderOutput, View,
 };
 use xframe_reactive::{untrack, Scope, ScopeDisposer};
 
 define_placeholder!(struct Placeholder("PLACEHOLDER FOR `xframe::List` COMPONENT"));
 
 pub struct List<N, T> {
-    input: RenderInput<N>,
+    cx: Scope,
     each: Option<Reactive<Vec<T>>>,
     children: Option<Box<dyn Fn(Scope, &T) -> View<N>>>,
 }
@@ -20,7 +19,11 @@ where
     N: GenericNode,
     T: 'static + Clone,
 {
-    GenericComponent::new(cx)
+    List {
+        cx,
+        each: None,
+        children: None,
+    }
 }
 
 impl<N, T> GenericComponent<N> for List<N, T>
@@ -28,28 +31,15 @@ where
     N: GenericNode,
     T: 'static + Clone,
 {
-    fn new_with_input(input: RenderInput<N>) -> Self {
-        Self {
-            input,
-            each: None,
-            children: None,
-        }
-    }
-
-    fn render_to_output(self) -> RenderOutput<N> {
-        let Self {
-            input,
-            each,
-            children,
-        } = self;
-        let cx = input.cx;
+    fn render(self) -> RenderOutput<N> {
+        let Self { cx, each, children } = self;
         let each = each.expect("`List::each` was not specified");
         let fn_view = children.expect("`List::child` was not specified");
 
         let mut current_fragment = Rc::new([]) as Rc<[View<N>]>;
         let mut current_disposers = Vec::<ScopeDisposer>::new();
         let mut placeholder = None;
-        Placeholder::new_with_input(input)
+        Placeholder::<N>::new(cx)
             .dyn_view(move |current_view| {
                 let placeholder = &*placeholder.get_or_insert_with(|| current_view.clone());
                 // Only `each` needs to be tracked.
@@ -101,7 +91,7 @@ where
                     new_view
                 })
             })
-            .render_to_output()
+            .render()
     }
 }
 
@@ -114,7 +104,7 @@ where
         if self.each.is_some() {
             panic!("`List::each` has been specified");
         }
-        self.each = Some(each.into_reactive(self.input.cx));
+        self.each = Some(each.into_reactive(self.cx));
         self
     }
 
@@ -125,7 +115,7 @@ where
         if self.children.is_some() {
             panic!("`List::child` has been specified");
         }
-        self.children = Some(Box::new(move |cx, val| child(cx, val).render()));
+        self.children = Some(Box::new(move |cx, val| child(cx, val).render_view()));
         self
     }
 }

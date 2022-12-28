@@ -1,32 +1,55 @@
 use crate::{
     node::{GenericNode, NodeType},
-    template::{GlobalTemplates, TemplateContent, TemplateId},
+    template::{GlobalState, Template},
     view::View,
+    TemplateId,
 };
 use xframe_reactive::{untrack, Scope};
 
 pub trait GenericComponent<N: GenericNode>: 'static + Sized {
-    fn new_with_input(input: RenderInput<N>) -> Self;
-    fn render_to_output(self) -> RenderOutput<N>;
+    fn render(self) -> RenderOutput<N>;
 
-    fn new(cx: Scope) -> Self {
-        Self::new_with_input(RenderInput::none(cx))
-    }
-
-    fn render(self) -> View<N> {
-        self.render_to_output().view
+    fn render_view(self) -> View<N> {
+        self.render().view
     }
 }
 
-pub struct RenderInput<N> {
-    pub cx: Scope,
-    mode: InputMode<N>,
+fn take_mode<N: GenericNode>() -> Mode<N> {
+    GlobalState::mode(|global| std::mem::replace(&mut global.mode, Mode::None))
 }
 
-enum InputMode<N> {
+fn set_mode<N: GenericNode>(mode: Mode<N>) {
+    GlobalState::mode(|global| global.mode = mode);
+}
+
+pub(crate) struct GlobalMode<N> {
+    mode: Mode<N>,
+}
+
+impl<N: GenericNode> Default for GlobalMode<N> {
+    fn default() -> Self {
+        Self { mode: Mode::None }
+    }
+}
+
+enum Mode<N> {
     None,
     Dehydrate,
     Hydrate { first: N, behavior: Behavior<N> },
+}
+
+impl<N: GenericNode> Mode<N> {
+    fn none() -> Self {
+        Mode::None
+    }
+
+    fn dehydrate() -> Self {
+        Mode::Dehydrate
+    }
+
+    fn hydrate(first: N, behavior: Behavior<N>) -> Self {
+        Mode::Hydrate { first, behavior }
+    }
 }
 
 #[derive(Clone)]
@@ -44,31 +67,8 @@ impl<N: GenericNode> Behavior<N> {
     }
 }
 
-impl<N: GenericNode> RenderInput<N> {
-    fn none(cx: Scope) -> Self {
-        Self {
-            cx,
-            mode: InputMode::None,
-        }
-    }
-
-    fn dehydrate(cx: Scope) -> Self {
-        Self {
-            cx,
-            mode: InputMode::Dehydrate,
-        }
-    }
-
-    fn hydrate(cx: Scope, first: N, behavior: Behavior<N>) -> Self {
-        Self {
-            cx,
-            mode: InputMode::Hydrate { first, behavior },
-        }
-    }
-}
-
 pub struct RenderOutput<N> {
-    pub view: View<N>,
+    view: View<N>,
     mode: OutputMode<N>,
 }
 
@@ -116,40 +116,36 @@ enum ElementMode<N> {
 
 impl<N: GenericNode> Element<N> {
     pub fn new(cx: Scope, ty: NodeType) -> Self {
-        Self::new_with_input(RenderInput::none(cx), ty)
-    }
-
-    pub fn new_with_input(input: RenderInput<N>, ty: NodeType) -> Self {
         let mode;
         let root;
-        match input.mode {
-            InputMode::None => {
+        match take_mode::<N>() {
+            Mode::None => {
                 mode = ElementMode::None;
                 root = N::create(ty);
             }
-            InputMode::Dehydrate => {
+            Mode::Dehydrate => {
                 mode = ElementMode::Dehydrate {
                     dehydrated_root: N::create(ty.clone()),
                 };
                 root = N::create(ty);
             }
-            InputMode::Hydrate { first, behavior } => {
+            Mode::Hydrate { first, behavior } => {
                 mode = ElementMode::Hydrate {
                     last: first.first_child(),
                 };
                 root = first;
                 behavior.apply_to(&root);
             }
-        };
+        }
         Self {
-            cx: input.cx,
+            cx,
             mode,
             root,
             dyn_view: None,
         }
     }
 
-    pub fn render_to_output(self) -> RenderOutput<N> {
+    pub fn render(self) -> RenderOutput<N> {
         let view = self.dyn_view.unwrap_or_else(|| View::node(self.root));
         match self.mode {
             ElementMode::None => RenderOutput::none(view),
@@ -175,51 +171,50 @@ impl<N: GenericNode> Element<N> {
         let dyn_view = View::dyn_(self.cx, View::node(self.root.clone()));
         self.cx.create_effect({
             let dyn_view = dyn_view.clone();
+            // TODO: use a selector
             move || dyn_view.set(f(untrack(|| dyn_view.get())))
         });
         self.dyn_view = Some(dyn_view.into());
     }
 
-    pub fn add_child<C: GenericComponent<N>>(&mut self, f: impl 'static + FnOnce(C) -> C) {
-        let input = self.add_child_input();
-        let output = f(C::new_with_input(input)).render_to_output();
-        self.add_child_output(output);
+    pub fn add_child<C: GenericComponent<N>>(&mut self, f: impl 'static + FnOnce(Scope) -> C) {
+        self.before_child();
+        let output = f(self.cx).render();
+        self.after_child(output);
     }
 
-    fn add_child_input(&mut self) -> RenderInput<N> {
-        match &mut self.mode {
-            ElementMode::None => RenderInput::none(self.cx),
-            ElementMode::Dehydrate { .. } => RenderInput::dehydrate(self.cx),
+    fn before_child(&mut self) {
+        let mode = match &mut self.mode {
+            ElementMode::None => Mode::none(),
+            ElementMode::Dehydrate { .. } => Mode::dehydrate(),
             ElementMode::Hydrate { last } => {
                 let first = last.take().unwrap();
                 *last = first.next_sibling();
-                RenderInput::hydrate(self.cx, first, Behavior::Nothing)
+                Mode::hydrate(first, Behavior::Nothing)
             }
-        }
+        };
+        set_mode(mode);
     }
 
-    fn add_child_output(&mut self, output: RenderOutput<N>) {
+    fn after_child(&mut self, output: RenderOutput<N>) {
         match output.mode {
             OutputMode::None => {
-                if let ElementMode::None = &self.mode {
-                    output.view.append_to(&self.root);
-                } else {
+                let ElementMode::None = &self.mode  else {
                     panic!("mode mismatched");
-                }
+                };
+                output.view.append_to(&self.root);
             }
             OutputMode::Dehydrate { dehydrated } => {
-                if let ElementMode::Dehydrate { dehydrated_root } = &self.mode {
-                    output.view.append_to(&self.root);
-                    dehydrated.append_to(dehydrated_root);
-                } else {
+                let ElementMode::Dehydrate { dehydrated_root } = &self.mode else {
                     panic!("mode mismatched");
-                }
+                };
+                output.view.append_to(&self.root);
+                dehydrated.append_to(dehydrated_root);
             }
             OutputMode::Hydrate => {
-                if let ElementMode::Hydrate { .. } = &self.mode {
-                } else {
+                let ElementMode::Hydrate { .. } = &self.mode else {
                     panic!("mode mismatched");
-                }
+                };
             }
         }
     }
@@ -244,28 +239,24 @@ enum FragmentMode<N> {
 
 impl<N: GenericNode> Fragment<N> {
     pub fn new(cx: Scope) -> Self {
-        Self::new_with_input(RenderInput::none(cx))
-    }
-
-    pub fn new_with_input(input: RenderInput<N>) -> Self {
-        let mode = match input.mode {
-            InputMode::None => FragmentMode::None,
-            InputMode::Dehydrate => FragmentMode::Dehydrate {
+        let mode = match take_mode::<N>() {
+            Mode::None => FragmentMode::None,
+            Mode::Dehydrate => FragmentMode::Dehydrate {
                 dehydrated_views: Vec::new(),
             },
-            InputMode::Hydrate { first, behavior } => FragmentMode::Hydrate {
+            Mode::Hydrate { first, behavior } => FragmentMode::Hydrate {
                 last: Some(first),
                 behavior,
             },
         };
         Self {
-            cx: input.cx,
+            cx,
             views: Vec::new(),
             mode,
         }
     }
 
-    pub fn render_to_output(self, fallback: NodeType) -> RenderOutput<N> {
+    pub fn render(self, fallback: NodeType) -> RenderOutput<N> {
         match self.mode {
             FragmentMode::None => {
                 let view = if self.views.is_empty() {
@@ -300,44 +291,42 @@ impl<N: GenericNode> Fragment<N> {
         }
     }
 
-    pub fn add_child<C: GenericComponent<N>>(&mut self, f: impl 'static + FnOnce(C) -> C) {
-        let input = self.add_child_input();
-        let output = f(C::new_with_input(input)).render_to_output();
-        self.add_child_output(output);
+    pub fn add_child<C: GenericComponent<N>>(&mut self, f: impl 'static + FnOnce(Scope) -> C) {
+        self.before_child();
+        let output = f(self.cx).render();
+        self.after_child(output);
     }
 
-    fn add_child_input(&mut self) -> RenderInput<N> {
-        match &mut self.mode {
-            FragmentMode::None => RenderInput::none(self.cx),
-            FragmentMode::Dehydrate { .. } => RenderInput::dehydrate(self.cx),
+    fn before_child(&mut self) {
+        let mode = match &mut self.mode {
+            FragmentMode::None => Mode::none(),
+            FragmentMode::Dehydrate { .. } => Mode::dehydrate(),
             FragmentMode::Hydrate { last, behavior } => {
                 let first = last.take().unwrap();
                 *last = first.next_sibling();
-                RenderInput::hydrate(self.cx, first, behavior.clone())
+                Mode::hydrate(first, behavior.clone())
             }
-        }
+        };
+        set_mode(mode);
     }
 
-    fn add_child_output(&mut self, output: RenderOutput<N>) {
+    fn after_child(&mut self, output: RenderOutput<N>) {
         match output.mode {
             OutputMode::None => {
-                if let FragmentMode::None = &self.mode {
-                } else {
+                let FragmentMode::None = &self.mode else {
                     panic!("mode mismatched");
-                }
+                };
             }
             OutputMode::Dehydrate { dehydrated } => {
-                if let FragmentMode::Dehydrate { dehydrated_views } = &mut self.mode {
-                    dehydrated_views.push(dehydrated);
-                } else {
+                let FragmentMode::Dehydrate { dehydrated_views } = &mut self.mode else {
                     panic!("mode mismatched");
-                }
+                };
+                dehydrated_views.push(dehydrated);
             }
             OutputMode::Hydrate => {
-                if let FragmentMode::Hydrate { .. } = &self.mode {
-                } else {
+                let FragmentMode::Hydrate { .. } = &self.mode else {
                     panic!("mode mismatched");
-                }
+                };
             }
         }
         self.views.push(output.view);
@@ -345,90 +334,77 @@ impl<N: GenericNode> Fragment<N> {
 }
 
 pub struct Root<N> {
+    pub cx: Scope,
     id: Option<fn() -> TemplateId>,
-    input: RenderInput<N>,
-    inner: Box<dyn FnOnce(RenderInput<N>) -> RenderOutput<N>>,
+    inner: Box<dyn FnOnce(Scope) -> RenderOutput<N>>,
 }
 
 impl<N: GenericNode> Root<N> {
-    pub fn new(cx: Scope, f: impl 'static + FnOnce(RenderInput<N>) -> RenderOutput<N>) -> Self {
-        Self::new_with_input(RenderInput::none(cx), f)
-    }
-
-    pub fn new_with_input(
-        input: RenderInput<N>,
-        f: impl 'static + FnOnce(RenderInput<N>) -> RenderOutput<N>,
-    ) -> Self {
+    pub fn new(cx: Scope, f: impl 'static + FnOnce(Scope) -> RenderOutput<N>) -> Self {
         Self {
+            cx,
             id: None,
-            input,
             inner: Box::new(f),
         }
     }
 
-    pub fn render_to_output(self) -> RenderOutput<N> {
-        let Self {
-            id,
-            input: RenderInput { cx, mode },
-            inner,
-        } = self;
-        if let InputMode::Hydrate { .. } = &mode {
-            inner(RenderInput { cx, mode })
-        } else if let Some(id) = id {
-            let id = id();
-            let input_mode = mode;
-            match GlobalTemplates::get::<N>(id) {
-                Some(TemplateContent {
-                    container,
-                    dehydrated,
-                }) => {
-                    let container = container.deep_clone();
-                    let RenderOutput { view, mode } = inner(RenderInput::hydrate(
-                        cx,
-                        container.first_child().unwrap(),
-                        Behavior::RemoveFrom(container),
-                    ));
-                    if let OutputMode::Hydrate = mode {
-                        match input_mode {
-                            InputMode::None => RenderOutput::none(view),
-                            InputMode::Dehydrate => {
-                                RenderOutput::dehydrate(view, dehydrated.deep_clone())
-                            }
-                            _ => unreachable!(),
-                        }
-                    } else {
-                        panic!("mode mismatched")
-                    }
-                }
-                None => {
-                    let RenderOutput { view, mode } = inner(RenderInput::dehydrate(cx));
-                    if let OutputMode::Dehydrate { dehydrated } = mode {
-                        let output = match input_mode {
-                            InputMode::None => RenderOutput::none(view),
-                            InputMode::Dehydrate => {
-                                RenderOutput::dehydrate(view, dehydrated.deep_clone())
-                            }
-                            _ => unreachable!(),
-                        };
-                        GlobalTemplates::set(
-                            id,
-                            TemplateContent {
-                                container: {
-                                    let container = N::create(NodeType::Template(id.data().into()));
-                                    dehydrated.append_to(&container);
-                                    container
-                                },
-                                dehydrated,
-                            },
-                        );
-                        output
-                    } else {
-                        panic!("mode mismatched")
-                    }
+    pub fn render(self) -> RenderOutput<N> {
+        let Self { cx, id, inner } = self;
+        let mode = take_mode::<N>();
+        if let Mode::Hydrate { .. } = &mode {
+            set_mode(mode);
+            return inner(cx);
+        }
+        let Some(id) = id else {
+            set_mode(mode);
+            return inner(cx);
+        };
+        let id = id();
+        let prev_mode = mode;
+        match GlobalState::<N>::get_template(id) {
+            Some(Template {
+                container,
+                dehydrated,
+            }) => {
+                let container = container.deep_clone();
+                set_mode(Mode::hydrate(
+                    container.first_child().unwrap(),
+                    Behavior::RemoveFrom(container),
+                ));
+                let RenderOutput { view, mode } = inner(cx);
+                let OutputMode::Hydrate = mode else {
+                    panic!("mode mismatched");
+                };
+                match prev_mode {
+                    Mode::None => RenderOutput::none(view),
+                    Mode::Dehydrate => RenderOutput::dehydrate(view, dehydrated.deep_clone()),
+                    _ => unreachable!(),
                 }
             }
-        } else {
-            inner(RenderInput { cx, mode })
+            None => {
+                set_mode(Mode::<N>::dehydrate());
+                let RenderOutput { view, mode } = inner(cx);
+                let OutputMode::Dehydrate { dehydrated } = mode else {
+                    panic!("mode mismatched");
+                };
+                let output = match prev_mode {
+                    Mode::None => RenderOutput::none(view),
+                    Mode::Dehydrate => RenderOutput::dehydrate(view, dehydrated.deep_clone()),
+                    _ => unreachable!(),
+                };
+                GlobalState::set_template(
+                    id,
+                    Template {
+                        container: {
+                            let container = N::create(NodeType::Template(id.data().into()));
+                            dehydrated.append_to(&container);
+                            container
+                        },
+                        dehydrated,
+                    },
+                );
+                output
+            }
         }
     }
 }
@@ -442,131 +418,3 @@ impl<N: GenericNode> Root<N> {
         self.id = Some(id);
     }
 }
-
-macro_rules! impl_for_tuples {
-    ($(($($Tn:ident),+),)*) => {
-        #[allow(clippy::all)]
-        const _: () = {
-            $(impl_for_tuples!($($Tn),*);)*
-        };
-    };
-    ($($Tn:ident),+) => {
-        #[allow(non_snake_case)]
-        impl<N, $($Tn,)*> GenericComponent<N> for ($($Tn,)*)
-        where
-            N: GenericNode,
-            $($Tn: GenericComponent<N>,)*
-        {
-            fn new_with_input(input: RenderInput<N>) -> Self {
-                enum Mode<N> {
-                    None,
-                    Dehydrate,
-                    Hydrate { last: Option<N>, behavior: Behavior<N> },
-                }
-
-                let RenderInput { cx, mode } = input;
-                let mut mode = match mode {
-                    InputMode::None => Mode::None,
-                    InputMode::Dehydrate => Mode::Dehydrate,
-                    InputMode::Hydrate { first, behavior } => Mode::Hydrate { last: Some(first), behavior },
-                };
-                $(
-                    let input = match &mut mode {
-                        Mode::None => RenderInput::none(cx),
-                        Mode::Dehydrate => RenderInput::dehydrate(cx),
-                        Mode::Hydrate { last, behavior } => {
-                            let first = last.take().unwrap();
-                            *last = first.next_sibling();
-                            RenderInput::hydrate(cx, first, behavior.clone())
-                        }
-                    };
-                    let $Tn = $Tn::new_with_input(input);
-                )*
-                ($($Tn,)*)
-            }
-
-            fn render_to_output(self) -> RenderOutput<N> {
-                impl_for_tuples!(@render_to_output self, $($Tn,)*)
-            }
-        }
-    };
-    (@render_to_output $val:expr, $T1:ident, $($Tn:ident,)*) => {{
-        #![allow(unused_mut)]
-
-        enum Mode<N> {
-            None,
-            Dehydrate { dehydrated_views: Vec<View<N>> },
-            Hydrate,
-        }
-
-        let count = impl_for_tuples!(@count $($Tn,)*);
-        let mut views = Vec::with_capacity(count);
-        let ($T1, $($Tn,)*) = $val;
-        let RenderOutput { view, mode } = $T1.render_to_output();
-        let mut output_mode = match mode {
-            OutputMode::None => Mode::None,
-            OutputMode::Dehydrate { dehydrated } => {
-                let mut dehydrated_views = Vec::with_capacity(count);
-                dehydrated_views.push(dehydrated);
-                Mode::Dehydrate { dehydrated_views }
-            }
-            OutputMode::Hydrate => Mode::Hydrate,
-        };
-        views.push(view);
-        $(
-            let RenderOutput { view, mode } = $Tn.render_to_output();
-            let m = &mut output_mode;
-            match mode {
-                OutputMode::None => {
-                    if let Mode::None = m {
-                    } else {
-                        panic!("mode mismatched");
-                    }
-                }
-                OutputMode::Dehydrate { dehydrated } => {
-                    if let Mode::Dehydrate { dehydrated_views } = m {
-                        dehydrated_views.push(dehydrated);
-                    } else {
-                        panic!("mode mismatched");
-                    }
-                }
-                OutputMode::Hydrate => {
-                    if let Mode::Hydrate = m {
-                    } else {
-                        panic!("mode mismatched");
-                    }
-                }
-            }
-            views.push(view);
-        )*
-        let view = View::fragment(views);
-        match output_mode {
-            Mode::None => RenderOutput::none(view),
-            Mode::Dehydrate { dehydrated_views } => {
-                RenderOutput::dehydrate(view, View::fragment(dehydrated_views))
-            }
-            Mode::Hydrate => RenderOutput::hydrate(view),
-        }
-    }};
-    (@count) => { 0 };
-    (@count $T1:ident, $($Tn:ident,)*) => { 1 + impl_for_tuples!(@count $($Tn,)*) };
-}
-
-impl_for_tuples!(
-    (T1),
-    (T1, T2),
-    (T1, T2, T3),
-    (T1, T2, T3, T4),
-    (T1, T2, T3, T4, T5),
-    (T1, T2, T3, T4, T5, T6),
-    (T1, T2, T3, T4, T5, T6, T7),
-    (T1, T2, T3, T4, T5, T6, T7, T8),
-    (T1, T2, T3, T4, T5, T6, T7, T8, T9),
-    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10),
-    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11),
-    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12),
-    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13),
-    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14),
-    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15),
-    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16),
-);

@@ -1,18 +1,16 @@
-use xframe::{view, GenericComponent, RenderInput, RenderOutput, Scope, WebNode};
+use std::marker::PhantomData;
+
+use xframe::{view, GenericComponent, RenderOutput, Scope, WebNode};
 
 struct Counter<N> {
-    input: RenderInput<N>,
+    cx: Scope,
+    maker: PhantomData<N>,
 }
 
 impl<N: WebNode> GenericComponent<N> for Counter<N> {
-    fn new_with_input(input: RenderInput<N>) -> Self {
-        Self { input }
-    }
+    fn render(self) -> RenderOutput<N> {
+        let Self { cx, .. } = self;
 
-    fn render_to_output(self) -> RenderOutput<N> {
-        let Self { input } = self;
-
-        let cx = input.cx;
         let counter = cx.create_signal(0);
         let increment = move |_| counter.update(|x| *x + 1);
 
@@ -25,14 +23,16 @@ impl<N: WebNode> GenericComponent<N> for Counter<N> {
                 }
             }
         }
-        .input(input)
-        .render_to_output()
+        .render()
     }
 }
 
 #[allow(non_snake_case)]
 fn Counter<N: WebNode>(cx: Scope) -> Counter<N> {
-    GenericComponent::new(cx)
+    Counter {
+        cx,
+        maker: PhantomData,
+    }
 }
 
 fn main() {

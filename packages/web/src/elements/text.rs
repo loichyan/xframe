@@ -1,8 +1,7 @@
-use xframe_core::{Attribute, GenericComponent, GenericNode, IntoReactive};
+use xframe_core::{Attribute, GenericNode, IntoReactive};
 use xframe_reactive::Scope;
 
 define_element!(
-    #[allow(non_camel_case_types)]
     pub struct text(NodeType::Text(std::borrow::Cow::Borrowed("")))
 );
 
@@ -18,5 +17,5 @@ impl<N: GenericNode> text<N> {
 }
 
 pub fn text<N: GenericNode>(cx: Scope) -> text<N> {
-    GenericComponent::new(cx)
+    text::new(cx)
 }

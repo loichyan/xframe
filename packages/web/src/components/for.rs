@@ -1,15 +1,16 @@
-use crate::element::GenericElement;
 use std::{collections::HashMap, hash::Hash, rc::Rc};
 use xframe_core::{
     is_debug, view::ViewParentExt, GenericComponent, GenericNode, IntoReactive, Reactive,
-    RenderInput, RenderOutput, View,
+    RenderOutput, View,
 };
 use xframe_reactive::{untrack, Scope, ScopeDisposer};
+
+use crate::GenericElement;
 
 define_placeholder!(struct Placeholder("PLACEHOLDER FOR `xframe::For` COMPONENT"));
 
 pub struct For<N, T, K> {
-    input: RenderInput<N>,
+    cx: Scope,
     each: Option<Reactive<Vec<T>>>,
     key: Option<Box<dyn Fn(&T) -> K>>,
     children: Option<Box<dyn Fn(Scope, &T) -> View<N>>>,
@@ -22,7 +23,12 @@ where
     T: 'static + Clone,
     K: 'static + Clone + Eq + Hash,
 {
-    GenericComponent::new(cx)
+    For {
+        cx,
+        each: None,
+        key: None,
+        children: None,
+    }
 }
 
 impl<N, T, K> GenericComponent<N> for For<N, T, K>
@@ -31,23 +37,13 @@ where
     T: 'static + Clone,
     K: 'static + Clone + Eq + Hash,
 {
-    fn new_with_input(input: RenderInput<N>) -> Self {
-        Self {
-            input,
-            each: None,
-            key: None,
-            children: None,
-        }
-    }
-
-    fn render_to_output(self) -> RenderOutput<N> {
+    fn render(self) -> RenderOutput<N> {
         let Self {
-            input,
+            cx,
             each,
             key,
             children,
         } = self;
-        let cx = input.cx;
         let each = each.expect("`For::each` was not specified");
         let fn_key = key.expect("`For::key` was not specified");
         let fn_view = children.expect("`For::child` was not specified");
@@ -55,7 +51,7 @@ where
         let mut current_fragment: Rc<[View<N>]> = Rc::new([]);
         let mut current_disposers = Vec::<Option<ScopeDisposer>>::new();
         let mut placeholder = None;
-        Placeholder::new_with_input(input)
+        Placeholder::<N>::new(cx)
             .dyn_view(move |current_view| {
                 let placeholder = &*placeholder.get_or_insert_with(|| current_view.clone());
                 let new_vals = each.clone().into_value();
@@ -109,7 +105,7 @@ where
                     new_view
                 })
             })
-            .render_to_output()
+            .render()
     }
 }
 
@@ -123,7 +119,7 @@ where
         if self.each.is_some() {
             panic!("`For::each` has been provided");
         }
-        self.each = Some(each.into_reactive(self.input.cx));
+        self.each = Some(each.into_reactive(self.cx));
         self
     }
 
@@ -142,7 +138,7 @@ where
         if self.children.is_some() {
             panic!("`For::child` has been provided");
         }
-        self.children = Some(Box::new(move |cx, val| child(cx, val).render()));
+        self.children = Some(Box::new(move |cx, val| child(cx, val).render_view()));
         self
     }
 }

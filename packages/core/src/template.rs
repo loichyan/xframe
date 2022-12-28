@@ -1,35 +1,48 @@
-use crate::{GenericNode, View};
-use std::{any::Any, cell::RefCell};
+use crate::{component::GlobalMode, GenericNode, View};
+use std::cell::{Cell, RefCell};
 
 thread_local! {
-    static TEMPLATES: GlobalTemplates = GlobalTemplates::default();
+    static GLOBAL_ID: Cell<usize> = Cell::new(0);
 }
 
-struct NoneTemplate;
+pub type ThreadLocalState<N> = &'static std::thread::LocalKey<GlobalState<N>>;
 
-#[derive(Default)]
-pub(crate) struct GlobalTemplates {
-    inner: RefCell<Vec<Box<dyn Any>>>,
+pub struct GlobalState<N> {
+    templates: RefCell<Vec<Option<Template<N>>>>,
+    mode: RefCell<GlobalMode<N>>,
 }
 
-impl GlobalTemplates {
-    fn entry<U>(id: TemplateId, f: impl FnOnce(&mut Box<dyn Any>) -> U) -> U {
-        let TemplateId { id, .. } = id;
-        TEMPLATES.with(|templates| f(&mut templates.inner.borrow_mut()[id]))
+impl<N: GenericNode> Default for GlobalState<N> {
+    fn default() -> Self {
+        Self {
+            templates: Default::default(),
+            mode: Default::default(),
+        }
     }
+}
 
-    pub(crate) fn get<N: GenericNode>(id: TemplateId) -> Option<TemplateContent<N>> {
-        Self::entry(id, |t| {
-            if t.downcast_ref::<NoneTemplate>().is_some() {
-                None
-            } else {
-                Some(t.downcast_ref::<TemplateContent<N>>().unwrap().clone())
+impl<N: GenericNode> GlobalState<N> {
+    fn entry<U>(id: TemplateId, f: impl FnOnce(&mut Option<Template<N>>) -> U) -> U {
+        let TemplateId { id, .. } = id;
+        N::global_state().with(|global| {
+            let templates = &mut global.templates.borrow_mut();
+            if id >= templates.len() {
+                templates.resize(id + 1, None);
             }
+            f(&mut templates[id])
         })
     }
 
-    pub(crate) fn set<N: GenericNode>(id: TemplateId, template: TemplateContent<N>) {
-        Self::entry(id, |t| *t = Box::new(template));
+    pub(crate) fn get_template(id: TemplateId) -> Option<Template<N>> {
+        Self::entry(id, |t| t.clone())
+    }
+
+    pub(crate) fn set_template(id: TemplateId, template: Template<N>) {
+        Self::entry(id, |t| *t = Some(template));
+    }
+
+    pub(crate) fn mode<U>(f: impl FnOnce(&mut GlobalMode<N>) -> U) -> U {
+        N::global_state().with(|global| f(&mut *global.mode.borrow_mut()))
     }
 }
 
@@ -41,10 +54,9 @@ pub struct TemplateId {
 
 impl TemplateId {
     pub fn generate(data: &'static str) -> Self {
-        TEMPLATES.with(|templates| {
-            let mut templates = templates.inner.borrow_mut();
-            let id = templates.len();
-            templates.push(Box::new(NoneTemplate));
+        GLOBAL_ID.with(|global| {
+            let id = global.get();
+            global.set(id + 1);
             Self { id, data }
         })
     }
@@ -55,7 +67,7 @@ impl TemplateId {
 }
 
 #[derive(Clone)]
-pub(crate) struct TemplateContent<N> {
+pub(crate) struct Template<N> {
     pub container: N,
     pub dehydrated: View<N>,
 }

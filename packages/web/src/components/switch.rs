@@ -1,7 +1,7 @@
 use crate::element::GenericElement;
 use xframe_core::{
     is_debug, view::ViewParentExt, GenericComponent, GenericNode, IntoReactive, Reactive,
-    RenderInput, RenderOutput, Value, View,
+    RenderOutput, Value, View,
 };
 use xframe_reactive::{untrack, Scope};
 
@@ -9,11 +9,14 @@ define_placeholder!(struct Placeholder("PLACEHOLDER FOR `xframe::Switch` COMPONE
 
 #[allow(non_snake_case)]
 pub fn Switch<N: GenericNode>(cx: Scope) -> Switch<N> {
-    Switch::new(cx)
+    Switch {
+        cx,
+        children: Vec::new(),
+    }
 }
 
 pub struct Switch<N> {
-    input: RenderInput<N>,
+    cx: Scope,
     children: Vec<Branch<N>>,
 }
 
@@ -23,25 +26,16 @@ pub struct Branch<N> {
 }
 
 pub trait SwitchChild<N: GenericNode> {
-    fn new(cx: Scope) -> Self;
     fn into_branch(self) -> Branch<N>;
 }
 
 impl<N: GenericNode> GenericComponent<N> for Switch<N> {
-    fn new_with_input(input: RenderInput<N>) -> Self {
-        Self {
-            input,
-            children: Vec::new(),
-        }
-    }
-
-    fn render_to_output(self) -> RenderOutput<N> {
-        let Self { input, children } = self;
-        let cx = input.cx;
+    fn render(self) -> RenderOutput<N> {
+        let Self { cx, children } = self;
         let mut branches = children;
         let mut current_index = None;
         let mut placeholder = None;
-        Placeholder::new_with_input(input)
+        Placeholder::<N>::new(cx)
             .dyn_view(move |current_view| {
                 // The initial view should be the placeholder node.
                 let placeholder = &*placeholder.get_or_insert_with(|| current_view.clone());
@@ -68,7 +62,7 @@ impl<N: GenericNode> GenericComponent<N> for Switch<N> {
                     new_view
                 })
             })
-            .render_to_output()
+            .render()
     }
 }
 
@@ -80,47 +74,37 @@ where
         self
     }
 
-    pub fn child<C: SwitchChild<N>>(mut self, child: impl 'static + FnOnce(C) -> C) -> Switch<N> {
-        self.children
-            .push(child(C::new(self.input.cx)).into_branch());
+    pub fn child<C: SwitchChild<N>>(
+        mut self,
+        child: impl 'static + FnOnce(Scope) -> C,
+    ) -> Switch<N> {
+        self.children.push(child(self.cx).into_branch());
         self
     }
 }
 
 #[allow(non_snake_case)]
 pub fn If<N: GenericNode>(cx: Scope) -> If<N> {
-    GenericComponent::new(cx)
+    If {
+        cx,
+        when: None,
+        children: None,
+    }
 }
 
 pub struct If<N> {
     cx: Scope,
-    input: Option<RenderInput<N>>,
     when: Option<Reactive<bool>>,
     children: Option<LazyRender<N>>,
 }
 
 impl<N: GenericNode> GenericComponent<N> for If<N> {
-    fn new_with_input(input: RenderInput<N>) -> Self {
-        Self {
-            cx: input.cx,
-            input: Some(input),
-            when: None,
-            children: None,
-        }
-    }
-
-    fn render_to_output(mut self) -> RenderOutput<N> {
-        Switch::new_with_input(self.input.take().unwrap())
-            .child(|_| self)
-            .render_to_output()
+    fn render(self) -> RenderOutput<N> {
+        Switch(self.cx).child(|_| self).render()
     }
 }
 
 impl<N: GenericNode> SwitchChild<N> for If<N> {
-    fn new(cx: Scope) -> Self {
-        GenericComponent::new(cx)
-    }
-
     fn into_branch(self) -> Branch<N> {
         Branch {
             cond: self.when.expect("`If::when` was not specified"),
@@ -138,7 +122,10 @@ impl<N: GenericNode> If<N> {
         self
     }
 
-    pub fn child<C: GenericComponent<N>>(mut self, child: impl 'static + FnOnce(C) -> C) -> If<N> {
+    pub fn child<C: GenericComponent<N>>(
+        mut self,
+        child: impl 'static + FnOnce(Scope) -> C,
+    ) -> If<N> {
         if self.children.is_some() {
             panic!("`If::child` has been specified");
         }
@@ -149,37 +136,24 @@ impl<N: GenericNode> If<N> {
 
 #[allow(non_snake_case)]
 pub fn Else<N: GenericNode>(cx: Scope) -> Else<N> {
-    GenericComponent::new(cx)
+    Else { cx, children: None }
 }
 
 pub struct Else<N> {
-    input: Option<RenderInput<N>>,
+    cx: Scope,
     children: Option<LazyRender<N>>,
 }
 
 impl<N: GenericNode> GenericComponent<N> for Else<N> {
-    fn new_with_input(input: RenderInput<N>) -> Self {
-        Self {
-            input: Some(input),
-            children: None,
-        }
-    }
-
-    fn render_to_output(mut self) -> RenderOutput<N> {
+    fn render(self) -> RenderOutput<N> {
         if is_debug!() {
             panic!("`Else` should only be used within `Switch`");
         }
-        Switch::new_with_input(self.input.take().unwrap())
-            .child(|_| self)
-            .render_to_output()
+        Switch(self.cx).child(|_| self).render()
     }
 }
 
 impl<N: GenericNode> SwitchChild<N> for Else<N> {
-    fn new(cx: Scope) -> Self {
-        GenericComponent::new(cx)
-    }
-
     fn into_branch(self) -> Branch<N> {
         Branch {
             cond: Value(true),
@@ -191,7 +165,7 @@ impl<N: GenericNode> SwitchChild<N> for Else<N> {
 impl<N: GenericNode> Else<N> {
     pub fn child<C: GenericComponent<N>>(
         mut self,
-        child: impl 'static + FnOnce(C) -> C,
+        child: impl 'static + FnOnce(Scope) -> C,
     ) -> Else<N> {
         if self.children.is_some() {
             panic!("`Else::child` has been specified");
@@ -207,9 +181,9 @@ struct LazyRender<N> {
 }
 
 impl<N: GenericNode> LazyRender<N> {
-    fn new<C: GenericComponent<N>>(f: impl 'static + FnOnce(C) -> C) -> Self {
+    fn new<C: GenericComponent<N>>(f: impl 'static + FnOnce(Scope) -> C) -> Self {
         Self {
-            component: Some(Box::new(move |cx| f(C::new(cx)).render())),
+            component: Some(Box::new(move |cx| f(cx).render_view())),
             view: None,
         }
     }

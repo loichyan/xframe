@@ -15,7 +15,7 @@ pub trait GenericElement<N: GenericNode>:
         self
     }
 
-    fn child<C: GenericComponent<N>>(mut self, child: impl 'static + FnOnce(C) -> C) -> Self {
+    fn child<C: GenericComponent<N>>(mut self, child: impl 'static + FnOnce(Scope) -> C) -> Self {
         self.as_mut().add_child(child);
         self
     }

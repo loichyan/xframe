@@ -1,6 +1,7 @@
 macro_rules! define_element {
     ($(#[$attr:meta])* $vis:vis struct $name:ident($ty:expr)) => {
         $(#[$attr])*
+        #[allow(non_camel_case_types)]
         $vis struct $name<N> {
             inner: ::xframe_core::component::Element<N>,
         }
@@ -9,8 +10,9 @@ macro_rules! define_element {
             use crate::element::GenericElement;
             use ::xframe_core::{
                 component::Element, GenericComponent, GenericNode, NodeType,
-                RenderInput, RenderOutput,
+                RenderOutput,
             };
+            use ::xframe_reactive::Scope;
 
             impl<N: GenericNode> AsRef<Element<N>> for $name<N> {
                 fn as_ref(&self) -> &Element<N> {
@@ -25,19 +27,22 @@ macro_rules! define_element {
             }
 
             impl<N: GenericNode> GenericComponent<N> for $name<N> {
-                fn new_with_input(input: RenderInput<N>) -> Self {
-                    Self {
-                        inner: Element::new_with_input(input, Self::TYPE),
-                    }
-                }
-
-                fn render_to_output(self) -> RenderOutput<N> {
-                    self.inner.render_to_output()
+                fn render(self) -> RenderOutput<N> {
+                    self.inner.render()
                 }
             }
 
             impl<N: GenericNode> GenericElement<N> for $name<N> {
                 const TYPE: NodeType = $ty;
+            }
+
+            impl<N: GenericNode> $name<N> {
+                #[allow(dead_code)]
+                $vis fn new(cx: Scope) -> Self {
+                    $name {
+                        inner: Element::new(cx, $ty),
+                    }
+                }
             }
         };
     };

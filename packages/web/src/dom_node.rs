@@ -6,7 +6,11 @@ use std::{
 };
 use wasm_bindgen::{intern, prelude::*, JsCast};
 use web_sys::HtmlTemplateElement;
-use xframe_core::{is_debug, Attribute, EventHandler, GenericNode, NodeType};
+use xframe_core::{
+    is_debug,
+    template::{GlobalState, ThreadLocalState},
+    Attribute, EventHandler, GenericNode, NodeType,
+};
 
 thread_local! {
     static GLOBAL_ID: Cell<usize> = Cell::new(0);
@@ -87,6 +91,13 @@ impl AsRef<web_sys::Node> for DomNode {
 
 impl GenericNode for DomNode {
     type Event = web_sys::Event;
+
+    fn global_state() -> ThreadLocalState<Self> {
+        thread_local! {
+            static STATE: GlobalState<DomNode> = GlobalState::default();
+        }
+        &STATE
+    }
 
     fn create(ty: NodeType) -> Self {
         let node: web_sys::Node = DOCUMENT.with(|doc| match ty {

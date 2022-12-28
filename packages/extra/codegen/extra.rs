@@ -39,7 +39,6 @@ new_type_quote!(ATTRIBUTE(#M_CORE::Attribute));
 new_type_quote!(BASE_ELEMENT(#M_INPUT::BaseElement));
 new_type_quote!(COW_STR(::std::borrow::Cow::<'static, str>));
 new_type_quote!(ELEMENT(#M_CORE::component::Element));
-new_type_quote!(INPUT(#M_CORE::RenderInput));
 new_type_quote!(NODE_TYPE(#M_CORE::NodeType));
 new_type_quote!(OUTPUT(#M_CORE::RenderOutput));
 new_type_quote!(REACTIVE(#M_CORE::Reactive));
@@ -181,7 +180,12 @@ impl<'a> Element<'a> {
             }
 
             pub fn #fn_<N: #T_GENERIC_NODE>(cx: #SCOPE) -> #fn_<N> {
-                #T_GENERIC_COMPONENT::new(cx)
+                #fn_ {
+                    inner: #BASE_ELEMENT::new(
+                        cx,
+                        <#fn_<N> as #T_GENERIC_ELEMENT<N>>::TYPE,
+                    ),
+                }
             }
 
             impl<N: #T_GENERIC_NODE> AsRef<#ELEMENT<N>> for #fn_<N> {
@@ -199,17 +203,8 @@ impl<'a> Element<'a> {
             impl<N: #T_GENERIC_NODE> #T_GENERIC_COMPONENT<N>
             for #fn_<N>
             {
-                fn new_with_input(input: #INPUT<N>) -> Self {
-                    Self {
-                        inner: #BASE_ELEMENT::new_with_input(
-                            input,
-                            <Self as #T_GENERIC_ELEMENT<N>>::TYPE,
-                        ),
-                    }
-                }
-
-                fn render_to_output(self) -> #OUTPUT<N> {
-                    self.inner.render_to_output()
+                fn render(self) -> #OUTPUT<N> {
+                    self.inner.render()
                 }
             }
 
@@ -267,11 +262,10 @@ impl<'a> Element<'a> {
             }
 
             pub fn child<C: #T_GENERIC_COMPONENT<N>>(
-                mut self,
-                child: impl 'static + FnOnce(C) -> C,
+                self,
+                child: impl 'static + FnOnce(#SCOPE) -> C,
             ) -> Self {
-                self.inner.add_child(child);
-                self
+                #T_GENERIC_ELEMENT::child(self, child)
             }
         )
     }

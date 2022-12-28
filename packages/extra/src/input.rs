@@ -3,9 +3,10 @@
 use std::borrow::Cow;
 use wasm_bindgen::JsCast;
 use xframe_core::{
-    component::Element, Attribute, GenericComponent, GenericNode, IntoEventHandler, IntoReactive,
-    NodeType, RenderInput, RenderOutput,
+    component::Element, Attribute, GenericNode, IntoEventHandler, IntoReactive, NodeType,
+    RenderOutput,
 };
+use xframe_reactive::Scope;
 use xframe_web::WebNode;
 
 pub(crate) type JsBoolean = bool;
@@ -20,14 +21,14 @@ pub(crate) struct BaseElement<N> {
 
 #[allow(dead_code)]
 impl<N: GenericNode> BaseElement<N> {
-    pub fn new_with_input(input: RenderInput<N>, ty: NodeType) -> Self {
+    pub fn new(cx: Scope, ty: NodeType) -> Self {
         Self {
-            inner: Element::new_with_input(input, ty),
+            inner: Element::new(cx, ty),
         }
     }
 
-    pub fn render_to_output(self) -> RenderOutput<N> {
-        self.inner.render_to_output()
+    pub fn render(self) -> RenderOutput<N> {
+        self.inner.render()
     }
 
     pub fn node(&self) -> &N {
@@ -96,18 +97,5 @@ impl<N: GenericNode> BaseElement<N> {
                 node.remove_class(name.clone());
             }
         });
-    }
-
-    pub fn add_child<C: GenericComponent<N>>(&mut self, child: impl 'static + FnOnce(C) -> C) {
-        self.inner.add_child(child);
-    }
-
-    pub fn append_children<I>(&self, nodes: I)
-    where
-        I: IntoIterator<Item = N>,
-    {
-        for node in nodes {
-            self.node().append_child(&node);
-        }
     }
 }
