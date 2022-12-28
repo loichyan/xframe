@@ -2,8 +2,10 @@
 
 use std::borrow::Cow;
 use wasm_bindgen::JsCast;
-use xframe_core::{Attribute, GenericElement, GenericNode, IntoEventHandler, IntoReactive};
-use xframe_reactive::Scope;
+use xframe_core::{
+    component::Element, Attribute, GenericComponent, GenericNode, IntoEventHandler, IntoReactive,
+    NodeType, RenderInput, RenderOutput,
+};
 use xframe_web::WebNode;
 
 pub(crate) type JsBoolean = bool;
@@ -12,24 +14,32 @@ pub(crate) type JsString = Attribute;
 
 type CowStr = std::borrow::Cow<'static, str>;
 
-#[derive(Clone)]
 pub(crate) struct BaseElement<N> {
-    cx: Scope,
-    node: N,
+    inner: Element<N>,
 }
 
 #[allow(dead_code)]
 impl<N: GenericNode> BaseElement<N> {
-    pub fn create_with_node(cx: Scope, node: N) -> Self {
-        Self { cx, node }
+    pub fn new_with_input(input: RenderInput<N>, ty: NodeType) -> Self {
+        Self {
+            inner: Element::new_with_input(input, ty),
+        }
+    }
+
+    pub fn render_to_output(self) -> RenderOutput<N> {
+        self.inner.render_to_output()
     }
 
     pub fn node(&self) -> &N {
-        &self.node
+        self.inner.root()
     }
 
-    pub fn into_node(self) -> N {
-        self.node
+    pub fn as_element(&self) -> &Element<N> {
+        &self.inner
+    }
+
+    pub fn as_element_mut(&mut self) -> &mut Element<N> {
+        &mut self.inner
     }
 
     pub fn as_web_sys_element<T>(&self) -> &T
@@ -37,21 +47,21 @@ impl<N: GenericNode> BaseElement<N> {
         N: AsRef<web_sys::Node>,
         T: JsCast,
     {
-        self.node.as_ref().unchecked_ref()
+        self.node().as_ref().unchecked_ref()
     }
 
     pub fn set_property_literal<T>(&self, name: &'static str, val: impl IntoReactive<T>)
     where
         T: 'static + Into<Attribute>,
     {
-        self.set_property(Cow::Borrowed(name), val.into_reactive(self.cx).cast());
+        self.set_property(Cow::Borrowed(name), val.into_reactive(self.inner.cx).cast());
     }
 
     pub fn set_property(&self, name: impl Into<CowStr>, val: impl IntoReactive<Attribute>) {
-        let node = self.node.clone();
+        let node = self.node().clone();
         let name = name.into();
-        let attr = val.into_reactive(self.cx);
-        self.cx.create_effect(move || {
+        let attr = val.into_reactive(self.inner.cx);
+        self.inner.cx.create_effect(move || {
             node.set_property(name.clone(), attr.clone().into_value());
         });
     }
@@ -61,7 +71,7 @@ impl<N: GenericNode> BaseElement<N> {
         Ev: 'static + JsCast,
         N: WebNode,
     {
-        self.node.listen_event(
+        self.node().listen_event(
             event.into(),
             handler
                 .into_event_handler()
@@ -72,14 +82,14 @@ impl<N: GenericNode> BaseElement<N> {
     // TODO: pub fn classes(...)
 
     pub fn add_class(&self, name: impl Into<CowStr>) {
-        self.node.add_class(name.into());
+        self.node().add_class(name.into());
     }
 
     pub fn toggle_class(&self, name: impl Into<CowStr>, toggle: impl IntoReactive<bool>) {
-        let node = self.node.clone();
+        let node = self.node().clone();
         let name = name.into();
-        let toggle = toggle.into_reactive(self.cx);
-        self.cx.create_effect(move || {
+        let toggle = toggle.into_reactive(self.inner.cx);
+        self.inner.cx.create_effect(move || {
             if toggle.clone().into_value() {
                 node.add_class(name.clone());
             } else {
@@ -88,11 +98,8 @@ impl<N: GenericNode> BaseElement<N> {
         });
     }
 
-    pub fn append_child<E>(&self, element: E)
-    where
-        E: GenericElement<N>,
-    {
-        self.node.append_child(&element.into_node());
+    pub fn add_child<C: GenericComponent<N>>(&mut self, child: impl 'static + FnOnce(C) -> C) {
+        self.inner.add_child(child);
     }
 
     pub fn append_children<I>(&self, nodes: I)
@@ -100,7 +107,7 @@ impl<N: GenericNode> BaseElement<N> {
         I: IntoIterator<Item = N>,
     {
         for node in nodes {
-            self.node.append_child(&node);
+            self.node().append_child(&node);
         }
     }
 }

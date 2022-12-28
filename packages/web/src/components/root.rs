@@ -4,7 +4,7 @@ use xframe_core::{
 };
 use xframe_reactive::Scope;
 
-define_placeholder!(Placeholder("PLACEHOLDER FOR `xframe::Fragment` COMPONENT"));
+define_placeholder!(struct Placeholder("PLACEHOLDER FOR `xframe::Fragment` COMPONENT"));
 
 #[allow(non_snake_case)]
 pub fn Root<N: GenericNode>(cx: Scope) -> Root<N> {

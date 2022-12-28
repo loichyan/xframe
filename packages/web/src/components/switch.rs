@@ -1,11 +1,11 @@
-use crate::Element;
+use crate::element::GenericElement;
 use xframe_core::{
     is_debug, view::ViewParentExt, GenericComponent, GenericNode, IntoReactive, Reactive,
     RenderInput, RenderOutput, Value, View,
 };
 use xframe_reactive::{untrack, Scope};
 
-define_placeholder!(Placeholder("PLACEHOLDER FOR `xframe::Switch` COMPONENT"));
+define_placeholder!(struct Placeholder("PLACEHOLDER FOR `xframe::Switch` COMPONENT"));
 
 #[allow(non_snake_case)]
 pub fn Switch<N: GenericNode>(cx: Scope) -> Switch<N> {
@@ -41,7 +41,7 @@ impl<N: GenericNode> GenericComponent<N> for Switch<N> {
         let mut branches = children;
         let mut current_index = None;
         let mut placeholder = None;
-        Element::<_, Placeholder<_>>::new_with_input(input)
+        Placeholder::new_with_input(input)
             .dyn_view(move |current_view| {
                 // The initial view should be the placeholder node.
                 let placeholder = &*placeholder.get_or_insert_with(|| current_view.clone());

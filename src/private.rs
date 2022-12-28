@@ -1,7 +1,7 @@
 use crate::GenericNode;
-use xframe_core::{Attribute, GenericComponent, GenericElement, IntoReactive, TemplateId};
+use xframe_core::{Attribute, GenericComponent, IntoReactive, TemplateId};
 use xframe_reactive::Scope;
-use xframe_web::{Element, Fragment, Root};
+use xframe_web::{elements::text, Fragment, Root};
 
 pub fn view_root<N, C>(
     cx: Scope,
@@ -19,24 +19,24 @@ pub fn view_element<N, E>(
     _cx: Scope,
     _marker: fn(Scope) -> E,
     props: impl 'static + FnOnce(E) -> E,
-    children: impl 'static + FnOnce(Element<N, E>) -> Element<N, E>,
-) -> impl 'static + FnOnce(Element<N, E>) -> Element<N, E>
+    children: impl 'static + FnOnce(E) -> E,
+) -> impl 'static + FnOnce(E) -> E
 where
     N: GenericNode,
-    E: GenericElement<N>,
+    E: GenericComponent<N>,
 {
-    move |t| children(t.then(props))
+    move |t| children(props(t))
 }
 
 pub fn view_text<N, V: IntoReactive<Attribute>>(
     cx: Scope,
     data: V,
-) -> impl 'static + FnOnce(Element<N, crate::element::text<N>>) -> Element<N, crate::element::text<N>>
+) -> impl 'static + FnOnce(text<N>) -> text<N>
 where
     N: GenericNode,
 {
     let data = data.into_reactive(cx);
-    move |t| t.then(|t| t.data(data))
+    move |t| t.data(data)
 }
 
 pub fn view_component<C>(

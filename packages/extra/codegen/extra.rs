@@ -21,22 +21,27 @@ macro_rules! new_type_quote {
 new_type_quote!(M_CORE(#M_INPUT::core));
 new_type_quote!(M_INPUT(super::input));
 new_type_quote!(M_REACTIVE(#M_INPUT::reactive));
+new_type_quote!(M_WEB(#M_INPUT::web));
 new_type_quote!(M_WEB_SYS(#M_INPUT::web_sys));
 
 new_type_quote!(M_ATTR_TYPES(super::attr_types));
 new_type_quote!(M_ELEMENT_TYPES(super::element_types));
 new_type_quote!(M_EVENT_TYPES(super::event_types));
 
-new_type_quote!(T_WEB_NODE(#M_INPUT::web::WebNode));
+new_type_quote!(T_WEB_NODE(#M_WEB::WebNode));
+new_type_quote!(T_GENERIC_COMPONENT(#M_CORE::GenericComponent));
+new_type_quote!(T_GENERIC_ELEMENT(#M_WEB::GenericElement));
 new_type_quote!(T_GENERIC_NODE(#M_CORE::GenericNode));
-new_type_quote!(T_GENERIC_ELEMENT(#M_CORE::GenericElement));
 new_type_quote!(T_INTO_REACTIVE(#M_CORE::IntoReactive));
 new_type_quote!(T_INTO_EVENT_HANDLER(#M_CORE::IntoEventHandler));
 
 new_type_quote!(ATTRIBUTE(#M_CORE::Attribute));
 new_type_quote!(BASE_ELEMENT(#M_INPUT::BaseElement));
 new_type_quote!(COW_STR(::std::borrow::Cow::<'static, str>));
+new_type_quote!(ELEMENT(#M_CORE::component::Element));
+new_type_quote!(INPUT(#M_CORE::RenderInput));
 new_type_quote!(NODE_TYPE(#M_CORE::NodeType));
+new_type_quote!(OUTPUT(#M_CORE::RenderOutput));
 new_type_quote!(REACTIVE(#M_CORE::Reactive));
 new_type_quote!(SCOPE(#M_REACTIVE::Scope));
 
@@ -171,29 +176,45 @@ impl<'a> Element<'a> {
         let default_methods = self.quote_default_methods();
         quote!(
             #[allow(non_camel_case_types)]
-            #[derive(Clone)]
             pub struct #fn_<N> {
                 inner: #BASE_ELEMENT<N>
             }
 
             pub fn #fn_<N: #T_GENERIC_NODE>(cx: #SCOPE) -> #fn_<N> {
-                #T_GENERIC_ELEMENT::create(cx)
+                #T_GENERIC_COMPONENT::new(cx)
             }
 
-            impl<N: #T_GENERIC_NODE> #T_GENERIC_ELEMENT<N>
+            impl<N: #T_GENERIC_NODE> AsRef<#ELEMENT<N>> for #fn_<N> {
+                fn as_ref(&self) -> &#ELEMENT<N> {
+                    self.inner.as_element()
+                }
+            }
+
+            impl<N: #T_GENERIC_NODE> AsMut<#ELEMENT<N>> for #fn_<N> {
+                fn as_mut(&mut self) -> &mut #ELEMENT<N> {
+                    self.inner.as_element_mut()
+                }
+            }
+
+            impl<N: #T_GENERIC_NODE> #T_GENERIC_COMPONENT<N>
             for #fn_<N>
             {
-                const TYPE: #NODE_TYPE = #NODE_TYPE::Tag(#COW_STR::Borrowed(#key));
-
-                fn create_with_node(cx: #SCOPE, node: N) -> Self {
-                    #fn_ {
-                        inner: #BASE_ELEMENT::create_with_node(cx, node)
+                fn new_with_input(input: #INPUT<N>) -> Self {
+                    Self {
+                        inner: #BASE_ELEMENT::new_with_input(
+                            input,
+                            <Self as #T_GENERIC_ELEMENT<N>>::TYPE,
+                        ),
                     }
                 }
 
-                fn into_node(self) -> N {
-                    self.inner.into_node()
+                fn render_to_output(self) -> #OUTPUT<N> {
+                    self.inner.render_to_output()
                 }
+            }
+
+            impl<N: #T_GENERIC_NODE> #T_GENERIC_ELEMENT<N> for #fn_<N> {
+                const TYPE: #NODE_TYPE = #NODE_TYPE::Tag(#COW_STR::Borrowed(#key));
             }
 
             impl<N> AsRef<#M_ELEMENT_TYPES::#ty> for #fn_<N>
@@ -205,7 +226,9 @@ impl<'a> Element<'a> {
                 }
             }
 
-            impl<N: #T_GENERIC_NODE> #fn_<N> { #default_methods }
+            impl<N: #T_GENERIC_NODE> #fn_<N> {
+                #default_methods
+            }
 
             #[cfg(feature = "attributes")]
             impl<N: #T_GENERIC_NODE> #fn_<N> { #(#attr_fns)* }
@@ -217,6 +240,7 @@ impl<'a> Element<'a> {
 
     fn quote_default_methods(&self) -> TokenStream {
         quote!(
+
             pub fn attr<K: Into<#COW_STR>, V: #T_INTO_REACTIVE<#ATTRIBUTE>>(
                 self,
                 name: K,
@@ -242,19 +266,11 @@ impl<'a> Element<'a> {
                 self
             }
 
-            pub fn child<E>(self, element: E) -> Self
-            where
-                E: #T_GENERIC_ELEMENT<N>,
-            {
-                self.inner.append_child(element);
-                self
-            }
-
-            pub fn children<I>(self, nodes: I) -> Self
-            where
-                I: for<'a> IntoIterator<Item = N>,
-            {
-                self.inner.append_children(nodes);
+            pub fn child<C: #T_GENERIC_COMPONENT<N>>(
+                mut self,
+                child: impl 'static + FnOnce(C) -> C,
+            ) -> Self {
+                self.inner.add_child(child);
                 self
             }
         )

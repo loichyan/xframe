@@ -1,9 +1,7 @@
 #![allow(clippy::type_complexity)]
 
 mod attr;
-mod element;
 mod event;
-mod ext;
 mod node;
 mod reactive;
 
@@ -19,9 +17,7 @@ pub mod prelude {
     pub use crate::{
         attr::Attribute,
         component::{GenericComponent, RenderInput, RenderOutput},
-        element::{GenericElement, NodeRef},
         event::{EventHandler, EventOptions, IntoEventHandler},
-        ext::ScopeExt,
         node::{GenericNode, NodeType},
         reactive::{IntoReactive, Reactive, Value},
         template::TemplateId,

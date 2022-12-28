@@ -3,11 +3,12 @@
 #[macro_use]
 mod utils;
 mod dom_node;
+mod element;
 mod event_delegation;
+mod ext;
 mod render;
 
 pub mod components {
-    pub(crate) mod element;
     #[path = "for.rs"]
     mod for_;
     mod fragment;
@@ -17,7 +18,6 @@ pub mod components {
 
     #[doc(inline)]
     pub use {
-        element::Element,
         for_::For,
         fragment::Fragment,
         list::List,
@@ -39,7 +39,13 @@ pub mod element_types {}
 pub mod prelude {
     #[doc(inline)]
     pub use {
-        crate::{components::element::view, components::*, dom_node::DomNode, render::*},
+        crate::{
+            components::*,
+            dom_node::DomNode,
+            element::{GenericElement, NodeRef},
+            ext::ScopeExt,
+            render::*,
+        },
         web_sys::Event,
     };
 }

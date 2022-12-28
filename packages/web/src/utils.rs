@@ -1,22 +1,53 @@
-macro_rules! define_placeholder {
-    ($vis:vis $name:ident($desc:literal)) => {
-        #[derive(Clone)]
+macro_rules! define_element {
+    ($(#[$attr:meta])* $vis:vis struct $name:ident($ty:expr)) => {
+        $(#[$attr])*
         $vis struct $name<N> {
-            node: N,
+            inner: ::xframe_core::component::Element<N>,
         }
 
-        impl<N: ::xframe_core::GenericNode> xframe_core::GenericElement<N> for $name<N> {
-            const TYPE: ::xframe_core::NodeType =
-                ::xframe_core::NodeType::Placeholder(::std::borrow::Cow::Borrowed($desc));
+        const _: () = {
+            use crate::element::GenericElement;
+            use ::xframe_core::{
+                component::Element, GenericComponent, GenericNode, NodeType,
+                RenderInput, RenderOutput,
+            };
 
-            fn create_with_node(_: ::xframe_reactive::Scope, node: N) -> Self {
-                Self { node }
+            impl<N: GenericNode> AsRef<Element<N>> for $name<N> {
+                fn as_ref(&self) -> &Element<N> {
+                    &self.inner
+                }
             }
 
-            fn into_node(self) -> N {
-                self.node
+            impl<N: GenericNode> AsMut<Element<N>> for $name<N> {
+                fn as_mut(&mut self) -> &mut Element<N> {
+                    &mut self.inner
+                }
             }
-        }
+
+            impl<N: GenericNode> GenericComponent<N> for $name<N> {
+                fn new_with_input(input: RenderInput<N>) -> Self {
+                    Self {
+                        inner: Element::new_with_input(input, Self::TYPE),
+                    }
+                }
+
+                fn render_to_output(self) -> RenderOutput<N> {
+                    self.inner.render_to_output()
+                }
+            }
+
+            impl<N: GenericNode> GenericElement<N> for $name<N> {
+                const TYPE: NodeType = $ty;
+            }
+        };
+    };
+}
+
+macro_rules! define_placeholder {
+    ($vis:vis struct $name:ident($desc:literal)) => {
+        define_element!($vis struct $name(
+            ::xframe_core::NodeType::Placeholder(std::borrow::Cow::Borrowed($desc))
+        ));
     };
 }
 

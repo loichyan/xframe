@@ -1,4 +1,4 @@
-use crate::Element;
+use crate::element::GenericElement;
 use std::{collections::HashMap, hash::Hash, rc::Rc};
 use xframe_core::{
     is_debug, view::ViewParentExt, GenericComponent, GenericNode, IntoReactive, Reactive,
@@ -6,7 +6,7 @@ use xframe_core::{
 };
 use xframe_reactive::{untrack, Scope, ScopeDisposer};
 
-define_placeholder!(Placeholder("PLACEHOLDER FOR `xframe::For` COMPONENT"));
+define_placeholder!(struct Placeholder("PLACEHOLDER FOR `xframe::For` COMPONENT"));
 
 pub struct For<N, T, K> {
     input: RenderInput<N>,
@@ -55,7 +55,7 @@ where
         let mut current_fragment: Rc<[View<N>]> = Rc::new([]);
         let mut current_disposers = Vec::<Option<ScopeDisposer>>::new();
         let mut placeholder = None;
-        Element::<_, Placeholder<_>>::new_with_input(input)
+        Placeholder::new_with_input(input)
             .dyn_view(move |current_view| {
                 let placeholder = &*placeholder.get_or_insert_with(|| current_view.clone());
                 let new_vals = each.clone().into_value();

@@ -1,5 +1,6 @@
-use crate::{element::NodeRef, node::GenericNode};
+use crate::element::NodeRef;
 use std::borrow::Borrow;
+use xframe_core::GenericNode;
 use xframe_reactive::Scope;
 
 pub trait ScopeExt: Borrow<Scope> {

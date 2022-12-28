@@ -1,4 +1,4 @@
-use crate::Element;
+use crate::element::GenericElement;
 use std::rc::Rc;
 use xframe_core::{
     view::ViewParentExt, GenericComponent, GenericNode, IntoReactive, Reactive, RenderInput,
@@ -6,7 +6,7 @@ use xframe_core::{
 };
 use xframe_reactive::{untrack, Scope, ScopeDisposer};
 
-define_placeholder!(Placeholder("PLACEHOLDER FOR `xframe::List` COMPONENT"));
+define_placeholder!(struct Placeholder("PLACEHOLDER FOR `xframe::List` COMPONENT"));
 
 pub struct List<N, T> {
     input: RenderInput<N>,
@@ -49,7 +49,7 @@ where
         let mut current_fragment = Rc::new([]) as Rc<[View<N>]>;
         let mut current_disposers = Vec::<ScopeDisposer>::new();
         let mut placeholder = None;
-        Element::<_, Placeholder<_>>::new_with_input(input)
+        Placeholder::new_with_input(input)
             .dyn_view(move |current_view| {
                 let placeholder = &*placeholder.get_or_insert_with(|| current_view.clone());
                 // Only `each` needs to be tracked.

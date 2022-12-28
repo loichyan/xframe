@@ -1,46 +1,22 @@
-use std::borrow::Cow;
-use xframe_core::{Attribute, GenericElement, GenericNode, IntoReactive, NodeType, View};
+use xframe_core::{Attribute, GenericComponent, GenericNode, IntoReactive};
 use xframe_reactive::Scope;
 
-#[allow(non_camel_case_types)]
-#[derive(Clone)]
-pub struct text<N> {
-    cx: Scope,
-    node: N,
-}
-
-impl<N: GenericNode> From<text<N>> for View<N> {
-    fn from(t: text<N>) -> Self {
-        View::node(t.node)
-    }
-}
+define_element!(
+    #[allow(non_camel_case_types)]
+    pub struct text(NodeType::Text(std::borrow::Cow::Borrowed("")))
+);
 
 impl<N: GenericNode> text<N> {
     pub fn data<A: IntoReactive<Attribute>>(self, data: A) -> Self {
-        let data = data.into_reactive(self.cx);
-        self.cx.create_effect({
-            let node = self.node.clone();
+        let data = data.into_reactive(self.inner.cx);
+        self.inner.cx.create_effect({
+            let node = self.inner.root().clone();
             move || node.set_inner_text(&data.clone().into_value().into_string())
         });
-        text {
-            cx: self.cx,
-            node: self.node,
-        }
-    }
-}
-
-impl<N: GenericNode> GenericElement<N> for text<N> {
-    const TYPE: NodeType = NodeType::Text(Cow::Borrowed(""));
-
-    fn create_with_node(cx: Scope, node: N) -> Self {
-        Self { cx, node }
-    }
-
-    fn into_node(self) -> N {
-        self.node
+        self
     }
 }
 
 pub fn text<N: GenericNode>(cx: Scope) -> text<N> {
-    text::create(cx)
+    GenericComponent::new(cx)
 }
