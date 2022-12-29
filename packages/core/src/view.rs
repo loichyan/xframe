@@ -101,7 +101,6 @@ impl<N: GenericNode> View<N> {
     }
 
     pub fn replace_with(&self, parent: &N, new_view: &Self) {
-        debug_assert!(!self.ref_eq(new_view));
         if let (VT::Node(old), VT::Node(new)) = (&self.0, &new_view.0) {
             parent.replace_child(new, old);
         } else {
@@ -115,7 +114,9 @@ impl<N: GenericNode> View<N> {
     }
 
     pub fn move_before(&self, parent: &N, position: Option<&N>) {
-        debug_assert_ne!(position.map(|node| self.first().eq(node)), Some(true));
+        if position.map(|node| self.first().eq(node)) == Some(true) {
+            return;
+        }
         self.visit(|t| parent.insert_before(t, position));
     }
 
