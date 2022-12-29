@@ -1,6 +1,7 @@
-use crate::element::GenericElement;
+use crate::{element::GenericElement, elements::text};
 use xframe_core::{
-    component::Fragment as FragmentBase, GenericComponent, GenericNode, RenderOutput,
+    component::Fragment as FragmentBase, Attribute, GenericComponent, GenericNode, IntoReactive,
+    RenderOutput,
 };
 use xframe_reactive::Scope;
 
@@ -24,11 +25,14 @@ impl<N: GenericNode> GenericComponent<N> for Fragment<N> {
 }
 
 impl<N: GenericNode> Fragment<N> {
-    pub fn child<C: GenericComponent<N>>(
-        mut self,
-        child: impl 'static + FnOnce(Scope) -> C,
-    ) -> Self {
+    pub fn child<C: GenericComponent<N>>(mut self, child: impl 'static + FnOnce() -> C) -> Self {
         self.inner.add_child(child);
         self
+    }
+
+    pub fn child_text<A: IntoReactive<Attribute>>(self, data: A) -> Self {
+        let cx = self.inner.cx;
+        let data = data.into_reactive(cx);
+        self.child(move || text(cx).data(data))
     }
 }

@@ -235,8 +235,7 @@ impl<'a> Element<'a> {
 
     fn quote_default_methods(&self) -> TokenStream {
         quote!(
-
-            pub fn attr<K: Into<#COW_STR>, V: #T_INTO_REACTIVE<#ATTRIBUTE>>(
+            pub fn prop<K: Into<#COW_STR>, V: #T_INTO_REACTIVE<#ATTRIBUTE>>(
                 self,
                 name: K,
                 val: V,
@@ -262,10 +261,19 @@ impl<'a> Element<'a> {
             }
 
             pub fn child<C: #T_GENERIC_COMPONENT<N>>(
-                self,
-                child: impl 'static + FnOnce(#SCOPE) -> C,
+                mut self,
+                child: impl 'static + FnOnce() -> C,
             ) -> Self {
-                #T_GENERIC_ELEMENT::child(self, child)
+                self.inner.child(child);
+                self
+            }
+
+            pub fn child_text<A: #T_INTO_REACTIVE<#ATTRIBUTE>>(
+                mut self,
+                data: A,
+            ) -> Self {
+                self.inner.child_text(data);
+                self
             }
         )
     }

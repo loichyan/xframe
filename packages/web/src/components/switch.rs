@@ -54,7 +54,7 @@ impl<N: GenericNode> GenericComponent<N> for Switch<N> {
                 untrack(|| {
                     let parent = current_view.parent();
                     let new_view = new_index
-                        .map(|i| branches[i].content.render(cx))
+                        .map(|i| branches[i].content.render())
                         // Fallback to a placeholder.
                         .unwrap_or_else(|| placeholder.clone());
                     parent.replace_child(&new_view, &current_view);
@@ -74,11 +74,8 @@ where
         self
     }
 
-    pub fn child<C: SwitchChild<N>>(
-        mut self,
-        child: impl 'static + FnOnce(Scope) -> C,
-    ) -> Switch<N> {
-        self.children.push(child(self.cx).into_branch());
+    pub fn child<C: SwitchChild<N>>(mut self, child: impl 'static + FnOnce() -> C) -> Switch<N> {
+        self.children.push(child().into_branch());
         self
     }
 }
@@ -100,7 +97,7 @@ pub struct If<N> {
 
 impl<N: GenericNode> GenericComponent<N> for If<N> {
     fn render(self) -> RenderOutput<N> {
-        Switch(self.cx).child(|_| self).render()
+        Switch(self.cx).child(|| self).render()
     }
 }
 
@@ -122,10 +119,7 @@ impl<N: GenericNode> If<N> {
         self
     }
 
-    pub fn child<C: GenericComponent<N>>(
-        mut self,
-        child: impl 'static + FnOnce(Scope) -> C,
-    ) -> If<N> {
+    pub fn child<C: GenericComponent<N>>(mut self, child: impl 'static + FnOnce() -> C) -> If<N> {
         if self.children.is_some() {
             panic!("`If::child` has been specified");
         }
@@ -149,7 +143,7 @@ impl<N: GenericNode> GenericComponent<N> for Else<N> {
         if is_debug!() {
             panic!("`Else` should only be used within `Switch`");
         }
-        Switch(self.cx).child(|_| self).render()
+        Switch(self.cx).child(|| self).render()
     }
 }
 
@@ -163,10 +157,7 @@ impl<N: GenericNode> SwitchChild<N> for Else<N> {
 }
 
 impl<N: GenericNode> Else<N> {
-    pub fn child<C: GenericComponent<N>>(
-        mut self,
-        child: impl 'static + FnOnce(Scope) -> C,
-    ) -> Else<N> {
+    pub fn child<C: GenericComponent<N>>(mut self, child: impl 'static + FnOnce() -> C) -> Else<N> {
         if self.children.is_some() {
             panic!("`Else::child` has been specified");
         }
@@ -176,21 +167,21 @@ impl<N: GenericNode> Else<N> {
 }
 
 struct LazyRender<N> {
-    component: Option<Box<dyn FnOnce(Scope) -> View<N>>>,
+    component: Option<Box<dyn FnOnce() -> View<N>>>,
     view: Option<View<N>>,
 }
 
 impl<N: GenericNode> LazyRender<N> {
-    fn new<C: GenericComponent<N>>(f: impl 'static + FnOnce(Scope) -> C) -> Self {
+    fn new<C: GenericComponent<N>>(f: impl 'static + FnOnce() -> C) -> Self {
         Self {
-            component: Some(Box::new(move |cx| f(cx).render_view())),
+            component: Some(Box::new(move || f().render_view())),
             view: None,
         }
     }
 
-    fn render(&mut self, cx: Scope) -> View<N> {
+    fn render(&mut self) -> View<N> {
         self.view
-            .get_or_insert_with(|| self.component.take().unwrap()(cx))
+            .get_or_insert_with(|| self.component.take().unwrap()())
             .clone()
     }
 }

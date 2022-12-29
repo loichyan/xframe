@@ -1,4 +1,4 @@
-use xframe::{view, Else, If, Scope, Switch};
+use xframe::{view, Else, If, Switch};
 
 fn main() {
     console_error_panic_hook::set_once();
@@ -9,7 +9,7 @@ fn main() {
         let is_even = cx.create_selector(move || counter.get() % 2 == 0);
         let is_divisor_of = move |n: usize| {
             let when = cx.create_selector(move || counter.get() % n == 0);
-            move |cx: Scope| {
+            move || {
                 view! { cx,
                     If { .when(when) div { "Number " (counter) " is also the divisor of " (n) "." } }
                 }

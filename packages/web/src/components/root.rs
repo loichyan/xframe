@@ -17,7 +17,7 @@ pub fn Root<N: GenericNode>(cx: Scope) -> Root<N> {
 pub struct Root<N> {
     cx: Scope,
     id: Option<fn() -> TemplateId>,
-    children: Option<Box<dyn FnOnce(Scope) -> RenderOutput<N>>>,
+    children: Option<Box<dyn FnOnce() -> RenderOutput<N>>>,
 }
 
 impl<N: GenericNode> GenericComponent<N> for Root<N> {
@@ -41,11 +41,11 @@ impl<N: GenericNode> Root<N> {
         self
     }
 
-    pub fn child<C: GenericComponent<N>>(self, child: impl 'static + FnOnce(Scope) -> C) -> Self {
-        self.child_impl(Box::new(|cx| child(cx).render()))
+    pub fn with<C: GenericComponent<N>>(self, child: impl 'static + FnOnce() -> C) -> Self {
+        self.child_impl(Box::new(|| child().render()))
     }
 
-    fn child_impl(mut self, child: Box<dyn FnOnce(Scope) -> RenderOutput<N>>) -> Self {
+    fn child_impl(mut self, child: Box<dyn FnOnce() -> RenderOutput<N>>) -> Self {
         if self.children.is_some() {
             panic!("`Root::child` has been specified");
         }

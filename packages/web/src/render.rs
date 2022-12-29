@@ -13,7 +13,7 @@ pub fn mount_to<C: GenericComponent<DomNode>>(
 ) {
     let (_, dispoer) = xframe_reactive::create_root(|cx| {
         Root(cx)
-            .child(f)
+            .with(move || f(cx))
             .render_view()
             .append_to(&DomNode::from(root.clone()));
     });

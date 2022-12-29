@@ -177,9 +177,9 @@ impl<N: GenericNode> Element<N> {
         self.dyn_view = Some(dyn_view.into());
     }
 
-    pub fn add_child<C: GenericComponent<N>>(&mut self, f: impl 'static + FnOnce(Scope) -> C) {
+    pub fn add_child<C: GenericComponent<N>>(&mut self, f: impl 'static + FnOnce() -> C) {
         self.before_child();
-        let output = f(self.cx).render();
+        let output = f().render();
         self.after_child(output);
     }
 
@@ -291,9 +291,9 @@ impl<N: GenericNode> Fragment<N> {
         }
     }
 
-    pub fn add_child<C: GenericComponent<N>>(&mut self, f: impl 'static + FnOnce(Scope) -> C) {
+    pub fn add_child<C: GenericComponent<N>>(&mut self, f: impl 'static + FnOnce() -> C) {
         self.before_child();
-        let output = f(self.cx).render();
+        let output = f().render();
         self.after_child(output);
     }
 
@@ -336,11 +336,11 @@ impl<N: GenericNode> Fragment<N> {
 pub struct Root<N> {
     pub cx: Scope,
     id: Option<fn() -> TemplateId>,
-    inner: Box<dyn FnOnce(Scope) -> RenderOutput<N>>,
+    inner: Box<dyn FnOnce() -> RenderOutput<N>>,
 }
 
 impl<N: GenericNode> Root<N> {
-    pub fn new(cx: Scope, f: impl 'static + FnOnce(Scope) -> RenderOutput<N>) -> Self {
+    pub fn new(cx: Scope, f: impl 'static + FnOnce() -> RenderOutput<N>) -> Self {
         Self {
             cx,
             id: None,
@@ -349,15 +349,15 @@ impl<N: GenericNode> Root<N> {
     }
 
     pub fn render(self) -> RenderOutput<N> {
-        let Self { cx, id, inner } = self;
+        let Self { id, inner, .. } = self;
         let mode = take_mode::<N>();
         if let Mode::Hydrate { .. } = &mode {
             set_mode(mode);
-            return inner(cx);
+            return inner();
         }
         let Some(id) = id else {
             set_mode(mode);
-            return inner(cx);
+            return inner();
         };
         let id = id();
         let prev_mode = mode;
@@ -371,7 +371,7 @@ impl<N: GenericNode> Root<N> {
                     container.first_child().unwrap(),
                     Behavior::RemoveFrom(container),
                 ));
-                let RenderOutput { view, mode } = inner(cx);
+                let RenderOutput { view, mode } = inner();
                 let OutputMode::Hydrate = mode else {
                     panic!("mode mismatched");
                 };
@@ -383,7 +383,7 @@ impl<N: GenericNode> Root<N> {
             }
             None => {
                 set_mode(Mode::<N>::dehydrate());
-                let RenderOutput { view, mode } = inner(cx);
+                let RenderOutput { view, mode } = inner();
                 let OutputMode::Dehydrate { dehydrated } = mode else {
                     panic!("mode mismatched");
                 };

@@ -3,11 +3,11 @@
 use std::borrow::Cow;
 use wasm_bindgen::JsCast;
 use xframe_core::{
-    component::Element, Attribute, GenericNode, IntoEventHandler, IntoReactive, NodeType,
-    RenderOutput,
+    component::Element, Attribute, GenericComponent, GenericNode, IntoEventHandler, IntoReactive,
+    NodeType, RenderOutput,
 };
 use xframe_reactive::Scope;
-use xframe_web::WebNode;
+use xframe_web::{elements::text, WebNode};
 
 pub(crate) type JsBoolean = bool;
 pub(crate) type JsNumber = f64;
@@ -97,5 +97,15 @@ impl<N: GenericNode> BaseElement<N> {
                 node.remove_class(name.clone());
             }
         });
+    }
+
+    pub fn child<C: GenericComponent<N>>(&mut self, child: impl 'static + FnOnce() -> C) {
+        self.inner.add_child(child);
+    }
+
+    pub fn child_text<A: IntoReactive<Attribute>>(&mut self, data: A) {
+        let cx = self.inner.cx;
+        let data = data.into_reactive(cx);
+        self.child(move || text(cx).data(data));
     }
 }
