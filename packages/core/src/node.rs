@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use crate::{attr::Attribute, event::EventHandler, template::ThreadLocalState, CowStr};
 
 #[derive(Clone)]
@@ -8,7 +10,7 @@ pub enum NodeType {
     Template(CowStr),
 }
 
-pub trait GenericNode: 'static + Clone + Eq {
+pub trait GenericNode: 'static + Clone + Debug + Eq {
     type Event;
 
     fn global_state() -> ThreadLocalState<Self>;

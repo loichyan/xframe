@@ -57,7 +57,7 @@ impl NodeId {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DomNode {
     id: NodeId,
     node: web_sys::Node,

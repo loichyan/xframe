@@ -1,10 +1,11 @@
 use crate::{
+    is_debug,
     node::{GenericNode, NodeType},
     template::{GlobalState, Template},
     view::View,
     TemplateId,
 };
-use xframe_reactive::{untrack, Scope};
+use xframe_reactive::Scope;
 
 pub trait GenericComponent<N: GenericNode>: 'static + Sized {
     fn render(self) -> RenderOutput<N>;
@@ -22,6 +23,10 @@ fn set_mode<N: GenericNode>(mode: Mode<N>) {
     GlobalState::mode(|global| global.mode = mode);
 }
 
+fn check_mode<N: GenericNode>(f: impl FnOnce(&Mode<N>)) {
+    GlobalState::mode(|global| f(&global.mode));
+}
+
 pub(crate) struct GlobalMode<N> {
     mode: Mode<N>,
 }
@@ -32,6 +37,7 @@ impl<N: GenericNode> Default for GlobalMode<N> {
     }
 }
 
+#[derive(Debug, Eq, PartialEq)]
 enum Mode<N> {
     None,
     Dehydrate,
@@ -52,7 +58,7 @@ impl<N: GenericNode> Mode<N> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum Behavior<N> {
     RemoveFrom(N),
     Nothing,
@@ -168,13 +174,23 @@ impl<N: GenericNode> Element<N> {
     }
 
     pub fn set_dyn_view(&mut self, mut f: impl 'static + FnMut(View<N>) -> View<N>) {
-        let dyn_view = View::dyn_(self.cx, View::node(self.root.clone()));
+        let dyn_view = self.cx.create_signal(View::node(self.root.clone()));
         self.cx.create_effect({
-            let dyn_view = dyn_view.clone();
-            // TODO: use a selector
-            move || dyn_view.set(f(untrack(|| dyn_view.get())))
+            move || {
+                let mut updated = false;
+                dyn_view.write_slient(|current| {
+                    let new = f(current.clone());
+                    if !current.ref_eq(&new) {
+                        *current = new;
+                        updated = true;
+                    }
+                });
+                if updated {
+                    dyn_view.trigger();
+                }
+            }
         });
-        self.dyn_view = Some(dyn_view.into());
+        self.dyn_view = Some(View::dyn_(dyn_view.into()));
     }
 
     pub fn add_child<C: GenericComponent<N>>(&mut self, f: impl 'static + FnOnce() -> C) {
@@ -197,6 +213,9 @@ impl<N: GenericNode> Element<N> {
     }
 
     fn after_child(&mut self, output: RenderOutput<N>) {
+        if is_debug!() {
+            check_mode::<N>(|mode| assert_eq!(mode, &Mode::none()));
+        }
         match output.mode {
             OutputMode::None => {
                 let ElementMode::None = &self.mode  else {
@@ -311,6 +330,9 @@ impl<N: GenericNode> Fragment<N> {
     }
 
     fn after_child(&mut self, output: RenderOutput<N>) {
+        if is_debug!() {
+            check_mode::<N>(|mode| assert_eq!(mode, &Mode::none()));
+        }
         match output.mode {
             OutputMode::None => {
                 let FragmentMode::None = &self.mode else {
@@ -349,16 +371,23 @@ impl<N: GenericNode> Root<N> {
     }
 
     pub fn render(self) -> RenderOutput<N> {
+        let output = self.render_impl();
+        if is_debug!() {
+            check_mode::<N>(|mode| assert_eq!(mode, &Mode::none()));
+        }
+        output
+    }
+
+    fn render_impl(self) -> RenderOutput<N> {
         let Self { id, inner, .. } = self;
+        let Some(id) = id else {
+            return inner();
+        };
         let mode = take_mode::<N>();
         if let Mode::Hydrate { .. } = &mode {
             set_mode(mode);
             return inner();
         }
-        let Some(id) = id else {
-            set_mode(mode);
-            return inner();
-        };
         let id = id();
         let prev_mode = mode;
         match GlobalState::<N>::get_template(id) {

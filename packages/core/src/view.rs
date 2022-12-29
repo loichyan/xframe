@@ -1,6 +1,6 @@
 use crate::node::GenericNode;
 use std::rc::Rc;
-use xframe_reactive::{Scope, Signal};
+use xframe_reactive::ReadSignal;
 
 #[derive(Clone)]
 pub struct View<N>(ViewType<N>);
@@ -9,8 +9,7 @@ pub struct View<N>(ViewType<N>);
 enum ViewType<N> {
     Node(N),
     Fragment(Rc<[View<N>]>),
-    // TODO: use Rc<RefCell> instead
-    Dyn(Signal<View<N>>),
+    Dyn(ReadSignal<View<N>>),
 }
 
 use ViewType as VT;
@@ -31,10 +30,8 @@ impl<N: GenericNode> View<N> {
         Self(VT::Fragment(views))
     }
 
-    pub fn dyn_(cx: Scope, init: View<N>) -> DynView<N> {
-        DynView {
-            inner: cx.create_signal(init),
-        }
+    pub(crate) fn dyn_(signal: ReadSignal<View<N>>) -> Self {
+        Self(VT::Dyn(signal))
     }
 
     pub fn visit(&self, mut f: impl FnMut(&N)) {
@@ -140,27 +137,6 @@ impl<N: GenericNode> View<N> {
             }
         });
         same
-    }
-}
-
-#[derive(Clone)]
-pub struct DynView<N> {
-    inner: Signal<View<N>>,
-}
-
-impl<N> From<DynView<N>> for View<N> {
-    fn from(value: DynView<N>) -> Self {
-        View(ViewType::Dyn(value.inner))
-    }
-}
-
-impl<N: GenericNode> DynView<N> {
-    pub fn get(&self) -> View<N> {
-        self.inner.get()
-    }
-
-    pub fn set(&self, view: View<N>) {
-        self.inner.set(view);
     }
 }
 
