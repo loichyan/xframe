@@ -135,8 +135,8 @@ impl GenericNode for DomNode {
         }
     }
 
-    fn set_inner_text(&self, data: &str) {
-        self.node.set_text_content(Some(data));
+    fn set_inner_text(&self, data: CowStr) {
+        self.node.set_text_content(Some(&data));
     }
 
     fn set_property(&self, name: CowStr, attr: Attribute) {

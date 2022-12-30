@@ -3,7 +3,7 @@ use crate::{
     node::{GenericNode, NodeType},
     template::{GlobalState, Template},
     view::View,
-    TemplateId,
+    Attribute, CowStr, EventHandler, Reactive, TemplateId,
 };
 use xframe_reactive::Scope;
 
@@ -163,6 +163,64 @@ impl<N: GenericNode> Element<N> {
                 RenderOutput::hydrate(view)
             }
         }
+    }
+
+    fn with_dehydrated_root(&self, f: impl Fn(&N)) {
+        if let ElementMode::Dehydrate { dehydrated_root } = &self.mode {
+            f(dehydrated_root)
+        }
+        f(&self.root);
+    }
+
+    pub fn set_property(&self, name: CowStr, val: Reactive<Attribute>) {
+        match val {
+            Reactive::Value(v) => {
+                self.with_dehydrated_root(|root| root.set_property(name.clone(), v.clone()));
+            }
+            Reactive::Dyn(f) => {
+                let node = self.root.clone();
+                self.cx
+                    .create_effect(move || node.set_property(name.clone(), f().into_value()));
+            }
+        }
+    }
+
+    pub fn set_class(&self, name: CowStr, toggle: Reactive<bool>) {
+        match toggle {
+            Reactive::Value(v) => {
+                if v {
+                    self.with_dehydrated_root(|root| root.add_class(name.clone()));
+                }
+            }
+            Reactive::Dyn(f) => {
+                let node = self.root.clone();
+                self.cx.create_effect(move || {
+                    if f().into_value() {
+                        node.add_class(name.clone());
+                    } else {
+                        node.remove_class(name.clone());
+                    }
+                });
+            }
+        }
+    }
+
+    pub fn set_inner_text(&self, data: Reactive<Attribute>) {
+        match data {
+            Reactive::Value(v) => {
+                let v = v.into_string();
+                self.with_dehydrated_root(|root| root.set_inner_text(v.clone()));
+            }
+            Reactive::Dyn(f) => {
+                let node = self.root.clone();
+                self.cx
+                    .create_effect(move || node.set_inner_text(f().into_value().into_string()));
+            }
+        }
+    }
+
+    pub fn listen_event(&self, event: CowStr, handler: EventHandler<N::Event>) {
+        self.root.listen_event(event, handler);
     }
 
     pub fn root(&self) -> &N {

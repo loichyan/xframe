@@ -18,7 +18,7 @@ pub trait GenericNode: 'static + Clone + Debug + Eq {
     fn create(ty: NodeType) -> Self;
     fn deep_clone(&self) -> Self;
 
-    fn set_inner_text(&self, data: &str);
+    fn set_inner_text(&self, data: CowStr);
     fn set_property(&self, name: CowStr, attr: Attribute);
     fn set_attribute(&self, name: CowStr, attr: Attribute);
 

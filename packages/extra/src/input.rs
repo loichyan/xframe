@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use wasm_bindgen::JsCast;
 use xframe_core::{
     component::Element, Attribute, GenericComponent, GenericNode, IntoEventHandler, IntoReactive,
-    NodeType, RenderOutput,
+    NodeType, Reactive, RenderOutput,
 };
 use xframe_reactive::Scope;
 use xframe_web::{elements::text, WebNode};
@@ -59,12 +59,8 @@ impl<N: GenericNode> BaseElement<N> {
     }
 
     pub fn set_property(&self, name: impl Into<CowStr>, val: impl IntoReactive<Attribute>) {
-        let node = self.node().clone();
-        let name = name.into();
-        let attr = val.into_reactive(self.inner.cx);
-        self.inner.cx.create_effect(move || {
-            node.set_property(name.clone(), attr.clone().into_value());
-        });
+        let val = val.into_reactive(self.inner.cx);
+        self.inner.set_property(name.into(), val);
     }
 
     pub fn listen_event<Ev>(&self, event: impl Into<CowStr>, handler: impl IntoEventHandler<Ev>)
@@ -72,7 +68,7 @@ impl<N: GenericNode> BaseElement<N> {
         Ev: 'static + JsCast,
         N: WebNode,
     {
-        self.node().listen_event(
+        self.inner.listen_event(
             event.into(),
             handler
                 .into_event_handler()
@@ -81,7 +77,7 @@ impl<N: GenericNode> BaseElement<N> {
     }
 
     pub fn add_class(&self, name: impl Into<CowStr>) {
-        self.node().add_class(name.into());
+        self.inner.set_class(name.into(), Reactive::Value(true));
     }
 
     pub fn classes<I: IntoIterator<Item = &'static str>>(&self, names: I) {
@@ -91,16 +87,8 @@ impl<N: GenericNode> BaseElement<N> {
     }
 
     pub fn toggle_class(&self, name: impl Into<CowStr>, toggle: impl IntoReactive<bool>) {
-        let node = self.node().clone();
-        let name = name.into();
-        let toggle = toggle.into_reactive(self.inner.cx);
-        self.inner.cx.create_effect(move || {
-            if toggle.clone().into_value() {
-                node.add_class(name.clone());
-            } else {
-                node.remove_class(name.clone());
-            }
-        });
+        self.inner
+            .set_class(name.into(), toggle.into_reactive(self.inner.cx));
     }
 
     pub fn child<C: GenericComponent<N>>(&mut self, child: impl 'static + FnOnce() -> C) {
