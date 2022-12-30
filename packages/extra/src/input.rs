@@ -80,10 +80,14 @@ impl<N: GenericNode> BaseElement<N> {
         );
     }
 
-    // TODO: pub fn classes(...)
-
     pub fn add_class(&self, name: impl Into<CowStr>) {
         self.node().add_class(name.into());
+    }
+
+    pub fn classes<I: IntoIterator<Item = &'static str>>(&self, names: I) {
+        for name in names {
+            self.node().add_class(name.into());
+        }
     }
 
     pub fn toggle_class(&self, name: impl Into<CowStr>, toggle: impl IntoReactive<bool>) {

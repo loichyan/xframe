@@ -260,6 +260,14 @@ impl<'a> Element<'a> {
                 self
             }
 
+            pub fn classes<I>(self, names: I)  -> Self
+            where
+                I: IntoIterator<Item = &'static str>,
+            {
+                self.inner.classes(names);
+                self
+            }
+
             pub fn child<C: #T_GENERIC_COMPONENT<N>>(
                 mut self,
                 child: impl 'static + FnOnce() -> C,
