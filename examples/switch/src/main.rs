@@ -6,16 +6,16 @@ fn main() {
     xframe::mount_to_body(|cx| {
         let counter = cx.create_signal(1);
         let increment = move |_| counter.update(|x| *x + 1);
-        let is_even = cx.create_selector(move || counter.get() % 2 == 0);
+        let is_even = cx.create_memo(move || counter.get() % 2 == 0);
         let is_divisor_of = move |n: usize| {
-            let when = cx.create_selector(move || counter.get() % n == 0);
+            let when = cx.create_memo(move || counter.get() % n == 0);
             move || {
                 view! { cx,
                     If { .when(when) div { "Number " (counter) " is also the divisor of " (n) "." } }
                 }
             }
         };
-        cx.create_selector(move || counter.get() % 2 == 0);
+        cx.create_memo(move || counter.get() % 2 == 0);
         view! { cx,
             div {
                 button {

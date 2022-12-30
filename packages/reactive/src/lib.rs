@@ -3,6 +3,7 @@ mod effect;
 mod memo;
 mod runtime;
 mod scope;
+mod selector;
 mod signal;
 
 type ThreadLocal = *const ();

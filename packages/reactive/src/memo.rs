@@ -5,10 +5,17 @@ use crate::{
 use std::{cell::Cell, rc::Rc};
 
 impl Scope {
-    fn create_memo_impl<T: 'static>(
+    pub fn create_memo<T: 'static + PartialEq>(
+        &self,
+        f: impl 'static + FnMut() -> T,
+    ) -> ReadSignal<T> {
+        self.create_memo_with(f, T::eq)
+    }
+
+    pub fn create_memo_with<T: 'static>(
         &self,
         mut f: impl 'static + FnMut() -> T,
-        mut update: impl 'static + FnMut(T, Signal<T>),
+        mut is_equal: impl 'static + FnMut(&T, &T) -> bool,
     ) -> ReadSignal<T> {
         let memo = Rc::new(Cell::new(None::<Signal<T>>));
         let cx = *self;
@@ -17,7 +24,16 @@ impl Scope {
             move || {
                 let new_val = f();
                 if let Some(signal) = memo.get() {
-                    update(new_val, signal);
+                    let mut updated = false;
+                    signal.write_slient(|old| {
+                        if !is_equal(old, &new_val) {
+                            *old = new_val;
+                            updated = true;
+                        }
+                    });
+                    if updated {
+                        signal.trigger();
+                    }
                 } else {
                     let signal = cx.create_signal(new_val);
                     memo.set(Some(signal));
@@ -25,36 +41,6 @@ impl Scope {
             }
         });
         memo.get().unwrap().into()
-    }
-
-    pub fn create_memo<T: 'static>(&self, f: impl 'static + FnMut() -> T) -> ReadSignal<T> {
-        self.create_memo_impl(f, |new_val, memo| memo.set(new_val))
-    }
-
-    pub fn create_selector<T>(&self, f: impl 'static + FnMut() -> T) -> ReadSignal<T>
-    where
-        T: 'static + PartialEq,
-    {
-        self.create_selector_with(f, T::eq)
-    }
-
-    pub fn create_selector_with<T: 'static>(
-        &self,
-        f: impl 'static + FnMut() -> T,
-        mut is_equal: impl 'static + FnMut(&T, &T) -> bool,
-    ) -> ReadSignal<T> {
-        self.create_memo_impl(f, move |new_val, memo| {
-            let mut updated = false;
-            memo.write_slient(|old_val| {
-                if !is_equal(old_val, &new_val) {
-                    *old_val = new_val;
-                    updated = true;
-                }
-            });
-            if updated {
-                memo.trigger();
-            }
-        })
     }
 }
 
@@ -122,31 +108,6 @@ mod tests {
             assert_eq!(double.get(), 2);
             state.set(2);
             assert_eq!(double.get(), 2);
-        });
-    }
-
-    #[test]
-    fn selector() {
-        create_root(|cx| {
-            let state = cx.create_signal(1);
-            let double = cx.create_selector(move || state.get() * 2);
-
-            let counter2 = cx.create_signal(0);
-            cx.create_effect(move || {
-                double.track();
-                counter2.update(|x| x + 1);
-            });
-            assert_eq!(counter2.get(), 1);
-            assert_eq!(double.get(), 2);
-
-            state.set(2);
-            assert_eq!(counter2.get(), 2);
-            assert_eq!(double.get(), 4);
-
-            // Equal updates should be ignored.
-            state.set(2);
-            assert_eq!(counter2.get(), 2);
-            assert_eq!(double.get(), 4);
         });
     }
 }
