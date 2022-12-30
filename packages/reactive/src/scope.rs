@@ -109,13 +109,15 @@ impl ScopeId {
                             // Use let binding to let the mutable borrow of `signals`
                             // get dropped before `_t`.
                             let _t = rt.signals.borrow_mut().remove(id).unwrap();
-                            let _t = rt.signal_contexts.borrow_mut().remove(id).unwrap();
+                            _t.try_borrow_mut()
+                                .unwrap_or_else(|_| panic!("tried to dispose a signal in use"));
+                            let _t = rt.signal_contexts.borrow_mut().remove(id);
                         }
                         Cleanup::Effect(id) => {
                             let _t = rt.effects.borrow_mut().remove(id).unwrap();
                             _t.try_borrow_mut()
                                 .unwrap_or_else(|_| panic!("tried to dispose an effect in use"));
-                            let _t = rt.effect_contexts.borrow_mut().remove(id).unwrap();
+                            let _t = rt.effect_contexts.borrow_mut().remove(id);
                         }
                         Cleanup::Callback(cb) => untrack(cb),
                     }

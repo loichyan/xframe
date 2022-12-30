@@ -15,7 +15,3 @@ slotmap = "1.0"
 [dependencies.ahash]
 version = "0.8"
 optional = true
-
-[dependencies.getrandom]
-version = "0.2"
-features = ["js"]
