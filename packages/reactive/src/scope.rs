@@ -1,3 +1,5 @@
+use smallvec::SmallVec;
+
 use crate::{
     runtime::{EffectId, ScopeId, SignalId, RT},
     ThreadLocal,
@@ -22,7 +24,7 @@ impl fmt::Debug for Scope {
 
 #[derive(Default)]
 pub(crate) struct RawScope {
-    cleanups: Vec<Cleanup>,
+    cleanups: SmallVec<[Cleanup; 4]>,
 }
 
 pub(crate) enum Cleanup {

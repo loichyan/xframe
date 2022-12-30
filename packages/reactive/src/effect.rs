@@ -75,7 +75,7 @@ impl EffectId {
                 // After each execution a signal may not be tracked by this effect anymore,
                 // so we need to clear dependencies both links and backlinks at first.
                 self.with_context(|ctx| {
-                    let dependencies = std::mem::take(&mut ctx.dependencies);
+                    let dependencies = ctx.dependencies.drain();
                     for id in dependencies {
                         // Signal in child scopes may be disposed.
                         let _ = id.try_with_context(|ctx| {

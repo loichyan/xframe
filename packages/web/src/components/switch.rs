@@ -1,4 +1,5 @@
 use crate::element::GenericElement;
+use smallvec::SmallVec;
 use xframe_core::{
     is_debug, view::ViewParentExt, GenericComponent, GenericNode, IntoReactive, Reactive,
     RenderOutput, Value, View,
@@ -11,13 +12,13 @@ define_placeholder!(struct Placeholder("PLACEHOLDER FOR `xframe::Switch` COMPONE
 pub fn Switch<N: GenericNode>(cx: Scope) -> Switch<N> {
     Switch {
         cx,
-        children: Vec::new(),
+        children: SmallVec::new(),
     }
 }
 
 pub struct Switch<N> {
     cx: Scope,
-    children: Vec<Branch<N>>,
+    children: SmallVec<[Branch<N>; 2]>,
 }
 
 pub struct Branch<N> {

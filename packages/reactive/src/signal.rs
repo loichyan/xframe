@@ -94,7 +94,7 @@ impl<T: 'static> ReadSignal<T> {
                 .get(self.id)
                 .unwrap_or_else(|| panic!("tried to access a disposed signal"))
                 .clone();
-            let t = t.borrow();
+            let t = &*t.borrow();
             f(t.downcast_ref::<T>()
                 .unwrap_or_else(|| panic!("tried to use a signal in mismatched types")))
         })
@@ -134,8 +134,8 @@ impl<T: 'static> Signal<T> {
                 .get_mut(self.id)
                 .unwrap_or_else(|| panic!("tried to access a disposed signal"))
                 .clone();
-            f(t.borrow_mut()
-                .downcast_mut()
+            let t = &mut *t.borrow_mut();
+            f(t.downcast_mut()
                 .unwrap_or_else(|| panic!("tried to use a signal in mismatched types")));
         });
     }
@@ -186,7 +186,7 @@ impl SignalId {
     }
 
     pub fn trigger(&self) {
-        let subscribers = self.with_context(|ctx| std::mem::take(&mut ctx.subscribers));
+        let subscribers = self.with_context(|ctx| ctx.subscribers.clone());
         // Effects attach to subscribers at the end of the effect scope, an effect
         // created inside another scope might send signals to its outer scope,
         // so we should ensure the inner effects re-execute before outer ones to
