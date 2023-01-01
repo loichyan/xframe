@@ -235,12 +235,21 @@ impl<'a> Element<'a> {
 
     fn quote_default_methods(&self) -> TokenStream {
         quote!(
+            pub fn attr<K: Into<#COW_STR>, V: #T_INTO_REACTIVE<#ATTRIBUTE>>(
+                self,
+                name: K,
+                val: V,
+            ) -> Self {
+                self.inner.set_attribute(name, val);
+                self
+            }
+
             pub fn prop<K: Into<#COW_STR>, V: #T_INTO_REACTIVE<#ATTRIBUTE>>(
                 self,
                 name: K,
                 val: V,
             ) -> Self {
-                self.inner.set_property(name.into(), val);
+                self.inner.set_property(name, val);
                 self
             }
 

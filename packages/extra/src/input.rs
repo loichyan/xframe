@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use wasm_bindgen::JsCast;
 use xframe_core::{
     component::Element, Attribute, GenericComponent, GenericNode, IntoEventHandler, IntoReactive,
-    NodeType, Reactive, RenderOutput,
+    NodeType, RenderOutput, Value,
 };
 use xframe_reactive::Scope;
 use xframe_web::{elements::text, WebNode};
@@ -63,6 +63,11 @@ impl<N: GenericNode> BaseElement<N> {
         self.inner.set_property(name.into(), val);
     }
 
+    pub fn set_attribute(&self, name: impl Into<CowStr>, val: impl IntoReactive<Attribute>) {
+        let val = val.into_reactive(self.inner.cx);
+        self.inner.set_attribute(name.into(), val);
+    }
+
     pub fn listen_event<Ev>(&self, event: impl Into<CowStr>, handler: impl IntoEventHandler<Ev>)
     where
         Ev: 'static + JsCast,
@@ -77,12 +82,12 @@ impl<N: GenericNode> BaseElement<N> {
     }
 
     pub fn add_class(&self, name: impl Into<CowStr>) {
-        self.inner.set_class(name.into(), Reactive::Value(true));
+        self.inner.set_class(name.into(), Value(true));
     }
 
     pub fn classes<I: IntoIterator<Item = &'static str>>(&self, names: I) {
         for name in names {
-            self.node().add_class(name.into());
+            self.inner.set_class(name.into(), Value(true));
         }
     }
 

@@ -165,18 +165,18 @@ impl<N: GenericNode> Element<N> {
         }
     }
 
-    fn with_dehydrated_root(&self, f: impl Fn(&N)) {
-        if let ElementMode::Dehydrate { dehydrated_root } = &self.mode {
-            f(dehydrated_root)
+    fn with_root_static(&self, f: impl Fn(&N)) {
+        match &self.mode {
+            ElementMode::Dehydrate { dehydrated_root } => f(dehydrated_root),
+            ElementMode::Hydrate { .. } => return,
+            _ => (),
         }
         f(&self.root);
     }
 
     pub fn set_property(&self, name: CowStr, val: Reactive<Attribute>) {
         match val {
-            Reactive::Value(v) => {
-                self.with_dehydrated_root(|root| root.set_property(name.clone(), v.clone()));
-            }
+            Reactive::Value(val) => self.root.set_property(name.clone(), val),
             Reactive::Dyn(f) => {
                 let node = self.root.clone();
                 self.cx
@@ -185,11 +185,24 @@ impl<N: GenericNode> Element<N> {
         }
     }
 
+    pub fn set_attribute(&self, name: CowStr, val: Reactive<Attribute>) {
+        match val {
+            Reactive::Value(val) => {
+                self.root.set_attribute(name, val);
+            }
+            Reactive::Dyn(f) => {
+                let node = self.root.clone();
+                self.cx
+                    .create_effect(move || node.set_attribute(name.clone(), f().into_value()));
+            }
+        }
+    }
+
     pub fn set_class(&self, name: CowStr, toggle: Reactive<bool>) {
         match toggle {
-            Reactive::Value(v) => {
-                if v {
-                    self.with_dehydrated_root(|root| root.add_class(name.clone()));
+            Reactive::Value(toggle) => {
+                if toggle {
+                    self.with_root_static(|root| root.add_class(name.clone()));
                 }
             }
             Reactive::Dyn(f) => {
@@ -207,10 +220,7 @@ impl<N: GenericNode> Element<N> {
 
     pub fn set_inner_text(&self, data: Reactive<Attribute>) {
         match data {
-            Reactive::Value(v) => {
-                let v = v.into_string();
-                self.with_dehydrated_root(|root| root.set_inner_text(v.clone()));
-            }
+            Reactive::Value(data) => self.root.set_inner_text(data.into_string()),
             Reactive::Dyn(f) => {
                 let node = self.root.clone();
                 self.cx
