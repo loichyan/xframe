@@ -9,7 +9,7 @@ use web_sys::HtmlTemplateElement;
 use xframe_core::{
     is_debug,
     template::{GlobalState, ThreadLocalState},
-    Attribute, EventHandler, GenericNode, NodeType,
+    EventHandler, GenericNode, NodeType, StringLike,
 };
 
 thread_local! {
@@ -29,18 +29,18 @@ trait CowStrExt: Borrow<CowStr> {
 
 impl<T: Borrow<CowStr>> CowStrExt for T {}
 
-trait AttrExt: Into<Attribute> {
+trait AttrExt: Into<StringLike> {
     fn into_js_value(self) -> JsValue {
         match self.into() {
-            Attribute::Boolean(t) => JsValue::from_bool(t),
-            Attribute::Number(t) => JsValue::from_f64(t),
-            Attribute::Literal(t) => JsValue::from_str(t),
-            Attribute::String(t) => JsValue::from_str(&t),
+            StringLike::Boolean(t) => JsValue::from_bool(t),
+            StringLike::Number(t) => JsValue::from_f64(t),
+            StringLike::Literal(t) => JsValue::from_str(t),
+            StringLike::String(t) => JsValue::from_str(&t),
         }
     }
 }
 
-impl<T: Into<Attribute>> AttrExt for T {}
+impl<T: Into<StringLike>> AttrExt for T {}
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct NodeId {
@@ -139,7 +139,7 @@ impl GenericNode for DomNode {
         self.node.set_text_content(Some(&data));
     }
 
-    fn set_property(&self, name: CowStr, attr: Attribute) {
+    fn set_property(&self, name: CowStr, attr: StringLike) {
         Reflect::set(
             &self.node,
             &JsValue::from_str(name.intern()),
@@ -148,7 +148,7 @@ impl GenericNode for DomNode {
         .unwrap_throw_val();
     }
 
-    fn set_attribute(&self, name: CowStr, val: Attribute) {
+    fn set_attribute(&self, name: CowStr, val: StringLike) {
         self.node
             .unchecked_ref::<web_sys::Element>()
             .set_attribute(name.intern(), val.into_string().intern())

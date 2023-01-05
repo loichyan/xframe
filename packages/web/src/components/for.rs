@@ -1,11 +1,10 @@
+use crate::GenericElement;
 use std::{collections::HashMap, hash::Hash, rc::Rc};
 use xframe_core::{
     is_debug, view::ViewParentExt, GenericComponent, GenericNode, IntoReactive, Reactive,
     RenderOutput, View,
 };
 use xframe_reactive::{untrack, Scope, ScopeDisposer};
-
-use crate::GenericElement;
 
 define_placeholder!(struct Placeholder("PLACEHOLDER FOR `xframe::For` COMPONENT"));
 

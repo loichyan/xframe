@@ -1,9 +1,8 @@
+use crate::elements::text;
 use xframe_core::{
-    component::Fragment, Attribute, GenericComponent, GenericNode, Reactive, RenderOutput,
+    component::Fragment, GenericComponent, GenericNode, Reactive, RenderOutput, StringLike,
 };
 use xframe_reactive::{ReadSignal, Scope, Signal};
-
-use crate::elements::text;
 
 pub trait GenericChild<N: GenericNode>: 'static {
     fn render(self, cx: Scope) -> RenderOutput<N>;
@@ -23,7 +22,7 @@ where
 impl<N, T> GenericChild<N> for Signal<T>
 where
     N: GenericNode,
-    T: 'static + Clone + Into<Attribute>,
+    T: 'static + Clone + Into<StringLike>,
 {
     fn render(self, cx: Scope) -> RenderOutput<N> {
         text(cx).data(self).render()
@@ -33,7 +32,7 @@ where
 impl<N, T> GenericChild<N> for ReadSignal<T>
 where
     N: GenericNode,
-    T: 'static + Clone + Into<Attribute>,
+    T: 'static + Clone + Into<StringLike>,
 {
     fn render(self, cx: Scope) -> RenderOutput<N> {
         text(cx).data(self).render()
@@ -43,7 +42,7 @@ where
 impl<N, T> GenericChild<N> for Reactive<T>
 where
     N: GenericNode,
-    T: 'static + Into<Attribute>,
+    T: 'static + Into<StringLike>,
 {
     fn render(self, cx: Scope) -> RenderOutput<N> {
         text(cx).data(self.cast()).render()

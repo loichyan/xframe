@@ -35,7 +35,6 @@ new_type_quote!(T_GENERIC_NODE(#M_CORE::GenericNode));
 new_type_quote!(T_INTO_REACTIVE(#M_CORE::IntoReactive));
 new_type_quote!(T_INTO_EVENT_HANDLER(#M_CORE::IntoEventHandler));
 
-new_type_quote!(ATTRIBUTE(#M_CORE::Attribute));
 new_type_quote!(BASE_ELEMENT(#M_INPUT::BaseElement));
 new_type_quote!(COW_STR(::std::borrow::Cow::<'static, str>));
 new_type_quote!(ELEMENT(#M_CORE::component::Element));
@@ -43,6 +42,7 @@ new_type_quote!(NODE_TYPE(#M_CORE::NodeType));
 new_type_quote!(OUTPUT(#M_CORE::RenderOutput));
 new_type_quote!(REACTIVE(#M_CORE::Reactive));
 new_type_quote!(SCOPE(#M_REACTIVE::Scope));
+new_type_quote!(STRING_LIKE(#M_CORE::StringLike));
 
 trait StrExt: AsRef<str> {
     fn to_lit_str(&self) -> LitStr {
@@ -235,7 +235,7 @@ impl<'a> Element<'a> {
 
     fn quote_default_methods(&self) -> TokenStream {
         quote!(
-            pub fn attr<K: Into<#COW_STR>, V: #T_INTO_REACTIVE<#ATTRIBUTE>>(
+            pub fn attr<K: Into<#COW_STR>, V: #T_INTO_REACTIVE<#STRING_LIKE>>(
                 self,
                 name: K,
                 val: V,
@@ -244,7 +244,7 @@ impl<'a> Element<'a> {
                 self
             }
 
-            pub fn prop<K: Into<#COW_STR>, V: #T_INTO_REACTIVE<#ATTRIBUTE>>(
+            pub fn prop<K: Into<#COW_STR>, V: #T_INTO_REACTIVE<#STRING_LIKE>>(
                 self,
                 name: K,
                 val: V,
@@ -437,9 +437,9 @@ impl ToTokens for QuoteAttrType<'_> {
                 }
             }
 
-            impl From<#name> for #ATTRIBUTE {
+            impl From<#name> for #STRING_LIKE {
                 fn from(t: #name) -> Self {
-                    #ATTRIBUTE::Literal(t.into())
+                    #STRING_LIKE::Literal(t.into())
                 }
             }
 
@@ -449,7 +449,7 @@ impl ToTokens for QuoteAttrType<'_> {
                 }
             }
 
-            impl From<#name> for #REACTIVE<#ATTRIBUTE> {
+            impl From<#name> for #REACTIVE<#STRING_LIKE> {
                 fn from(t: #name) -> Self {
                     #REACTIVE::Variable(t.into())
                 }

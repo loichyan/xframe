@@ -1,9 +1,8 @@
-use smallvec::SmallVec;
-
 use crate::{
     runtime::{EffectId, ScopeId, SignalId, RT},
     ThreadLocal,
 };
+use smallvec::SmallVec;
 use std::{fmt, marker::PhantomData};
 
 #[derive(Clone, Copy)]

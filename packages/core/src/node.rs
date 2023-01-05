@@ -1,6 +1,5 @@
+use crate::{event::EventHandler, str::StringLike, template::ThreadLocalState, CowStr};
 use std::fmt::Debug;
-
-use crate::{attr::Attribute, event::EventHandler, template::ThreadLocalState, CowStr};
 
 #[derive(Clone)]
 pub enum NodeType {
@@ -19,8 +18,8 @@ pub trait GenericNode: 'static + Clone + Debug + Eq {
     fn deep_clone(&self) -> Self;
 
     fn set_inner_text(&self, data: CowStr);
-    fn set_property(&self, name: CowStr, attr: Attribute);
-    fn set_attribute(&self, name: CowStr, attr: Attribute);
+    fn set_property(&self, name: CowStr, attr: StringLike);
+    fn set_attribute(&self, name: CowStr, attr: StringLike);
 
     fn add_class(&self, name: CowStr);
     fn remove_class(&self, name: CowStr);

@@ -3,15 +3,15 @@
 use std::borrow::Cow;
 use wasm_bindgen::JsCast;
 use xframe_core::{
-    component::Element, Attribute, GenericNode, IntoEventHandler, IntoReactive, NodeType, Reactive,
-    RenderOutput,
+    component::Element, GenericNode, IntoEventHandler, IntoReactive, NodeType, Reactive,
+    RenderOutput, StringLike,
 };
 use xframe_reactive::Scope;
 use xframe_web::WebNode;
 
 pub(crate) type JsBoolean = bool;
 pub(crate) type JsNumber = f64;
-pub(crate) type JsString = Attribute;
+pub(crate) type JsString = StringLike;
 
 type CowStr = std::borrow::Cow<'static, str>;
 
@@ -53,17 +53,17 @@ impl<N: GenericNode> BaseElement<N> {
 
     pub fn set_property_literal<T>(&self, name: &'static str, val: impl IntoReactive<T>)
     where
-        T: 'static + Into<Attribute>,
+        T: 'static + Into<StringLike>,
     {
         self.set_property(Cow::Borrowed(name), val.into_reactive().cast());
     }
 
-    pub fn set_property(&self, name: impl Into<CowStr>, val: impl IntoReactive<Attribute>) {
+    pub fn set_property(&self, name: impl Into<CowStr>, val: impl IntoReactive<StringLike>) {
         let val = val.into_reactive();
         self.inner.set_property(name.into(), val);
     }
 
-    pub fn set_attribute(&self, name: impl Into<CowStr>, val: impl IntoReactive<Attribute>) {
+    pub fn set_attribute(&self, name: impl Into<CowStr>, val: impl IntoReactive<StringLike>) {
         let val = val.into_reactive();
         self.inner.set_attribute(name.into(), val);
     }

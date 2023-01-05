@@ -1,9 +1,11 @@
 use crate::{
-    is_debug,
+    event::EventHandler,
     node::{GenericNode, NodeType},
-    template::{GlobalState, Template},
+    reactive::Reactive,
+    str::StringLike,
+    template::{GlobalState, Template, TemplateId},
     view::View,
-    Attribute, CowStr, EventHandler, Reactive, TemplateId,
+    CowStr,
 };
 use xframe_reactive::Scope;
 
@@ -181,7 +183,7 @@ impl<N: GenericNode> Element<N> {
         f(&self.root);
     }
 
-    pub fn set_property(&self, name: CowStr, val: Reactive<Attribute>) {
+    pub fn set_property(&self, name: CowStr, val: Reactive<StringLike>) {
         match val {
             Reactive::Static(lit) => {
                 self.with_root_static(|root| root.set_property(name.clone(), lit.clone()));
@@ -197,7 +199,7 @@ impl<N: GenericNode> Element<N> {
         }
     }
 
-    pub fn set_attribute(&self, name: CowStr, val: Reactive<Attribute>) {
+    pub fn set_attribute(&self, name: CowStr, val: Reactive<StringLike>) {
         match val {
             Reactive::Static(val) => {
                 self.with_root_static(|root| root.set_attribute(name.clone(), val.clone()));
@@ -238,7 +240,7 @@ impl<N: GenericNode> Element<N> {
         }
     }
 
-    pub fn set_inner_text(&self, data: Reactive<Attribute>) {
+    pub fn set_inner_text(&self, data: Reactive<StringLike>) {
         match data {
             Reactive::Static(data) => {
                 self.with_root_static(|root| root.set_inner_text(data.clone().into_string()));

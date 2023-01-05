@@ -1,4 +1,4 @@
-use xframe_core::{Attribute, GenericNode, IntoReactive};
+use xframe_core::{GenericNode, IntoReactive, StringLike};
 use xframe_reactive::Scope;
 
 define_element!(
@@ -6,7 +6,7 @@ define_element!(
 );
 
 impl<N: GenericNode> text<N> {
-    pub fn data<A: IntoReactive<Attribute>>(self, data: A) -> Self {
+    pub fn data<A: IntoReactive<StringLike>>(self, data: A) -> Self {
         self.inner.set_inner_text(data.into_reactive());
         self
     }

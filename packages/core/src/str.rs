@@ -3,7 +3,7 @@ use std::borrow::Cow;
 
 // TODO: rename to `StringLike`
 #[derive(Clone)]
-pub enum Attribute {
+pub enum StringLike {
     Boolean(bool),
     // TODO: Add integer
     Number(f64),
@@ -11,7 +11,7 @@ pub enum Attribute {
     String(String),
 }
 
-impl Attribute {
+impl StringLike {
     pub fn into_string(self) -> CowStr {
         match self {
             Self::Boolean(t) => if t { "true" } else { "false" }.into(),
@@ -22,7 +22,7 @@ impl Attribute {
     }
 }
 
-impl From<Cow<'static, str>> for Attribute {
+impl From<Cow<'static, str>> for StringLike {
     fn from(t: Cow<'static, str>) -> Self {
         match t {
             Cow::Owned(t) => t.into(),
@@ -33,7 +33,7 @@ impl From<Cow<'static, str>> for Attribute {
 
 macro_rules! impl_from_for_types_into {
     ($($variant:ident => $ty:ty,)*) => {$(
-        impl From<$ty> for Attribute {
+        impl From<$ty> for StringLike {
             fn from(t: $ty) -> Self {
                 Self::$variant(t.into())
             }
@@ -50,7 +50,7 @@ impl_from_for_types_into! {
 
 macro_rules! impl_for_small_nums {
     ($($ty:ident),*) => {$(
-        impl From<$ty> for Attribute {
+        impl From<$ty> for StringLike {
             fn from(t: $ty) -> Self {
                 (t as f64).into()
             }
@@ -62,7 +62,7 @@ impl_for_small_nums!(i8, u8, i16, u16, i32, u32, i64, isize, f32);
 
 macro_rules! impl_for_big_nums {
     ($($ty:ident),*) => {$(
-        impl From<$ty> for Attribute {
+        impl From<$ty> for StringLike {
             fn from(t: $ty) -> Self {
                 if t < i64::MAX as $ty {
                     (t as f64).into()
