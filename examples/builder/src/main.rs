@@ -15,7 +15,7 @@ impl<N: WebNode> GenericComponent<N> for Counter<N> {
         let counter = cx.create_signal(0);
         let increment = move |_| counter.update(|x| *x + 1);
         Root(cx)
-            .with(move || {
+            .child(move || {
                 div(cx).child(move || {
                     button(cx)
                         .on_click(increment)
@@ -39,5 +39,5 @@ fn Counter<N: GenericNode>(cx: Scope) -> Counter<N> {
 fn main() {
     console_error_panic_hook::set_once();
 
-    xframe::mount_to_body(|cx| Root(cx).with(move || div(cx).child(move || Counter(cx))));
+    xframe::mount_to_body(|cx| Root(cx).child(move || div(cx).child(move || Counter(cx))));
 }

@@ -1,4 +1,4 @@
-use xframe::{view, Else, If, IntoReactiveValue, Switch};
+use xframe::{id, view, Else, If, IntoReactiveValue, Root, Switch, TemplateId};
 
 fn main() {
     console_error_panic_hook::set_once();
@@ -7,11 +7,17 @@ fn main() {
         let counter = cx.create_signal(1);
         let increment = move |_| counter.update(|x| *x + 1);
         let is_even = cx.create_memo(move || counter.get() % 2 == 0);
-        let is_divisor_of = move |n: usize| {
+        let is_divisor_of = move |n: usize, id: fn() -> TemplateId| {
             let when = cx.create_memo(move || counter.get() % n == 0);
             move || {
                 view! { cx,
-                    If { .when(when) div { "Number " (counter) " is also the divisor of " (n.s()) "." } }
+                    If {
+                        .when(when)
+                        Root {
+                            .id(id)
+                            div { "Number " (counter) " is also the divisor of " (n.s()) "." }
+                        }
+                    }
                 }
             }
         };
@@ -31,9 +37,9 @@ fn main() {
                     }
                     "."
                 }
-                {is_divisor_of(3)}
-                {is_divisor_of(5)}
-                {is_divisor_of(7)}
+                {is_divisor_of(3, id!())}
+                {is_divisor_of(5, id!())}
+                {is_divisor_of(7, id!())}
             }
         }
     });

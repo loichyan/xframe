@@ -12,7 +12,7 @@ where
     N: GenericNode,
     C: GenericComponent<N>,
 {
-    Root(cx).id(id).with(component)
+    Root(cx).id(id).child(component)
 }
 
 pub fn view_element<N, E>(
