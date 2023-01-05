@@ -276,22 +276,6 @@ impl<'a> Element<'a> {
                 self.inner.classes(names);
                 self
             }
-
-            pub fn child<C: #T_GENERIC_COMPONENT<N>>(
-                mut self,
-                child: impl 'static + FnOnce() -> C,
-            ) -> Self {
-                self.inner.child(child);
-                self
-            }
-
-            pub fn child_text<A: #T_INTO_REACTIVE<#ATTRIBUTE>>(
-                mut self,
-                data: A,
-            ) -> Self {
-                self.inner.child_text(data);
-                self
-            }
         )
     }
 }

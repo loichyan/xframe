@@ -1,4 +1,4 @@
-use xframe::{id, view, Else, If, IntoReactiveValue, Root, Switch, TemplateId};
+use xframe::{id, prelude::*, view, Else, If, Root, Switch, TemplateId};
 
 fn main() {
     console_error_panic_hook::set_once();

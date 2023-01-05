@@ -1,3 +1,4 @@
+use crate::GenericChild;
 use std::any::Any;
 use xframe_core::{component::Element, GenericComponent, GenericNode, NodeType, View};
 use xframe_reactive::{Scope, Signal};
@@ -15,8 +16,9 @@ pub trait GenericElement<N: GenericNode>:
         self
     }
 
-    fn child<C: GenericComponent<N>>(mut self, child: impl 'static + FnOnce() -> C) -> Self {
-        self.as_mut().add_child(child);
+    fn child(mut self, child: impl GenericChild<N>) -> Self {
+        let cx = self.as_ref().cx;
+        self.as_mut().add_child(move || child.render(cx));
         self
     }
 

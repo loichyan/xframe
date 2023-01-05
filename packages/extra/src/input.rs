@@ -3,11 +3,11 @@
 use std::borrow::Cow;
 use wasm_bindgen::JsCast;
 use xframe_core::{
-    component::Element, Attribute, GenericComponent, GenericNode, IntoEventHandler, IntoReactive,
-    NodeType, Reactive, RenderOutput,
+    component::Element, Attribute, GenericNode, IntoEventHandler, IntoReactive, NodeType, Reactive,
+    RenderOutput,
 };
 use xframe_reactive::Scope;
-use xframe_web::{elements::text, WebNode};
+use xframe_web::WebNode;
 
 pub(crate) type JsBoolean = bool;
 pub(crate) type JsNumber = f64;
@@ -23,7 +23,7 @@ pub(crate) struct BaseElement<N> {
 impl<N: GenericNode> BaseElement<N> {
     pub fn new(cx: Scope, ty: NodeType) -> Self {
         Self {
-            inner: Element::new(cx, ty),
+            inner: Element::new(cx, || N::create(ty.clone())),
         }
     }
 
@@ -93,15 +93,5 @@ impl<N: GenericNode> BaseElement<N> {
 
     pub fn toggle_class(&self, name: impl Into<CowStr>, toggle: impl IntoReactive<bool>) {
         self.inner.set_class(name.into(), toggle.into_reactive());
-    }
-
-    pub fn child<C: GenericComponent<N>>(&mut self, child: impl 'static + FnOnce() -> C) {
-        self.inner.add_child(child);
-    }
-
-    pub fn child_text<A: IntoReactive<Attribute>>(&mut self, data: A) {
-        let cx = self.inner.cx;
-        let data = data.into_reactive();
-        self.child(move || text(cx).data(data));
     }
 }

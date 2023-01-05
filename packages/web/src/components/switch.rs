@@ -1,4 +1,4 @@
-use crate::element::GenericElement;
+use crate::{element::GenericElement, GenericChild};
 use smallvec::SmallVec;
 use xframe_core::{
     is_debug, view::ViewParentExt, GenericComponent, GenericNode, IntoReactive, Reactive,
@@ -120,11 +120,12 @@ impl<N: GenericNode> If<N> {
         self
     }
 
-    pub fn child<C: GenericComponent<N>>(mut self, child: impl 'static + FnOnce() -> C) -> If<N> {
+    pub fn child(mut self, child: impl GenericChild<N>) -> If<N> {
         if self.children.is_some() {
             panic!("`If::child` has been specified");
         }
-        self.children = Some(LazyRender::new(child));
+        let cx = self.cx;
+        self.children = Some(LazyRender::new(move || child.render(cx)));
         self
     }
 }
@@ -158,11 +159,12 @@ impl<N: GenericNode> SwitchChild<N> for Else<N> {
 }
 
 impl<N: GenericNode> Else<N> {
-    pub fn child<C: GenericComponent<N>>(mut self, child: impl 'static + FnOnce() -> C) -> Else<N> {
+    pub fn child(mut self, child: impl GenericChild<N>) -> Else<N> {
         if self.children.is_some() {
             panic!("`Else::child` has been specified");
         }
-        self.children = Some(LazyRender::new(child));
+        let cx = self.cx;
+        self.children = Some(LazyRender::new(move || child.render(cx)));
         self
     }
 }

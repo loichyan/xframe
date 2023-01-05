@@ -1,4 +1,4 @@
-use xframe::{view, Else, GenericComponent, If, IntoReactiveValue, List, Scope, Switch, WebNode};
+use xframe::{prelude::*, view, Else, GenericComponent, If, List, Scope, Switch, WebNode};
 
 fn make_counter<N: WebNode>(cx: Scope, init: usize) -> impl GenericComponent<N> {
     let counter = cx.create_signal(init);

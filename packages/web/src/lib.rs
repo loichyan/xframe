@@ -2,6 +2,7 @@
 
 #[macro_use]
 mod utils;
+mod child;
 mod dom_node;
 mod element;
 mod event_delegation;
@@ -40,6 +41,7 @@ pub mod prelude {
     #[doc(inline)]
     pub use {
         crate::{
+            child::GenericChild,
             components::*,
             dom_node::DomNode,
             element::{GenericElement, NodeRef},

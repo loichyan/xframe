@@ -1,5 +1,5 @@
 use std::marker::PhantomData;
-use xframe::{view, GenericComponent, IntoReactiveValue, RenderOutput, Scope, WebNode};
+use xframe::{prelude::*, view, GenericComponent, IntoReactiveValue, RenderOutput, Scope, WebNode};
 
 struct Counter<N> {
     cx: Scope,

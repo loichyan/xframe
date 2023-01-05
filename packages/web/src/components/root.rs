@@ -3,6 +3,8 @@ use xframe_core::{
 };
 use xframe_reactive::Scope;
 
+use crate::GenericChild;
+
 define_placeholder!(struct Placeholder("PLACEHOLDER FOR `xframe::Fragment` COMPONENT"));
 
 #[allow(non_snake_case)]
@@ -41,8 +43,9 @@ impl<N: GenericNode> Root<N> {
         self
     }
 
-    pub fn child<C: GenericComponent<N>>(self, child: impl 'static + FnOnce() -> C) -> Self {
-        self.child_impl(Box::new(|| child().render()))
+    pub fn child(self, child: impl GenericChild<N>) -> Self {
+        let cx = self.cx;
+        self.child_impl(Box::new(move || child.render(cx)))
     }
 
     fn child_impl(mut self, child: Box<dyn FnOnce() -> RenderOutput<N>>) -> Self {

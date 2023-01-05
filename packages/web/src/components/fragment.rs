@@ -1,7 +1,6 @@
-use crate::{element::GenericElement, elements::text};
+use crate::{child::GenericChild, element::GenericElement};
 use xframe_core::{
-    component::Fragment as FragmentBase, Attribute, GenericComponent, GenericNode, IntoReactive,
-    RenderOutput,
+    component::Fragment as FragmentBase, GenericComponent, GenericNode, RenderOutput,
 };
 use xframe_reactive::Scope;
 
@@ -9,9 +8,7 @@ define_placeholder!(struct Placeholder("PLACEHOLDER FOR `xframe::Fragment` COMPO
 
 #[allow(non_snake_case)]
 pub fn Fragment<N: GenericNode>(cx: Scope) -> Fragment<N> {
-    Fragment {
-        inner: FragmentBase::new(cx),
-    }
+    Fragment::with_capacity(cx, 0)
 }
 
 pub struct Fragment<N> {
@@ -20,19 +17,20 @@ pub struct Fragment<N> {
 
 impl<N: GenericNode> GenericComponent<N> for Fragment<N> {
     fn render(self) -> RenderOutput<N> {
-        self.inner.render(Placeholder::<N>::TYPE)
+        self.inner.render(|| N::create(Placeholder::<N>::TYPE))
     }
 }
 
 impl<N: GenericNode> Fragment<N> {
-    pub fn child<C: GenericComponent<N>>(mut self, child: impl 'static + FnOnce() -> C) -> Self {
-        self.inner.add_child(child);
-        self
+    pub fn with_capacity(cx: Scope, capacity: usize) -> Self {
+        Self {
+            inner: FragmentBase::with_capacity(cx, capacity),
+        }
     }
 
-    pub fn child_text<A: IntoReactive<Attribute>>(self, data: A) -> Self {
+    pub fn child(mut self, child: impl GenericChild<N>) -> Self {
         let cx = self.inner.cx;
-        let data = data.into_reactive();
-        self.child(move || text(cx).data(data))
+        self.inner.add_child(move || child.render(cx));
+        self
     }
 }

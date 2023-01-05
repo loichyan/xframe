@@ -15,6 +15,12 @@ pub trait GenericComponent<N: GenericNode>: 'static + Sized {
     }
 }
 
+impl<N: GenericNode> GenericComponent<N> for RenderOutput<N> {
+    fn render(self) -> RenderOutput<N> {
+        self
+    }
+}
+
 fn take_mode<N: GenericNode>() -> Mode<N> {
     GlobalState::mode(|global| std::mem::replace(&mut global.mode, Mode::None))
 }
@@ -81,7 +87,7 @@ pub struct RenderOutput<N> {
 enum OutputMode<N> {
     None,
     Dehydrate { dehydrated: View<N> },
-    Hydrate,
+    Hydrate { next: Option<N> },
 }
 
 impl<N: GenericNode> RenderOutput<N> {
@@ -99,10 +105,10 @@ impl<N: GenericNode> RenderOutput<N> {
         }
     }
 
-    fn hydrate(view: View<N>) -> Self {
+    fn hydrate(view: View<N>, next: Option<N>) -> Self {
         Self {
             view,
-            mode: OutputMode::Hydrate,
+            mode: OutputMode::Hydrate { next },
         }
     }
 }
@@ -117,26 +123,27 @@ pub struct Element<N> {
 enum ElementMode<N> {
     None,
     Dehydrate { dehydrated_root: N },
-    Hydrate { last: Option<N> },
+    Hydrate { next: Option<N>, last: Option<N> },
 }
 
 impl<N: GenericNode> Element<N> {
-    pub fn new(cx: Scope, ty: NodeType) -> Self {
+    pub fn new(cx: Scope, init: impl Fn() -> N) -> Self {
         let mode;
         let root;
         match take_mode::<N>() {
             Mode::None => {
                 mode = ElementMode::None;
-                root = N::create(ty);
+                root = init();
             }
             Mode::Dehydrate => {
                 mode = ElementMode::Dehydrate {
-                    dehydrated_root: N::create(ty.clone()),
+                    dehydrated_root: init(),
                 };
-                root = N::create(ty);
+                root = init();
             }
             Mode::Hydrate { first, behavior } => {
                 mode = ElementMode::Hydrate {
+                    next: first.next_sibling(),
                     last: first.first_child(),
                 };
                 root = first;
@@ -158,9 +165,9 @@ impl<N: GenericNode> Element<N> {
             ElementMode::Dehydrate { dehydrated_root } => {
                 RenderOutput::dehydrate(view, View::node(dehydrated_root))
             }
-            ElementMode::Hydrate { last } => {
+            ElementMode::Hydrate { next, last } => {
                 debug_assert!(last.is_none());
-                RenderOutput::hydrate(view)
+                RenderOutput::hydrate(view, next)
             }
         }
     }
@@ -289,10 +296,8 @@ impl<N: GenericNode> Element<N> {
         let mode = match &mut self.mode {
             ElementMode::None => Mode::none(),
             ElementMode::Dehydrate { .. } => Mode::dehydrate(),
-            ElementMode::Hydrate { last } => {
-                let first = last.take().unwrap();
-                *last = first.next_sibling();
-                Mode::hydrate(first, Behavior::Nothing)
+            ElementMode::Hydrate { last, .. } => {
+                Mode::hydrate(last.take().unwrap(), Behavior::Nothing)
             }
         };
         set_mode(mode);
@@ -316,10 +321,11 @@ impl<N: GenericNode> Element<N> {
                 output.view.append_to(&self.root);
                 dehydrated.append_to(dehydrated_root);
             }
-            OutputMode::Hydrate => {
-                let ElementMode::Hydrate { .. } = &self.mode else {
+            OutputMode::Hydrate { next } => {
+                let ElementMode::Hydrate { last, .. } = &mut self.mode else {
                     panic!("mode mismatched");
                 };
+                *last = next;
             }
         }
     }
@@ -344,10 +350,14 @@ enum FragmentMode<N> {
 
 impl<N: GenericNode> Fragment<N> {
     pub fn new(cx: Scope) -> Self {
+        Self::with_capacity(cx, 0)
+    }
+
+    pub fn with_capacity(cx: Scope, capacity: usize) -> Self {
         let mode = match take_mode::<N>() {
             Mode::None => FragmentMode::None,
             Mode::Dehydrate => FragmentMode::Dehydrate {
-                dehydrated_views: Vec::new(),
+                dehydrated_views: Vec::with_capacity(capacity),
             },
             Mode::Hydrate { first, behavior } => FragmentMode::Hydrate {
                 last: Some(first),
@@ -356,16 +366,16 @@ impl<N: GenericNode> Fragment<N> {
         };
         Self {
             cx,
-            views: Vec::new(),
+            views: Vec::with_capacity(capacity),
             mode,
         }
     }
 
-    pub fn render(self, fallback: NodeType) -> RenderOutput<N> {
+    pub fn render(self, fallback: impl Fn() -> N) -> RenderOutput<N> {
         match self.mode {
             FragmentMode::None => {
                 let view = if self.views.is_empty() {
-                    View::node(N::create(fallback))
+                    View::node(fallback())
                 } else {
                     View::fragment(self.views)
                 };
@@ -376,8 +386,8 @@ impl<N: GenericNode> Fragment<N> {
                 let view;
                 let dehydrated;
                 if self.views.is_empty() {
-                    view = View::node(N::create(fallback.clone()));
-                    dehydrated = View::node(N::create(fallback));
+                    view = View::node(fallback());
+                    dehydrated = View::node(fallback());
                 } else {
                     view = View::fragment(self.views);
                     dehydrated = View::fragment(dehydrated_views);
@@ -385,13 +395,12 @@ impl<N: GenericNode> Fragment<N> {
                 RenderOutput::dehydrate(view, dehydrated)
             }
             FragmentMode::Hydrate { last, .. } => {
-                debug_assert!(last.is_none());
                 let view = if self.views.is_empty() {
-                    View::node(N::create(fallback))
+                    View::node(fallback())
                 } else {
                     View::fragment(self.views)
                 };
-                RenderOutput::hydrate(view)
+                RenderOutput::hydrate(view, last)
             }
         }
     }
@@ -407,9 +416,7 @@ impl<N: GenericNode> Fragment<N> {
             FragmentMode::None => Mode::none(),
             FragmentMode::Dehydrate { .. } => Mode::dehydrate(),
             FragmentMode::Hydrate { last, behavior } => {
-                let first = last.take().unwrap();
-                *last = first.next_sibling();
-                Mode::hydrate(first, behavior.clone())
+                Mode::hydrate(last.take().unwrap(), behavior.clone())
             }
         };
         set_mode(mode);
@@ -431,10 +438,11 @@ impl<N: GenericNode> Fragment<N> {
                 };
                 dehydrated_views.push(dehydrated);
             }
-            OutputMode::Hydrate => {
-                let FragmentMode::Hydrate { .. } = &self.mode else {
+            OutputMode::Hydrate { next } => {
+                let FragmentMode::Hydrate { last, .. } = &mut self.mode else {
                     panic!("mode mismatched");
                 };
+                *last = next;
             }
         }
         self.views.push(output.view);
@@ -487,11 +495,12 @@ impl<N: GenericNode> Root<N> {
                     Behavior::RemoveFrom(container),
                 ));
                 let RenderOutput { view, mode } = inner();
-                let OutputMode::Hydrate = mode else {
+                let OutputMode::Hydrate { .. } = mode else {
                     panic!("mode mismatched");
                 };
                 match prev_mode {
                     Mode::None => RenderOutput::none(view),
+                    // TODO: Use a placeholder instead
                     Mode::Dehydrate => RenderOutput::dehydrate(view, dehydrated.deep_clone()),
                     _ => unreachable!(),
                 }

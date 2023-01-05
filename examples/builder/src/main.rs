@@ -1,8 +1,5 @@
 use std::marker::PhantomData;
-use xframe::element::prelude::*;
-use xframe::{
-    GenericComponent, GenericNode, IntoReactiveValue, RenderOutput, Root, Scope, WebNode,
-};
+use xframe::{elements::*, id, prelude::*, GenericComponent, RenderOutput, Root, Scope, WebNode};
 
 struct Counter<N> {
     cx: Scope,
@@ -15,13 +12,12 @@ impl<N: WebNode> GenericComponent<N> for Counter<N> {
         let counter = cx.create_signal(0);
         let increment = move |_| counter.update(|x| *x + 1);
         Root(cx)
+            .id(id!())
             .child(move || {
                 div(cx).child(move || {
                     button(cx)
                         .on_click(increment)
-                        .child_text("Click me: ".s())
-                        .child_text(counter)
-                        .child_text(" times!".s())
+                        .child(("Click me: ".s(), counter, " times!".s()))
                 })
             })
             .render()
@@ -29,7 +25,7 @@ impl<N: WebNode> GenericComponent<N> for Counter<N> {
 }
 
 #[allow(non_snake_case)]
-fn Counter<N: GenericNode>(cx: Scope) -> Counter<N> {
+fn Counter<N: WebNode>(cx: Scope) -> Counter<N> {
     Counter {
         cx,
         marker: PhantomData,
@@ -39,5 +35,9 @@ fn Counter<N: GenericNode>(cx: Scope) -> Counter<N> {
 fn main() {
     console_error_panic_hook::set_once();
 
-    xframe::mount_to_body(|cx| Root(cx).child(move || div(cx).child(move || Counter(cx))));
+    xframe::mount_to_body(|cx| {
+        Root(cx)
+            .id(id!())
+            .child(move || div(cx).child((move || Counter(cx), move || Counter(cx))))
+    });
 }

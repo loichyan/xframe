@@ -40,7 +40,7 @@ macro_rules! define_element {
                 #[allow(dead_code)]
                 $vis fn new(cx: Scope) -> Self {
                     $name {
-                        inner: Element::new(cx, $ty),
+                        inner: Element::new(cx, || N::create($ty)),
                     }
                 }
             }

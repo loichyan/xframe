@@ -11,14 +11,14 @@ use syn::{
 new_type_quote! {
     XFRAME(::xframe);
     RT(#XFRAME::__private);
-    M_ELEMENT(#XFRAME::element);
+    M_ELEMENTS(#XFRAME::elements);
     VAR_CX(__cx);
     VAR_VIEW(__view);
     T_COMPONENT(__Component);
     T_GENERIC_COMPONENT(#XFRAME::GenericComponent);
     T_TEMPLATE(#XFRAME::Template);
     T_TEMPLATE_ID(#XFRAME::TemplateId);
-    T_TEXT(#M_ELEMENT::text);
+    T_TEXT(#M_ELEMENTS::text);
     FN_CHILD(child);
     FN_VIEW_ELEMENT(#RT::view_element);
     FN_VIEW_TEXT(#RT::view_text);
@@ -230,7 +230,7 @@ impl ViewElement {
         if let Some(builtin) = builtin {
             quote!({ #FN_VIEW_ELEMENT(
                 #VAR_CX,
-                #M_ELEMENT::#builtin,
+                #M_ELEMENTS::#builtin,
                 move |#VAR_VIEW| { #VAR_VIEW #props },
                 move |#VAR_VIEW| { #VAR_VIEW #children },
             ) })

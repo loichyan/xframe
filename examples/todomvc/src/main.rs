@@ -1,7 +1,7 @@
 use wasm_bindgen::{JsCast, UnwrapThrowExt};
 use xframe::{
-    element as el, event as ev, view, DomNode, GenericComponent, GenericElement, If,
-    IntoReactiveValue, List, Scope, ScopeExt, Signal, WebNode,
+    elements as el, event as ev, prelude::*, view, DomNode, GenericComponent, If, List, Scope,
+    ScopeExt, Signal, WebNode,
 };
 
 #[derive(Clone)]

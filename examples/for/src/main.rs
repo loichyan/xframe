@@ -2,7 +2,7 @@ use rand::seq::SliceRandom;
 use std::cell::Cell;
 use wasm_bindgen::JsValue;
 use web_sys::console;
-use xframe::{view, For, If, IntoReactiveValue};
+use xframe::{prelude::*, view, For, If};
 
 thread_local! {
     static COUNTER: Cell<usize> = Cell::new(0);
