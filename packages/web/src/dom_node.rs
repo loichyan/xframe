@@ -1,4 +1,4 @@
-use crate::{utils::UnwrapThrowValExt, DOCUMENT};
+use crate::{utils::UnwrapThrowValExt, CowStr, DOCUMENT};
 use js_sys::Reflect;
 use std::{
     borrow::{Borrow, Cow},
@@ -15,8 +15,6 @@ use xframe_core::{
 thread_local! {
     static GLOBAL_ID: Cell<usize> = Cell::new(0);
 }
-
-type CowStr = std::borrow::Cow<'static, str>;
 
 trait CowStrExt: Borrow<CowStr> {
     fn intern(&self) -> &str {

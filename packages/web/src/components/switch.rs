@@ -90,6 +90,7 @@ pub fn If<N: GenericNode>(cx: Scope) -> If<N> {
     }
 }
 
+// TODO: add `If::id`
 pub struct If<N> {
     cx: Scope,
     when: Option<Reactive<bool>>,
@@ -130,6 +131,7 @@ impl<N: GenericNode> If<N> {
     }
 }
 
+// TODO: add `Else::id`
 #[allow(non_snake_case)]
 pub fn Else<N: GenericNode>(cx: Scope) -> Else<N> {
     Else { cx, children: None }

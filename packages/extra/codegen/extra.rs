@@ -172,7 +172,6 @@ impl<'a> Element<'a> {
         } = self;
         let attr_fns = attributes.iter().map(Attribute::quote_fn);
         let event_fns = events.iter().map(Event::quote_fn);
-        let default_methods = self.quote_default_methods();
         quote!(
             #[allow(non_camel_case_types)]
             pub struct #fn_<N> {
@@ -221,61 +220,11 @@ impl<'a> Element<'a> {
                 }
             }
 
-            impl<N: #T_GENERIC_NODE> #fn_<N> {
-                #default_methods
-            }
-
             #[cfg(feature = "attributes")]
             impl<N: #T_GENERIC_NODE> #fn_<N> { #(#attr_fns)* }
 
             #[cfg(feature = "events")]
             impl<N: #T_WEB_NODE> #fn_<N> { #(#event_fns)* }
-        )
-    }
-
-    fn quote_default_methods(&self) -> TokenStream {
-        quote!(
-            pub fn attr<K: Into<#COW_STR>, V: #T_INTO_REACTIVE<#STRING_LIKE>>(
-                self,
-                name: K,
-                val: V,
-            ) -> Self {
-                self.inner.set_attribute(name, val);
-                self
-            }
-
-            pub fn prop<K: Into<#COW_STR>, V: #T_INTO_REACTIVE<#STRING_LIKE>>(
-                self,
-                name: K,
-                val: V,
-            ) -> Self {
-                self.inner.set_property(name, val);
-                self
-            }
-
-            /// Add a class to this element.
-            pub fn class<T: Into<#COW_STR>>(self, name: T) -> Self {
-                self.inner.add_class(name);
-                self
-            }
-
-            /// Toggle class when `toggle` changes.
-            pub fn classx<K, V>(self, name: K, toggle: V) -> Self
-            where
-                K: Into<#COW_STR>,
-                V: #T_INTO_REACTIVE<bool>,
-            {
-                self.inner.toggle_class(name, toggle);
-                self
-            }
-
-            pub fn classes<I>(self, names: I)  -> Self
-            where
-                I: IntoIterator<Item = &'static str>,
-            {
-                self.inner.classes(names);
-                self
-            }
         )
     }
 }

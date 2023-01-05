@@ -59,3 +59,5 @@ thread_local! {
     static WINDOW: web_sys::Window = web_sys::window().unwrap();
     static DOCUMENT: web_sys::Document = WINDOW.with(web_sys::Window::document).unwrap();
 }
+
+type CowStr = std::borrow::Cow<'static, str>;

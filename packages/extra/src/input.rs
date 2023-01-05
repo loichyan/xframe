@@ -3,8 +3,8 @@
 use std::borrow::Cow;
 use wasm_bindgen::JsCast;
 use xframe_core::{
-    component::Element, GenericNode, IntoEventHandler, IntoReactive, NodeType, Reactive,
-    RenderOutput, StringLike,
+    component::Element, GenericNode, IntoEventHandler, IntoReactive, NodeType, RenderOutput,
+    StringLike,
 };
 use xframe_reactive::Scope;
 use xframe_web::WebNode;
@@ -79,19 +79,5 @@ impl<N: GenericNode> BaseElement<N> {
                 .into_event_handler()
                 .cast_with(|ev: web_sys::Event| ev.unchecked_into()),
         );
-    }
-
-    pub fn add_class(&self, name: impl Into<CowStr>) {
-        self.inner.set_class(name.into(), Reactive::Static(true));
-    }
-
-    pub fn classes<I: IntoIterator<Item = &'static str>>(&self, names: I) {
-        for name in names {
-            self.inner.set_class(name.into(), Reactive::Static(true));
-        }
-    }
-
-    pub fn toggle_class(&self, name: impl Into<CowStr>, toggle: impl IntoReactive<bool>) {
-        self.inner.set_class(name.into(), toggle.into_reactive());
     }
 }

@@ -68,26 +68,26 @@ fn make_todo<N: WebNode>(
     };
     view! { cx,
         li {
-            .class("todo")
-            .classx("completed", completed)
-            .classx("editing", editing)
+            .classes(["todo"])
+            .class("completed", completed)
+            .class("editing", editing)
             If {
                 .when(show)
                 [div {
-                    .class("view")
+                    .classes(["view"])
                     input {
-                        .class("toggle")
+                        .classes(["toggle"])
                         .type_("checkbox".s())
                         .checked(completed)
                         .on_input(toggle)
                     }
                     label { .on_dblclick(set_editing) (content) }
-                    button { .class("destroy") .on_click(remove) }
+                    button { .classes(["destroy"]) .on_click(remove) }
                 }
                 If {
                     .when(editing)
                     input {
-                        .class("edit")
+                        .classes(["edit"])
                         .ref_(edit_input)
                         .value(content)
                         .on_focusout(save_editing)
@@ -138,12 +138,12 @@ fn main() {
 
         view! { cx,
             section {
-                .class("todoapp")
+                .classes(["todoapp"])
                 header {
-                    .class("header")
+                    .classes(["header"])
                     h1 { "Todos" }
                     input {
-                        .class("new-todo")
+                        .classes(["new-todo"])
                         .placeholder("What needs to be done?".s())
                         .on_keydown(add_todo)
                     }
@@ -151,43 +151,43 @@ fn main() {
                 If {
                     .when(move || !todos.get().is_empty())
                     section {
-                        .class("main")
+                        .classes(["main"])
                         ul {
-                            .class("todo-list")
+                            .classes(["todo-list"])
                             List { .each(todos) {make_todo} }
                         }
                     }
                 }
                 footer {
-                    .class("footer")
+                    .classes(["footer"])
                     span {
-                        .class("todo-count")
+                        .classes(["todo-count"])
                         strong { (remaining_count) } " item"
                         (cx.create_memo(move || if remaining_count.get() > 1 { "s" } else { "" }))
                         " left"
                     }
                     ul {
-                        .class("filters")
+                        .classes(["filters"])
                         li { a {
                             .href("#/".s()) "All"
-                            .classx("selected", filter_selected(ShowMode::All))
+                            .class("selected", filter_selected(ShowMode::All))
                             .on_click(filter_set(ShowMode::All))
                         } }
                         li { a {
                             .href("#/active".s()) "Active"
-                            .classx("selected", filter_selected(ShowMode::Active))
+                            .class("selected", filter_selected(ShowMode::Active))
                             .on_click(filter_set(ShowMode::Active))
                         } }
                         li { a {
                             .href("#/completed".s()) "Completed"
-                            .classx("selected", filter_selected(ShowMode::Completed))
+                            .class("selected", filter_selected(ShowMode::Completed))
                             .on_click(filter_set(ShowMode::Completed))
                         } }
                     }
                     If {
                         .when(move || remaining_count.get() > 0)
                         button {
-                            .class("clear-completed")
+                            .classes(["clear-completed"])
                             .on_click(clear_complted)
                             "Clear completed"
                         }
