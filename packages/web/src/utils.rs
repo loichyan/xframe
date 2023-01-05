@@ -51,7 +51,11 @@ macro_rules! define_element {
 macro_rules! define_placeholder {
     ($vis:vis struct $name:ident($desc:literal)) => {
         define_element!($vis struct $name(
-            ::xframe_core::NodeType::Placeholder(std::borrow::Cow::Borrowed($desc))
+            if xframe_core::is_debug!() {
+                ::xframe_core::NodeType::Placeholder(std::borrow::Cow::Borrowed($desc))
+            } else {
+                ::xframe_core::NodeType::Placeholder(std::borrow::Cow::Borrowed("PLACEHOLDER"))
+            }
         ));
     };
 }

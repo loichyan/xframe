@@ -107,7 +107,7 @@ impl GenericNode for DomNode {
                 if is_debug!() && !data.is_empty() {
                     let template = doc.create_element("template").unwrap_throw_val();
                     template
-                        .set_attribute("data-xframe-template-id", &data)
+                        .set_attribute("data-xframe-template-id", data.intern())
                         .unwrap_throw_val();
                     let body = doc.body().unwrap_throw();
                     body.insert_before(&template, body.first_child().as_ref())
