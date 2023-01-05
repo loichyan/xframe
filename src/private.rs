@@ -1,5 +1,5 @@
 use crate::GenericNode;
-use xframe_core::{Attribute, GenericComponent, IntoReactive, TemplateId};
+use xframe_core::{Attribute, GenericComponent, IntoReactive, Reactive, TemplateId};
 use xframe_reactive::Scope;
 use xframe_web::{elements::text, Fragment, GenericElement, Root};
 
@@ -35,8 +35,15 @@ pub fn view_text<N, V: IntoReactive<Attribute>>(
 where
     N: GenericNode,
 {
-    let data = data.into_reactive(cx);
+    let data = data.into_reactive();
     move || text(cx).data(data)
+}
+
+pub fn view_text_literal<N>(cx: Scope, data: &'static str) -> impl 'static + FnOnce() -> text<N>
+where
+    N: GenericNode,
+{
+    move || text(cx).data(Reactive::Static(Attribute::Literal(data)))
 }
 
 pub fn view_component<C: 'static>(

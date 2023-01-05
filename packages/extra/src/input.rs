@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use wasm_bindgen::JsCast;
 use xframe_core::{
     component::Element, Attribute, GenericComponent, GenericNode, IntoEventHandler, IntoReactive,
-    NodeType, RenderOutput, Value,
+    NodeType, Reactive, RenderOutput,
 };
 use xframe_reactive::Scope;
 use xframe_web::{elements::text, WebNode};
@@ -55,16 +55,16 @@ impl<N: GenericNode> BaseElement<N> {
     where
         T: 'static + Into<Attribute>,
     {
-        self.set_property(Cow::Borrowed(name), val.into_reactive(self.inner.cx).cast());
+        self.set_property(Cow::Borrowed(name), val.into_reactive().cast());
     }
 
     pub fn set_property(&self, name: impl Into<CowStr>, val: impl IntoReactive<Attribute>) {
-        let val = val.into_reactive(self.inner.cx);
+        let val = val.into_reactive();
         self.inner.set_property(name.into(), val);
     }
 
     pub fn set_attribute(&self, name: impl Into<CowStr>, val: impl IntoReactive<Attribute>) {
-        let val = val.into_reactive(self.inner.cx);
+        let val = val.into_reactive();
         self.inner.set_attribute(name.into(), val);
     }
 
@@ -82,18 +82,17 @@ impl<N: GenericNode> BaseElement<N> {
     }
 
     pub fn add_class(&self, name: impl Into<CowStr>) {
-        self.inner.set_class(name.into(), Value(true));
+        self.inner.set_class(name.into(), Reactive::Static(true));
     }
 
     pub fn classes<I: IntoIterator<Item = &'static str>>(&self, names: I) {
         for name in names {
-            self.inner.set_class(name.into(), Value(true));
+            self.inner.set_class(name.into(), Reactive::Static(true));
         }
     }
 
     pub fn toggle_class(&self, name: impl Into<CowStr>, toggle: impl IntoReactive<bool>) {
-        self.inner
-            .set_class(name.into(), toggle.into_reactive(self.inner.cx));
+        self.inner.set_class(name.into(), toggle.into_reactive());
     }
 
     pub fn child<C: GenericComponent<N>>(&mut self, child: impl 'static + FnOnce() -> C) {
@@ -102,7 +101,7 @@ impl<N: GenericNode> BaseElement<N> {
 
     pub fn child_text<A: IntoReactive<Attribute>>(&mut self, data: A) {
         let cx = self.inner.cx;
-        let data = data.into_reactive(cx);
+        let data = data.into_reactive();
         self.child(move || text(cx).data(data));
     }
 }

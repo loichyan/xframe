@@ -455,19 +455,19 @@ impl ToTokens for QuoteAttrType<'_> {
 
             impl From<#name> for #ATTRIBUTE {
                 fn from(t: #name) -> Self {
-                    #ATTRIBUTE::Static(t.into())
+                    #ATTRIBUTE::Literal(t.into())
                 }
             }
 
             impl From<#name> for #REACTIVE<#name> {
                 fn from(t: #name) -> Self {
-                    #REACTIVE::Value(t)
+                    #REACTIVE::Variable(t)
                 }
             }
 
             impl From<#name> for #REACTIVE<#ATTRIBUTE> {
                 fn from(t: #name) -> Self {
-                    #REACTIVE::Value(t.into())
+                    #REACTIVE::Variable(t.into())
                 }
             }
         )

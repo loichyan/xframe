@@ -41,6 +41,7 @@ impl<N: GenericNode> Root<N> {
         self
     }
 
+    // TODO: rename to `child`
     pub fn with<C: GenericComponent<N>>(self, child: impl 'static + FnOnce() -> C) -> Self {
         self.child_impl(Box::new(|| child().render()))
     }

@@ -34,7 +34,7 @@ trait AttrExt: Into<Attribute> {
         match self.into() {
             Attribute::Boolean(t) => JsValue::from_bool(t),
             Attribute::Number(t) => JsValue::from_f64(t),
-            Attribute::Static(t) => JsValue::from_str(t),
+            Attribute::Literal(t) => JsValue::from_str(t),
             Attribute::String(t) => JsValue::from_str(&t),
         }
     }

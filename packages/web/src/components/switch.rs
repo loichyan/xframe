@@ -2,7 +2,7 @@ use crate::element::GenericElement;
 use smallvec::SmallVec;
 use xframe_core::{
     is_debug, view::ViewParentExt, GenericComponent, GenericNode, IntoReactive, Reactive,
-    RenderOutput, Value, View,
+    RenderOutput, View,
 };
 use xframe_reactive::{untrack, Scope};
 
@@ -116,7 +116,7 @@ impl<N: GenericNode> If<N> {
         if self.when.is_some() {
             panic!("`If::when` has been specified");
         }
-        self.when = Some(when.into_reactive(self.cx));
+        self.when = Some(when.into_reactive());
         self
     }
 
@@ -151,7 +151,7 @@ impl<N: GenericNode> GenericComponent<N> for Else<N> {
 impl<N: GenericNode> SwitchChild<N> for Else<N> {
     fn into_branch(self) -> Branch<N> {
         Branch {
-            cond: Value(true),
+            cond: Reactive::Static(true),
             content: self.children.expect("`Else::child` was not specified"),
         }
     }

@@ -1,4 +1,4 @@
-use xframe::{view, Else, If, Switch};
+use xframe::{view, Else, If, IntoReactiveValue, Switch};
 
 fn main() {
     console_error_panic_hook::set_once();
@@ -11,7 +11,7 @@ fn main() {
             let when = cx.create_memo(move || counter.get() % n == 0);
             move || {
                 view! { cx,
-                    If { .when(when) div { "Number " (counter) " is also the divisor of " (n) "." } }
+                    If { .when(when) div { "Number " (counter) " is also the divisor of " (n.s()) "." } }
                 }
             }
         };
@@ -19,7 +19,7 @@ fn main() {
         view! { cx,
             div {
                 button {
-                    .type_("button")
+                    .type_("button".s())
                     .on_click(increment)
                     "Click me: " (counter) " times!"
                 }

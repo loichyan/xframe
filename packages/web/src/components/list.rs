@@ -104,7 +104,7 @@ where
         if self.each.is_some() {
             panic!("`List::each` has been specified");
         }
-        self.each = Some(each.into_reactive(self.cx));
+        self.each = Some(each.into_reactive());
         self
     }
 

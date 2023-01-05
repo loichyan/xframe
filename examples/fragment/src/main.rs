@@ -1,4 +1,4 @@
-use xframe::{view, If, Switch};
+use xframe::{view, If, IntoReactiveValue, Switch};
 
 fn main() {
     console_error_panic_hook::set_once();
@@ -10,7 +10,7 @@ fn main() {
         view! { cx,
             div {
                 button {
-                    .type_("button")
+                    .type_("button".s())
                     .on_click(increment)
                     "Click me!"
                 }

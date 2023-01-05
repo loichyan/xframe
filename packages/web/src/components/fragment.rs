@@ -32,7 +32,7 @@ impl<N: GenericNode> Fragment<N> {
 
     pub fn child_text<A: IntoReactive<Attribute>>(self, data: A) -> Self {
         let cx = self.inner.cx;
-        let data = data.into_reactive(cx);
+        let data = data.into_reactive();
         self.child(move || text(cx).data(data))
     }
 }

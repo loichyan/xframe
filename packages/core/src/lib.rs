@@ -19,7 +19,7 @@ pub mod prelude {
         component::{GenericComponent, RenderOutput},
         event::{EventHandler, EventOptions, IntoEventHandler},
         node::{GenericNode, NodeType},
-        reactive::{IntoReactive, Reactive, Value},
+        reactive::{IntoReactive, IntoReactiveValue, Reactive},
         template::TemplateId,
         view::View,
     };

@@ -176,39 +176,52 @@ impl<N: GenericNode> Element<N> {
 
     pub fn set_property(&self, name: CowStr, val: Reactive<Attribute>) {
         match val {
-            Reactive::Value(val) => self.root.set_property(name.clone(), val),
-            Reactive::Dyn(f) => {
+            Reactive::Static(lit) => {
+                self.with_root_static(|root| root.set_property(name.clone(), lit.clone()));
+            }
+            Reactive::Variable(val) => {
+                self.root.set_property(name.clone(), val);
+            }
+            Reactive::Fn(f) => {
                 let node = self.root.clone();
                 self.cx
-                    .create_effect(move || node.set_property(name.clone(), f().into_value()));
+                    .create_effect(move || node.set_property(name.clone(), f()));
             }
         }
     }
 
     pub fn set_attribute(&self, name: CowStr, val: Reactive<Attribute>) {
         match val {
-            Reactive::Value(val) => {
+            Reactive::Static(val) => {
+                self.with_root_static(|root| root.set_attribute(name.clone(), val.clone()));
+            }
+            Reactive::Variable(val) => {
                 self.root.set_attribute(name, val);
             }
-            Reactive::Dyn(f) => {
+            Reactive::Fn(f) => {
                 let node = self.root.clone();
                 self.cx
-                    .create_effect(move || node.set_attribute(name.clone(), f().into_value()));
+                    .create_effect(move || node.set_attribute(name.clone(), f()));
             }
         }
     }
 
     pub fn set_class(&self, name: CowStr, toggle: Reactive<bool>) {
         match toggle {
-            Reactive::Value(toggle) => {
+            Reactive::Static(toggle) => {
                 if toggle {
                     self.with_root_static(|root| root.add_class(name.clone()));
                 }
             }
-            Reactive::Dyn(f) => {
+            Reactive::Variable(toggle) => {
+                if toggle {
+                    self.root.add_class(name);
+                }
+            }
+            Reactive::Fn(f) => {
                 let node = self.root.clone();
                 self.cx.create_effect(move || {
-                    if f().into_value() {
+                    if f() {
                         node.add_class(name.clone());
                     } else {
                         node.remove_class(name.clone());
@@ -220,11 +233,16 @@ impl<N: GenericNode> Element<N> {
 
     pub fn set_inner_text(&self, data: Reactive<Attribute>) {
         match data {
-            Reactive::Value(data) => self.root.set_inner_text(data.into_string()),
-            Reactive::Dyn(f) => {
+            Reactive::Static(data) => {
+                self.with_root_static(|root| root.set_inner_text(data.clone().into_string()));
+            }
+            Reactive::Variable(data) => {
+                self.root.set_inner_text(data.into_string());
+            }
+            Reactive::Fn(f) => {
                 let node = self.root.clone();
                 self.cx
-                    .create_effect(move || node.set_inner_text(f().into_value().into_string()));
+                    .create_effect(move || node.set_inner_text(f().into_string()));
             }
         }
     }

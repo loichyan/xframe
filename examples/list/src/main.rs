@@ -1,4 +1,4 @@
-use xframe::{view, Else, GenericComponent, If, List, Scope, Switch, WebNode};
+use xframe::{view, Else, GenericComponent, If, IntoReactiveValue, List, Scope, Switch, WebNode};
 
 fn make_counter<N: WebNode>(cx: Scope, init: usize) -> impl GenericComponent<N> {
     let counter = cx.create_signal(init);
@@ -15,7 +15,7 @@ fn make_counter<N: WebNode>(cx: Scope, init: usize) -> impl GenericComponent<N> 
                 "."
             }
             button {
-                .type_("button")
+                .type_("button".s())
                 .on_click(increment)
                 "Click me: " (counter) " times!"
             }

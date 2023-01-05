@@ -22,6 +22,7 @@ new_type_quote! {
     FN_CHILD(child);
     FN_VIEW_ELEMENT(#RT::view_element);
     FN_VIEW_TEXT(#RT::view_text);
+    FN_VIEW_TEXT_LITERAL(#RT::view_text_literal);
     FN_VIEW_COMPONENT(#RT::view_component);
     FN_VIEW_FRAGMENT(#RT::view_fragment);
     FN_VIEW(#XFRAME::view);
@@ -183,7 +184,7 @@ impl Parse for ViewChild {
 impl ViewChild {
     pub fn quote(&self) -> TokenStream {
         match self {
-            Self::Literal(lit) => quote!({ #FN_VIEW_TEXT(#VAR_CX, #lit) }),
+            Self::Literal(lit) => quote!({ #FN_VIEW_TEXT_LITERAL(#VAR_CX, #lit) }),
             Self::Text { value, .. } => quote!({ #FN_VIEW_TEXT(#VAR_CX, #value) }),
             Self::Expr { value, .. } => value.to_token_stream(),
             Self::Element(view) => view.quote(),

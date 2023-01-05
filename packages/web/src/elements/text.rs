@@ -7,7 +7,7 @@ define_element!(
 
 impl<N: GenericNode> text<N> {
     pub fn data<A: IntoReactive<Attribute>>(self, data: A) -> Self {
-        self.inner.set_inner_text(data.into_reactive(self.inner.cx));
+        self.inner.set_inner_text(data.into_reactive());
         self
     }
 }

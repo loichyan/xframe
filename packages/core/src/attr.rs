@@ -1,13 +1,13 @@
-use crate::{reactive::*, CowStr};
+use crate::CowStr;
 use std::borrow::Cow;
-use xframe_reactive::Scope;
 
+// TODO: rename to `StringLike`
 #[derive(Clone)]
 pub enum Attribute {
     Boolean(bool),
     // TODO: Add integer
     Number(f64),
-    Static(&'static str),
+    Literal(&'static str),
     String(String),
 }
 
@@ -16,7 +16,7 @@ impl Attribute {
         match self {
             Self::Boolean(t) => if t { "true" } else { "false" }.into(),
             Self::Number(t) => t.to_string().into(),
-            Self::Static(t) => t.into(),
+            Self::Literal(t) => t.into(),
             Self::String(t) => t.into(),
         }
     }
@@ -31,18 +31,6 @@ impl From<Cow<'static, str>> for Attribute {
     }
 }
 
-macro_rules! impl_into_reactive_using_into {
-    ($($ty:ty),*) => {$(
-        impl IntoReactive<Attribute> for $ty {
-            fn into_reactive(self, _: Scope) -> Reactive<Attribute> {
-                Value(self.into())
-            }
-        }
-    )*};
-}
-
-impl_into_reactive_using_into!(Cow<'static, str>);
-
 macro_rules! impl_from_for_types_into {
     ($($variant:ident => $ty:ty,)*) => {$(
         impl From<$ty> for Attribute {
@@ -50,15 +38,13 @@ macro_rules! impl_from_for_types_into {
                 Self::$variant(t.into())
             }
         }
-
-        impl_into_reactive_using_into!($ty);
     )*};
 }
 
 impl_from_for_types_into! {
     Boolean => bool,
     Number  => f64,
-    Static  => &'static str,
+    Literal => &'static str,
     String  => String,
 }
 
@@ -69,8 +55,6 @@ macro_rules! impl_for_small_nums {
                 (t as f64).into()
             }
         }
-
-        impl_into_reactive_using_into!($ty);
     )*};
 }
 
@@ -87,8 +71,6 @@ macro_rules! impl_for_big_nums {
                 }
             }
         }
-
-        impl_into_reactive_using_into!($ty);
     )*};
 }
 

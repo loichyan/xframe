@@ -119,7 +119,7 @@ where
         if self.each.is_some() {
             panic!("`For::each` has been provided");
         }
-        self.each = Some(each.into_reactive(self.cx));
+        self.each = Some(each.into_reactive());
         self
     }
 

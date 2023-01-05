@@ -1,7 +1,7 @@
 use wasm_bindgen::{JsCast, UnwrapThrowExt};
 use xframe::{
-    element as el, event as ev, view, DomNode, GenericComponent, GenericElement, If, List, Scope,
-    ScopeExt, Signal, WebNode,
+    element as el, event as ev, view, DomNode, GenericComponent, GenericElement, If,
+    IntoReactiveValue, List, Scope, ScopeExt, Signal, WebNode,
 };
 
 #[derive(Clone)]
@@ -77,7 +77,7 @@ fn make_todo<N: WebNode>(
                     .class("view")
                     input {
                         .class("toggle")
-                        .type_("checkbox")
+                        .type_("checkbox".s())
                         .checked(completed)
                         .on_input(toggle)
                     }
@@ -144,7 +144,7 @@ fn main() {
                     h1 { "Todos" }
                     input {
                         .class("new-todo")
-                        .placeholder("What needs to be done?")
+                        .placeholder("What needs to be done?".s())
                         .on_keydown(add_todo)
                     }
                 }
@@ -169,17 +169,17 @@ fn main() {
                     ul {
                         .class("filters")
                         li { a {
-                            .href("#/") "All"
+                            .href("#/".s()) "All"
                             .classx("selected", filter_selected(ShowMode::All))
                             .on_click(filter_set(ShowMode::All))
                         } }
                         li { a {
-                            .href("#/active") "Active"
+                            .href("#/active".s()) "Active"
                             .classx("selected", filter_selected(ShowMode::Active))
                             .on_click(filter_set(ShowMode::Active))
                         } }
                         li { a {
-                            .href("#/completed") "Completed"
+                            .href("#/completed".s()) "Completed"
                             .classx("selected", filter_selected(ShowMode::Completed))
                             .on_click(filter_set(ShowMode::Completed))
                         } }

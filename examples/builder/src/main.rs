@@ -1,6 +1,8 @@
 use std::marker::PhantomData;
 use xframe::element::prelude::*;
-use xframe::{view, GenericComponent, GenericNode, RenderOutput, Root, Scope, WebNode};
+use xframe::{
+    GenericComponent, GenericNode, IntoReactiveValue, RenderOutput, Root, Scope, WebNode,
+};
 
 struct Counter<N> {
     cx: Scope,
@@ -17,9 +19,9 @@ impl<N: WebNode> GenericComponent<N> for Counter<N> {
                 div(cx).child(move || {
                     button(cx)
                         .on_click(increment)
-                        .child_text("Click me: ")
+                        .child_text("Click me: ".s())
                         .child_text(counter)
-                        .child_text(" times!")
+                        .child_text(" times!".s())
                 })
             })
             .render()
@@ -37,12 +39,5 @@ fn Counter<N: GenericNode>(cx: Scope) -> Counter<N> {
 fn main() {
     console_error_panic_hook::set_once();
 
-    xframe::mount_to_body(|cx| {
-        view! { cx,
-             div {
-                Counter {}
-                Counter {}
-            }
-        }
-    });
+    xframe::mount_to_body(|cx| Root(cx).with(move || div(cx).child(move || Counter(cx))));
 }
