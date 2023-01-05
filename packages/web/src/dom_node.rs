@@ -33,6 +33,7 @@ trait AttrExt: Into<StringLike> {
     fn into_js_value(self) -> JsValue {
         match self.into() {
             StringLike::Boolean(t) => JsValue::from_bool(t),
+            StringLike::Integer(t) => JsValue::from_f64(t as f64),
             StringLike::Number(t) => JsValue::from_f64(t),
             StringLike::Literal(t) => JsValue::from_str(t),
             StringLike::String(t) => JsValue::from_str(&t),
