@@ -1,11 +1,10 @@
+use crate::GenericChild;
 use xframe_core::{
-    component::Root as RootBase, GenericComponent, GenericNode, RenderOutput, TemplateId,
+    component::Root as RootBase, GenericComponent, GenericNode, NodeType, RenderOutput, TemplateId,
 };
 use xframe_reactive::Scope;
 
-use crate::GenericChild;
-
-define_placeholder!(struct Placeholder("PLACEHOLDER FOR `xframe::Fragment` COMPONENT"));
+define_placeholder!(struct Placeholder("PLACEHOLDER FOR `xframe::Root` COMPONENT"));
 
 #[allow(non_snake_case)]
 pub fn Root<N: GenericNode>(cx: Scope) -> Root<N> {
@@ -30,7 +29,11 @@ impl<N: GenericNode> GenericComponent<N> for Root<N> {
         if let Some(id) = id {
             inner.set_id(id);
         }
-        inner.render()
+        inner.render(|data| {
+            N::create(NodeType::Placeholder(
+                format!("PLACEHOLDER FOR TEMPLATE<{data}>").into(),
+            ))
+        })
     }
 }
 

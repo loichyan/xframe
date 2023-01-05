@@ -166,7 +166,7 @@ impl<N: GenericNode> Element<N> {
                 RenderOutput::dehydrate(view, View::node(dehydrated_root))
             }
             ElementMode::Hydrate { next, last } => {
-                debug_assert!(last.is_none());
+                debug_assert_eq!(last, None);
                 RenderOutput::hydrate(view, next)
             }
         }
@@ -464,48 +464,52 @@ impl<N: GenericNode> Root<N> {
         }
     }
 
-    pub fn render(self) -> RenderOutput<N> {
-        let output = self.render_impl();
+    pub fn render(self, placeholder: impl Fn(&'static str) -> N) -> RenderOutput<N> {
+        let output = self.render_impl(placeholder);
         if is_debug!() {
             check_mode::<N>(|mode| assert_eq!(mode, &Mode::none()));
         }
         output
     }
 
-    fn render_impl(self) -> RenderOutput<N> {
+    fn render_impl(self, placeholder: impl Fn(&'static str) -> N) -> RenderOutput<N> {
         let Self { id, inner, .. } = self;
         let Some(id) = id else {
             return inner();
         };
         let mode = take_mode::<N>();
-        if let Mode::Hydrate { .. } = &mode {
-            set_mode(mode);
-            return inner();
-        }
         let id = id();
         let prev_mode = mode;
         match GlobalState::<N>::get_template(id) {
-            Some(Template {
-                container,
-                dehydrated,
-            }) => {
+            Some(Template { container, .. }) => {
                 let container = container.deep_clone();
                 set_mode(Mode::hydrate(
                     container.first_child().unwrap(),
                     Behavior::RemoveFrom(container),
                 ));
                 let RenderOutput { view, mode } = inner();
-                let OutputMode::Hydrate { .. } = mode else {
+                let OutputMode::Hydrate { next, .. } = mode else {
                     panic!("mode mismatched");
                 };
+                debug_assert_eq!(next, None);
                 match prev_mode {
                     Mode::None => RenderOutput::none(view),
-                    // TODO: Use a placeholder instead
-                    Mode::Dehydrate => RenderOutput::dehydrate(view, dehydrated.deep_clone()),
-                    _ => unreachable!(),
+                    Mode::Dehydrate => {
+                        RenderOutput::dehydrate(view, View::node(placeholder(id.data())))
+                    }
+                    Mode::Hydrate { first, .. } => {
+                        let parent = first.parent().unwrap();
+                        let next = first.next_sibling();
+                        view.replace_with(&parent, &view);
+                        RenderOutput::hydrate(view, next)
+                    }
                 }
             }
             None => {
+                if let Mode::Hydrate { .. } = &prev_mode {
+                    set_mode(prev_mode);
+                    return inner();
+                }
                 set_mode(Mode::<N>::dehydrate());
                 let RenderOutput { view, mode } = inner();
                 let OutputMode::Dehydrate { dehydrated } = mode else {
@@ -513,20 +517,14 @@ impl<N: GenericNode> Root<N> {
                 };
                 let output = match prev_mode {
                     Mode::None => RenderOutput::none(view),
-                    Mode::Dehydrate => RenderOutput::dehydrate(view, dehydrated.deep_clone()),
+                    Mode::Dehydrate => {
+                        RenderOutput::dehydrate(view, View::node(placeholder(id.data())))
+                    }
                     _ => unreachable!(),
                 };
-                GlobalState::set_template(
-                    id,
-                    Template {
-                        container: {
-                            let container = N::create(NodeType::Template(id.data().into()));
-                            dehydrated.append_to(&container);
-                            container
-                        },
-                        dehydrated,
-                    },
-                );
+                let container = N::create(NodeType::Template(id.data().into()));
+                dehydrated.append_to(&container);
+                GlobalState::set_template(id, Template { container });
                 output
             }
         }

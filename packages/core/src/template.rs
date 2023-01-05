@@ -1,4 +1,4 @@
-use crate::{component::GlobalMode, GenericNode, View};
+use crate::{component::GlobalMode, GenericNode};
 use std::cell::{Cell, RefCell};
 
 thread_local! {
@@ -69,5 +69,4 @@ impl TemplateId {
 #[derive(Clone)]
 pub(crate) struct Template<N> {
     pub container: N,
-    pub dehydrated: View<N>,
 }

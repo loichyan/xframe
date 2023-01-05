@@ -38,6 +38,6 @@ fn main() {
     xframe::mount_to_body(|cx| {
         Root(cx)
             .id(id!())
-            .child(move || div(cx).child((move || Counter(cx), move || Counter(cx))))
+            .child((move || Counter(cx), move || Counter(cx)))
     });
 }
