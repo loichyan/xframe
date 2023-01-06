@@ -1,8 +1,9 @@
 use crate::child::GenericChild;
+use crate::components::Root;
 use smallvec::SmallVec;
 use xframe_core::{
     is_debug, view::ViewParentExt, GenericComponent, GenericNode, IntoReactive, Reactive,
-    RenderOutput, View,
+    RenderOutput, TemplateId, View,
 };
 use xframe_reactive::{untrack, Scope};
 
@@ -54,7 +55,7 @@ impl<N: GenericNode> GenericComponent<N> for Switch<N> {
             untrack(|| {
                 let parent = current_view.parent();
                 let new_view = new_index
-                    .map(|i| branches[i].content.render())
+                    .map(|i| branches[i].content.render(cx))
                     // Fallback to a placeholder.
                     .unwrap_or_else(|| placeholder.clone());
                 parent.replace_child(&new_view, &current_view);
@@ -83,16 +84,17 @@ where
 pub fn If<N: GenericNode>(cx: Scope) -> If<N> {
     If {
         cx,
+        id: None,
         when: None,
         children: None,
     }
 }
 
-// TODO: add `If::id`
 pub struct If<N> {
     cx: Scope,
+    id: Option<fn() -> TemplateId>,
     when: Option<Reactive<bool>>,
-    children: Option<LazyRender<N>>,
+    children: Option<Box<dyn FnOnce() -> RenderOutput<N>>>,
 }
 
 impl<N: GenericNode> GenericComponent<N> for If<N> {
@@ -105,12 +107,23 @@ impl<N: GenericNode> SwitchChild<N> for If<N> {
     fn into_branch(self) -> Branch<N> {
         Branch {
             cond: self.when.expect("`If::when` was not specified"),
-            content: self.children.expect("`If::child` was not specified"),
+            content: LazyRender::new(
+                self.id,
+                self.children.expect("`If::child` was not specified"),
+            ),
         }
     }
 }
 
 impl<N: GenericNode> If<N> {
+    pub fn id(mut self, id: fn() -> TemplateId) -> Self {
+        if self.id.is_some() {
+            panic!("`If::id` has been specified");
+        }
+        self.id = Some(id);
+        self
+    }
+
     pub fn when<T: IntoReactive<bool>>(mut self, when: T) -> If<N> {
         if self.when.is_some() {
             panic!("`If::when` has been specified");
@@ -124,20 +137,24 @@ impl<N: GenericNode> If<N> {
             panic!("`If::child` has been specified");
         }
         let cx = self.cx;
-        self.children = Some(LazyRender::new(move || child.render(cx)));
+        self.children = Some(Box::new(move || child.render(cx)));
         self
     }
 }
 
-// TODO: add `Else::id`
 #[allow(non_snake_case)]
 pub fn Else<N: GenericNode>(cx: Scope) -> Else<N> {
-    Else { cx, children: None }
+    Else {
+        cx,
+        id: None,
+        children: None,
+    }
 }
 
 pub struct Else<N> {
     cx: Scope,
-    children: Option<LazyRender<N>>,
+    id: Option<fn() -> TemplateId>,
+    children: Option<Box<dyn FnOnce() -> RenderOutput<N>>>,
 }
 
 impl<N: GenericNode> GenericComponent<N> for Else<N> {
@@ -153,38 +170,55 @@ impl<N: GenericNode> SwitchChild<N> for Else<N> {
     fn into_branch(self) -> Branch<N> {
         Branch {
             cond: Reactive::Static(true),
-            content: self.children.expect("`Else::child` was not specified"),
+            content: LazyRender::new(
+                self.id,
+                self.children.expect("`Else::child` was not specified"),
+            ),
         }
     }
 }
 
 impl<N: GenericNode> Else<N> {
+    pub fn id(mut self, id: fn() -> TemplateId) -> Self {
+        if self.id.is_some() {
+            panic!("`Else::id` has been specified");
+        }
+        self.id = Some(id);
+        self
+    }
+
     pub fn child(mut self, child: impl GenericChild<N>) -> Else<N> {
         if self.children.is_some() {
             panic!("`Else::child` has been specified");
         }
         let cx = self.cx;
-        self.children = Some(LazyRender::new(move || child.render(cx)));
+        self.children = Some(Box::new(move || child.render(cx)));
         self
     }
 }
 
 struct LazyRender<N> {
-    component: Option<Box<dyn FnOnce() -> View<N>>>,
+    component: Option<Box<dyn FnOnce(Scope) -> View<N>>>,
     view: Option<View<N>>,
 }
 
 impl<N: GenericNode> LazyRender<N> {
-    fn new<C: GenericComponent<N>>(f: impl 'static + FnOnce() -> C) -> Self {
+    fn new(id: Option<fn() -> TemplateId>, f: impl 'static + FnOnce() -> RenderOutput<N>) -> Self {
         Self {
-            component: Some(Box::new(move || f().render_view())),
+            component: Some(Box::new(move |cx| {
+                if let Some(id) = id {
+                    Root(cx).id(id).child(f).render_view()
+                } else {
+                    f().render_view()
+                }
+            })),
             view: None,
         }
     }
 
-    fn render(&mut self) -> View<N> {
+    fn render(&mut self, cx: Scope) -> View<N> {
         self.view
-            .get_or_insert_with(|| self.component.take().unwrap()())
+            .get_or_insert_with(|| self.component.take().unwrap()(cx))
             .clone()
     }
 }

@@ -1,4 +1,4 @@
-use xframe::{id, prelude::*, view, Else, If, Root, Switch, TemplateId};
+use xframe::{id, prelude::*, view, Else, If, Switch, TemplateId};
 
 fn main() {
     console_error_panic_hook::set_once();
@@ -12,11 +12,9 @@ fn main() {
             move || {
                 view! { cx,
                     If {
+                        .id(id)
                         .when(when)
-                        Root {
-                            .id(id)
-                            div { "Number " (counter) " is also the divisor of " (n.s()) "." }
-                        }
+                        div { "Number " (counter) " is also the divisor of " (n.s()) "." }
                     }
                 }
             }

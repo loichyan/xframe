@@ -1,4 +1,4 @@
-use crate::{dom_node::DomNode, Root, DOCUMENT};
+use crate::{dom_node::DomNode, DOCUMENT};
 use xframe_core::{GenericComponent, GenericNode};
 use xframe_reactive::Scope;
 
@@ -12,10 +12,7 @@ pub fn mount_to<C: GenericComponent<DomNode>>(
     f: impl 'static + FnOnce(Scope) -> C,
 ) {
     let (_, dispoer) = xframe_reactive::create_root(|cx| {
-        Root(cx)
-            .child(move || f(cx))
-            .render_view()
-            .append_to(&DomNode::from(root.clone()));
+        f(cx).render_view().append_to(&DomNode::from(root.clone()));
     });
     dispoer.leak();
 }
