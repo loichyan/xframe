@@ -1,9 +1,6 @@
 use crate::{utils::UnwrapThrowValExt, CowStr, DOCUMENT};
 use js_sys::Reflect;
-use std::{
-    borrow::{Borrow, Cow},
-    cell::Cell,
-};
+use std::borrow::{Borrow, Cow};
 use wasm_bindgen::{intern, prelude::*, JsCast};
 use web_sys::HtmlTemplateElement;
 use xframe_core::{
@@ -11,10 +8,6 @@ use xframe_core::{
     template::{GlobalState, ThreadLocalState},
     EventHandler, GenericNode, NodeType, StringLike,
 };
-
-thread_local! {
-    static GLOBAL_ID: Cell<usize> = Cell::new(0);
-}
 
 trait CowStrExt: Borrow<CowStr> {
     fn intern(&self) -> &str {
@@ -41,34 +34,10 @@ trait AttrExt: Into<StringLike> {
 
 impl<T: Into<StringLike>> AttrExt for T {}
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-struct NodeId {
-    id: usize,
-}
-
-impl NodeId {
-    pub fn new() -> Self {
-        GLOBAL_ID.with(|id| {
-            let current = id.get();
-            id.set(current + 1);
-            NodeId { id: current }
-        })
-    }
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DomNode {
-    id: NodeId,
     node: web_sys::Node,
 }
-
-impl PartialEq for DomNode {
-    fn eq(&self, other: &Self) -> bool {
-        self.id.eq(&other.id) || self.node.eq(&other.node)
-    }
-}
-
-impl Eq for DomNode {}
 
 impl From<web_sys::Node> for DomNode {
     fn from(node: web_sys::Node) -> Self {
@@ -121,15 +90,11 @@ impl GenericNode for DomNode {
                 }
             }
         });
-        Self {
-            node,
-            id: NodeId::new(),
-        }
+        Self { node }
     }
 
     fn deep_clone(&self) -> Self {
         Self {
-            id: NodeId::new(),
             node: self.node.clone_node_with_deep(true).unwrap_throw_val(),
         }
     }
@@ -209,10 +174,7 @@ impl GenericNode for DomNode {
 
 impl DomNode {
     pub fn from_js(node: web_sys::Node) -> Self {
-        Self {
-            id: NodeId::new(),
-            node,
-        }
+        Self { node }
     }
 
     pub fn into_js(self) -> web_sys::Node {
