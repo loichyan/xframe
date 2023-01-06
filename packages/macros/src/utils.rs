@@ -3,16 +3,19 @@ use quote::ToTokens;
 use syn::token;
 
 macro_rules! new_type_quote {
-    ($($name:ident($($tt:tt)*);)*) => {$(
-        #[allow(clippy::upper_case_acronyms)]
+    ($($name:ident $tt:tt;)*) => {
+        $(new_type_quote!($name $tt);)*
+    };
+    ($name:ident($($tt:tt)*)) => {
         #[allow(non_camel_case_types)]
+        #[allow(clippy::upper_case_acronyms)]
         struct $name;
         impl ::quote::ToTokens for $name {
             fn to_tokens(&self, tokens: &mut ::proc_macro2::TokenStream) {
-                tokens.extend(::quote::quote!($($tt)*));
+                ::quote::quote!($($tt)*).to_tokens(tokens);
             }
         }
-    )*};
+    };
 }
 
 pub struct QuoteSurround<S, T>(pub S, pub T);

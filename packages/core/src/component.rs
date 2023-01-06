@@ -129,7 +129,7 @@ enum ElementMode<N> {
 }
 
 impl<N: GenericNode> Element<N> {
-    pub fn new(cx: Scope, init: impl Fn() -> N) -> Self {
+    pub fn new(cx: Scope, init: fn() -> N) -> Self {
         let mode;
         let root;
         match take_mode::<N>() {
@@ -373,7 +373,7 @@ impl<N: GenericNode> Fragment<N> {
         }
     }
 
-    pub fn render(self, fallback: impl Fn() -> N) -> RenderOutput<N> {
+    pub fn render(self, fallback: fn() -> N) -> RenderOutput<N> {
         match self.mode {
             FragmentMode::None => {
                 let view = if self.views.is_empty() {
@@ -466,7 +466,7 @@ impl<N: GenericNode> Root<N> {
         }
     }
 
-    pub fn render(self, placeholder: impl Fn(&'static str) -> N) -> RenderOutput<N> {
+    pub fn render(self, placeholder: fn(&'static str) -> N) -> RenderOutput<N> {
         let output = self.render_impl(placeholder);
         if is_debug!() {
             check_mode::<N>(|mode| assert_eq!(mode, &Mode::none()));
@@ -474,7 +474,7 @@ impl<N: GenericNode> Root<N> {
         output
     }
 
-    fn render_impl(self, placeholder: impl Fn(&'static str) -> N) -> RenderOutput<N> {
+    fn render_impl(self, placeholder: fn(&'static str) -> N) -> RenderOutput<N> {
         let Self { id, inner, .. } = self;
         let Some(id) = id else {
             return inner();

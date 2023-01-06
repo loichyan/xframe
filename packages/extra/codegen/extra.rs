@@ -6,6 +6,9 @@ use syn::{Ident, LitStr};
 use web_types::JsType;
 
 macro_rules! new_type_quote {
+    ($($name:ident $tt:tt;)*) => {
+        $(new_type_quote!($name $tt);)*
+    };
     ($name:ident($($tt:tt)*)) => {
         #[allow(non_camel_case_types)]
         #[allow(clippy::upper_case_acronyms)]
@@ -18,31 +21,33 @@ macro_rules! new_type_quote {
     };
 }
 
-new_type_quote!(M_CORE(#M_INPUT::core));
-new_type_quote!(M_INPUT(super::input));
-new_type_quote!(M_REACTIVE(#M_INPUT::reactive));
-new_type_quote!(M_WEB(#M_INPUT::web));
-new_type_quote!(M_WEB_SYS(#M_INPUT::web_sys));
+new_type_quote! {
+    M_CORE(#M_INPUT::core);
+    M_INPUT(super::input);
+    M_REACTIVE(#M_INPUT::reactive);
+    M_WEB(#M_INPUT::web);
+    M_WEB_SYS(#M_INPUT::web_sys);
 
-new_type_quote!(M_ATTR_TYPES(super::attr_types));
-new_type_quote!(M_ELEMENT_TYPES(super::element_types));
-new_type_quote!(M_EVENT_TYPES(super::event_types));
+    M_ATTR_TYPES(super::attr_types);
+    M_ELEMENT_TYPES(super::element_types);
+    M_EVENT_TYPES(super::event_types);
 
-new_type_quote!(T_WEB_NODE(#M_WEB::WebNode));
-new_type_quote!(T_GENERIC_COMPONENT(#M_CORE::GenericComponent));
-new_type_quote!(T_GENERIC_ELEMENT(#M_WEB::GenericElement));
-new_type_quote!(T_GENERIC_NODE(#M_CORE::GenericNode));
-new_type_quote!(T_INTO_REACTIVE(#M_CORE::IntoReactive));
-new_type_quote!(T_INTO_EVENT_HANDLER(#M_CORE::IntoEventHandler));
+    T_WEB_NODE(#M_WEB::WebNode);
+    T_GENERIC_COMPONENT(#M_CORE::GenericComponent);
+    T_GENERIC_ELEMENT(#M_WEB::GenericElement);
+    T_GENERIC_NODE(#M_CORE::GenericNode);
+    T_INTO_REACTIVE(#M_CORE::IntoReactive);
+    T_INTO_EVENT_HANDLER(#M_CORE::IntoEventHandler);
 
-new_type_quote!(BASE_ELEMENT(#M_INPUT::BaseElement));
-new_type_quote!(COW_STR(::std::borrow::Cow::<'static, str>));
-new_type_quote!(ELEMENT(#M_CORE::component::Element));
-new_type_quote!(NODE_TYPE(#M_CORE::NodeType));
-new_type_quote!(OUTPUT(#M_CORE::RenderOutput));
-new_type_quote!(REACTIVE(#M_CORE::Reactive));
-new_type_quote!(SCOPE(#M_REACTIVE::Scope));
-new_type_quote!(STRING_LIKE(#M_CORE::StringLike));
+    BASE_ELEMENT(#M_INPUT::BaseElement);
+    COW_STR(::std::borrow::Cow::<'static, str>);
+    ELEMENT(#M_CORE::component::Element);
+    NODE_TYPE(#M_CORE::NodeType);
+    OUTPUT(#M_CORE::RenderOutput);
+    REACTIVE(#M_CORE::Reactive);
+    SCOPE(#M_REACTIVE::Scope);
+    STRING_LIKE(#M_CORE::StringLike);
+}
 
 trait StrExt: AsRef<str> {
     fn to_lit_str(&self) -> LitStr {
@@ -180,10 +185,7 @@ impl<'a> Element<'a> {
 
             pub fn #fn_<N: #T_GENERIC_NODE>(cx: #SCOPE) -> #fn_<N> {
                 #fn_ {
-                    inner: #BASE_ELEMENT::new(
-                        cx,
-                        <#fn_<N> as #T_GENERIC_ELEMENT<N>>::TYPE,
-                    ),
+                    inner: #BASE_ELEMENT::new::<#fn_<N>>(cx),
                 }
             }
 

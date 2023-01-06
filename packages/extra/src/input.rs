@@ -3,11 +3,10 @@
 use std::borrow::Cow;
 use wasm_bindgen::JsCast;
 use xframe_core::{
-    component::Element, GenericNode, IntoEventHandler, IntoReactive, NodeType, RenderOutput,
-    StringLike,
+    component::Element, GenericNode, IntoEventHandler, IntoReactive, RenderOutput, StringLike,
 };
 use xframe_reactive::Scope;
-use xframe_web::WebNode;
+use xframe_web::{GenericElement, WebNode};
 
 pub(crate) type JsBoolean = bool;
 pub(crate) type JsNumber = f64;
@@ -21,9 +20,9 @@ pub(crate) struct BaseElement<N> {
 
 #[allow(dead_code)]
 impl<N: GenericNode> BaseElement<N> {
-    pub fn new(cx: Scope, ty: NodeType) -> Self {
+    pub fn new<E: GenericElement<N>>(cx: Scope) -> Self {
         Self {
-            inner: Element::new(cx, || N::create(ty.clone())),
+            inner: Element::new(cx, || N::create(E::TYPE)),
         }
     }
 
