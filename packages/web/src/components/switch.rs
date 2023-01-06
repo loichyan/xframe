@@ -1,4 +1,4 @@
-use crate::{element::GenericElement, GenericChild};
+use crate::child::GenericChild;
 use smallvec::SmallVec;
 use xframe_core::{
     is_debug, view::ViewParentExt, GenericComponent, GenericNode, IntoReactive, Reactive,
@@ -36,34 +36,32 @@ impl<N: GenericNode> GenericComponent<N> for Switch<N> {
         let mut branches = children;
         let mut current_index = None;
         let mut placeholder = None;
-        Placeholder::<N>::new(cx)
-            .dyn_view(move |current_view| {
-                // The initial view should be the placeholder node.
-                let placeholder = &*placeholder.get_or_insert_with(|| current_view.clone());
-                let mut new_index = None;
-                for (index, branch) in branches.iter().enumerate() {
-                    // Only `cond` need to be tracked.
-                    if branch.cond.clone().into_value() {
-                        new_index = Some(index);
-                        break;
-                    }
+        Placeholder::<N>::new(cx).render_with(move |current_view| {
+            // The initial view should be the placeholder node.
+            let placeholder = &*placeholder.get_or_insert_with(|| current_view.clone());
+            let mut new_index = None;
+            for (index, branch) in branches.iter().enumerate() {
+                // Only `cond` need to be tracked.
+                if branch.cond.clone().into_value() {
+                    new_index = Some(index);
+                    break;
                 }
-                if new_index == current_index {
-                    return current_view;
-                }
-                current_index = new_index;
-                untrack(|| {
-                    let parent = current_view.parent();
-                    let new_view = new_index
-                        .map(|i| branches[i].content.render())
-                        // Fallback to a placeholder.
-                        .unwrap_or_else(|| placeholder.clone());
-                    parent.replace_child(&new_view, &current_view);
-                    debug_assert!(new_view.check_mount_order());
-                    new_view
-                })
+            }
+            if new_index == current_index {
+                return None;
+            }
+            current_index = new_index;
+            untrack(|| {
+                let parent = current_view.parent();
+                let new_view = new_index
+                    .map(|i| branches[i].content.render())
+                    // Fallback to a placeholder.
+                    .unwrap_or_else(|| placeholder.clone());
+                parent.replace_child(&new_view, &current_view);
+                debug_assert!(new_view.check_mount_order());
+                Some(new_view)
             })
-            .render()
+        })
     }
 }
 

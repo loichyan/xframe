@@ -1,4 +1,4 @@
-use crate::GenericChild;
+use crate::child::GenericChild;
 use xframe_core::{
     component::Root as RootBase, is_debug, GenericComponent, GenericNode, NodeType, RenderOutput,
     TemplateId,

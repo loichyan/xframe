@@ -119,7 +119,6 @@ pub struct Element<N> {
     pub cx: Scope,
     mode: ElementMode<N>,
     root: N,
-    dyn_view: Option<View<N>>,
 }
 
 enum ElementMode<N> {
@@ -152,16 +151,37 @@ impl<N: GenericNode> Element<N> {
                 behavior.apply_to(&root);
             }
         }
-        Self {
-            cx,
-            mode,
-            root,
-            dyn_view: None,
-        }
+        Self { cx, mode, root }
     }
 
     pub fn render(self) -> RenderOutput<N> {
-        let view = self.dyn_view.unwrap_or_else(|| View::node(self.root));
+        self.render_impl(None)
+    }
+
+    pub fn render_with(
+        self,
+        mut f: impl 'static + FnMut(View<N>) -> Option<View<N>>,
+    ) -> RenderOutput<N> {
+        let dyn_view = self.cx.create_signal(View::node(self.root.clone()));
+        self.cx.create_effect({
+            move || {
+                let mut updated = false;
+                dyn_view.write_slient(|current| {
+                    if let Some(new) = f(current.clone()) {
+                        *current = new;
+                        updated = true;
+                    }
+                });
+                if updated {
+                    dyn_view.trigger();
+                }
+            }
+        });
+        self.render_impl(Some(View::dyn_(dyn_view.into())))
+    }
+
+    fn render_impl(self, dyn_view: Option<View<N>>) -> RenderOutput<N> {
+        let view = dyn_view.unwrap_or_else(|| View::node(self.root));
         match self.mode {
             ElementMode::None => RenderOutput::none(view),
             ElementMode::Dehydrate { dehydrated_root } => {
@@ -174,6 +194,50 @@ impl<N: GenericNode> Element<N> {
         }
     }
 
+    pub fn add_child<C: GenericComponent<N>>(&mut self, f: impl 'static + FnOnce() -> C) {
+        self.before_child();
+        let output = f().render();
+        self.after_child(output);
+    }
+
+    fn before_child(&mut self) {
+        let mode = match &mut self.mode {
+            ElementMode::None => Mode::none(),
+            ElementMode::Dehydrate { .. } => Mode::dehydrate(),
+            ElementMode::Hydrate { last, .. } => {
+                Mode::hydrate(last.take().unwrap(), Behavior::Nothing)
+            }
+        };
+        set_mode(mode);
+    }
+
+    fn after_child(&mut self, output: RenderOutput<N>) {
+        if is_debug!() {
+            check_mode::<N>(|mode| assert_eq!(mode, &Mode::none()));
+        }
+        match output.mode {
+            OutputMode::None => {
+                let ElementMode::None = &self.mode  else {
+                    panic!("mode mismatched");
+                };
+                output.view.append_to(&self.root);
+            }
+            OutputMode::Dehydrate { dehydrated } => {
+                let ElementMode::Dehydrate { dehydrated_root } = &self.mode else {
+                    panic!("mode mismatched");
+                };
+                output.view.append_to(&self.root);
+                dehydrated.append_to(dehydrated_root);
+            }
+            OutputMode::Hydrate { next } => {
+                let ElementMode::Hydrate { last, .. } = &mut self.mode else {
+                    panic!("mode mismatched");
+                };
+                *last = next;
+            }
+        }
+    }
+
     fn with_root_static(&self, f: impl Fn(&N)) {
         match &self.mode {
             ElementMode::Dehydrate { dehydrated_root } => f(dehydrated_root),
@@ -181,6 +245,10 @@ impl<N: GenericNode> Element<N> {
             _ => (),
         }
         f(&self.root);
+    }
+
+    pub fn root(&self) -> &N {
+        &self.root
     }
 
     pub fn set_property(&self, name: CowStr, val: Reactive<StringLike>) {
@@ -258,78 +326,6 @@ impl<N: GenericNode> Element<N> {
 
     pub fn listen_event(&self, event: CowStr, handler: EventHandler<N::Event>) {
         self.root.listen_event(event, handler);
-    }
-
-    pub fn root(&self) -> &N {
-        &self.root
-    }
-
-    pub fn is_dyn_view(&self) -> bool {
-        self.dyn_view.is_some()
-    }
-
-    pub fn set_dyn_view(&mut self, mut f: impl 'static + FnMut(View<N>) -> View<N>) {
-        let dyn_view = self.cx.create_signal(View::node(self.root.clone()));
-        self.cx.create_effect({
-            move || {
-                let mut updated = false;
-                dyn_view.write_slient(|current| {
-                    let new = f(current.clone());
-                    if !current.ref_eq(&new) {
-                        *current = new;
-                        updated = true;
-                    }
-                });
-                if updated {
-                    dyn_view.trigger();
-                }
-            }
-        });
-        self.dyn_view = Some(View::dyn_(dyn_view.into()));
-    }
-
-    pub fn add_child<C: GenericComponent<N>>(&mut self, f: impl 'static + FnOnce() -> C) {
-        self.before_child();
-        let output = f().render();
-        self.after_child(output);
-    }
-
-    fn before_child(&mut self) {
-        let mode = match &mut self.mode {
-            ElementMode::None => Mode::none(),
-            ElementMode::Dehydrate { .. } => Mode::dehydrate(),
-            ElementMode::Hydrate { last, .. } => {
-                Mode::hydrate(last.take().unwrap(), Behavior::Nothing)
-            }
-        };
-        set_mode(mode);
-    }
-
-    fn after_child(&mut self, output: RenderOutput<N>) {
-        if is_debug!() {
-            check_mode::<N>(|mode| assert_eq!(mode, &Mode::none()));
-        }
-        match output.mode {
-            OutputMode::None => {
-                let ElementMode::None = &self.mode  else {
-                    panic!("mode mismatched");
-                };
-                output.view.append_to(&self.root);
-            }
-            OutputMode::Dehydrate { dehydrated } => {
-                let ElementMode::Dehydrate { dehydrated_root } = &self.mode else {
-                    panic!("mode mismatched");
-                };
-                output.view.append_to(&self.root);
-                dehydrated.append_to(dehydrated_root);
-            }
-            OutputMode::Hydrate { next } => {
-                let ElementMode::Hydrate { last, .. } = &mut self.mode else {
-                    panic!("mode mismatched");
-                };
-                *last = next;
-            }
-        }
     }
 }
 

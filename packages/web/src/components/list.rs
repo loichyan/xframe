@@ -1,4 +1,3 @@
-use crate::element::GenericElement;
 use std::rc::Rc;
 use xframe_core::{
     view::ViewParentExt, GenericComponent, GenericNode, IntoReactive, Reactive, RenderOutput, View,
@@ -39,59 +38,57 @@ where
         let mut current_fragment = Rc::new([]) as Rc<[View<N>]>;
         let mut current_disposers = Vec::<ScopeDisposer>::new();
         let mut placeholder = None;
-        Placeholder::<N>::new(cx)
-            .dyn_view(move |current_view| {
-                let placeholder = &*placeholder.get_or_insert_with(|| current_view.clone());
-                // Only `each` needs to be tracked.
-                let new_vals = each.clone().into_value();
-                untrack(|| {
-                    let parent = current_view.parent();
-                    let current_len = current_fragment.len();
-                    let new_len = new_vals.len();
-                    let new_view: View<N>;
-                    if new_len == 0 {
-                        if current_len == 0 {
-                            return current_view;
-                        }
-                        // Replace empty view with a placeholder.
-                        parent.replace_child(placeholder, &current_view);
-                        current_fragment = Rc::new([]);
-                        current_disposers = Vec::new();
-                        new_view = placeholder.clone();
-                    } else if new_len < current_len {
-                        let (lhs, rhs) = current_fragment.split_at(new_len);
-                        // Remove extra views.
-                        for view in rhs {
-                            parent.remove_child(view);
-                        }
-                        current_fragment = lhs.to_vec().into_boxed_slice().into();
-                        current_disposers.truncate(new_len);
-                        new_view = View::fragment_shared(current_fragment.clone());
-                    } else if new_len > current_len {
-                        let next_sibling = current_view.next_sibling();
-                        let mut new_fragment = current_fragment.to_vec();
-                        for val in new_vals[current_len..].iter() {
-                            // Append new views.
-                            let (view, disposer) = cx.create_child(|cx| fn_view(cx, val));
-                            parent.insert_before(&view, next_sibling.as_ref());
-                            new_fragment.push(view);
-                            current_disposers.push(disposer);
-                        }
-                        if current_len == 0 {
-                            // Remove the placeholder.
-                            parent.remove_child(placeholder);
-                        }
-                        current_fragment = new_fragment.into_boxed_slice().into();
-                        new_view = View::fragment_shared(current_fragment.clone());
-                    } else {
-                        return current_view;
+        Placeholder::<N>::new(cx).render_with(move |current_view| {
+            let placeholder = &*placeholder.get_or_insert_with(|| current_view.clone());
+            // Only `each` needs to be tracked.
+            let new_vals = each.clone().into_value();
+            untrack(|| {
+                let parent = current_view.parent();
+                let current_len = current_fragment.len();
+                let new_len = new_vals.len();
+                let new_view: View<N>;
+                if new_len == 0 {
+                    if current_len == 0 {
+                        return None;
                     }
-                    debug_assert_eq!(current_fragment.len(), current_disposers.len());
-                    debug_assert!(new_view.check_mount_order());
-                    new_view
-                })
+                    // Replace empty view with a placeholder.
+                    parent.replace_child(placeholder, &current_view);
+                    current_fragment = Rc::new([]);
+                    current_disposers = Vec::new();
+                    new_view = placeholder.clone();
+                } else if new_len < current_len {
+                    let (lhs, rhs) = current_fragment.split_at(new_len);
+                    // Remove extra views.
+                    for view in rhs {
+                        parent.remove_child(view);
+                    }
+                    current_fragment = lhs.to_vec().into_boxed_slice().into();
+                    current_disposers.truncate(new_len);
+                    new_view = View::fragment_shared(current_fragment.clone());
+                } else if new_len > current_len {
+                    let next_sibling = current_view.next_sibling();
+                    let mut new_fragment = current_fragment.to_vec();
+                    for val in new_vals[current_len..].iter() {
+                        // Append new views.
+                        let (view, disposer) = cx.create_child(|cx| fn_view(cx, val));
+                        parent.insert_before(&view, next_sibling.as_ref());
+                        new_fragment.push(view);
+                        current_disposers.push(disposer);
+                    }
+                    if current_len == 0 {
+                        // Remove the placeholder.
+                        parent.remove_child(placeholder);
+                    }
+                    current_fragment = new_fragment.into_boxed_slice().into();
+                    new_view = View::fragment_shared(current_fragment.clone());
+                } else {
+                    return None;
+                }
+                debug_assert_eq!(current_fragment.len(), current_disposers.len());
+                debug_assert!(new_view.check_mount_order());
+                Some(new_view)
             })
-            .render()
+        })
     }
 }
 

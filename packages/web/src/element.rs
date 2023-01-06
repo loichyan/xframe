@@ -2,7 +2,7 @@ use crate::{CowStr, GenericChild};
 use std::any::Any;
 use xframe_core::{
     component::Element, GenericComponent, GenericNode, IntoEventHandler, IntoReactive, NodeType,
-    Reactive, StringLike, View,
+    Reactive, StringLike,
 };
 use xframe_reactive::{Scope, Signal};
 
@@ -14,14 +14,6 @@ pub trait GenericElement<N: GenericNode>:
     fn child(mut self, child: impl GenericChild<N>) -> Self {
         let cx = self.as_ref().cx;
         self.as_mut().add_child(move || child.render(cx));
-        self
-    }
-
-    fn dyn_view(mut self, dyn_view: impl 'static + FnMut(View<N>) -> View<N>) -> Self {
-        if self.as_ref().is_dyn_view() {
-            panic!("`Element::dyn_view` has been specified")
-        }
-        self.as_mut().set_dyn_view(dyn_view);
         self
     }
 

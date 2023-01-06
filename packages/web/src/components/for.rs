@@ -1,4 +1,3 @@
-use crate::GenericElement;
 use std::{collections::HashMap, hash::Hash, rc::Rc};
 use xframe_core::{
     is_debug, view::ViewParentExt, GenericComponent, GenericNode, IntoReactive, Reactive,
@@ -50,61 +49,59 @@ where
         let mut current_fragment: Rc<[View<N>]> = Rc::new([]);
         let mut current_disposers = Vec::<Option<ScopeDisposer>>::new();
         let mut placeholder = None;
-        Placeholder::<N>::new(cx)
-            .dyn_view(move |current_view| {
-                let placeholder = &*placeholder.get_or_insert_with(|| current_view.clone());
-                let new_vals = each.clone().into_value();
-                untrack(|| {
-                    let parent = current_view.parent();
-                    let new_view;
-                    if new_vals.is_empty() {
-                        if current_fragment.is_empty() {
-                            return current_view;
-                        }
-                        // Replace empty view with placeholder.
-                        parent.replace_child(placeholder, &current_view);
-                        current_fragment = Rc::new([]);
-                        current_disposers = Vec::new();
-                        new_view = placeholder.clone();
-                    } else {
-                        let mut new_fragment;
-                        let mut new_disposers;
-                        if current_fragment.is_empty() {
-                            new_fragment = Vec::with_capacity(new_vals.len());
-                            new_disposers = Vec::with_capacity(new_vals.len());
-                            let position = placeholder.first();
-                            // Append new views.
-                            for val in new_vals.iter() {
-                                let (view, disposer) = cx.create_child(|cx| fn_view(cx, val));
-                                parent.insert_before(&view, Some(&position));
-                                new_fragment.push(view);
-                                new_disposers.push(Some(disposer));
-                            }
-                            // Remove the placeholder.
-                            parent.remove_child(placeholder);
-                        } else {
-                            // Diff two fragments.
-                            (new_fragment, new_disposers) = reconcile(
-                                parent.as_ref(),
-                                &current_vals,
-                                &current_fragment,
-                                &mut current_disposers,
-                                &new_vals,
-                                &fn_key,
-                                |val| cx.create_child(|cx| fn_view(cx, val)),
-                                View::fragment_shared(Rc::new([placeholder.clone()])),
-                            );
-                        }
-                        current_fragment = new_fragment.into_boxed_slice().into();
-                        current_disposers = new_disposers;
-                        new_view = View::fragment_shared(current_fragment.clone());
+        Placeholder::<N>::new(cx).render_with(move |current_view| {
+            let placeholder = &*placeholder.get_or_insert_with(|| current_view.clone());
+            let new_vals = each.clone().into_value();
+            untrack(|| {
+                let parent = current_view.parent();
+                let new_view;
+                if new_vals.is_empty() {
+                    if current_fragment.is_empty() {
+                        return None;
                     }
-                    debug_assert!(new_view.check_mount_order());
-                    current_vals = new_vals;
-                    new_view
-                })
+                    // Replace empty view with placeholder.
+                    parent.replace_child(placeholder, &current_view);
+                    current_fragment = Rc::new([]);
+                    current_disposers = Vec::new();
+                    new_view = placeholder.clone();
+                } else {
+                    let mut new_fragment;
+                    let mut new_disposers;
+                    if current_fragment.is_empty() {
+                        new_fragment = Vec::with_capacity(new_vals.len());
+                        new_disposers = Vec::with_capacity(new_vals.len());
+                        let position = placeholder.first();
+                        // Append new views.
+                        for val in new_vals.iter() {
+                            let (view, disposer) = cx.create_child(|cx| fn_view(cx, val));
+                            parent.insert_before(&view, Some(&position));
+                            new_fragment.push(view);
+                            new_disposers.push(Some(disposer));
+                        }
+                        // Remove the placeholder.
+                        parent.remove_child(placeholder);
+                    } else {
+                        // Diff two fragments.
+                        (new_fragment, new_disposers) = reconcile(
+                            parent.as_ref(),
+                            &current_vals,
+                            &current_fragment,
+                            &mut current_disposers,
+                            &new_vals,
+                            &fn_key,
+                            |val| cx.create_child(|cx| fn_view(cx, val)),
+                            View::fragment_shared(Rc::new([placeholder.clone()])),
+                        );
+                    }
+                    current_fragment = new_fragment.into_boxed_slice().into();
+                    current_disposers = new_disposers;
+                    new_view = View::fragment_shared(current_fragment.clone());
+                }
+                debug_assert!(new_view.check_mount_order());
+                current_vals = new_vals;
+                Some(new_view)
             })
-            .render()
+        })
     }
 }
 

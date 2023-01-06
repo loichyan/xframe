@@ -10,7 +10,7 @@ macro_rules! define_element {
             use crate::element::GenericElement;
             use ::xframe_core::{
                 component::Element, GenericComponent, GenericNode, NodeType,
-                RenderOutput,
+                RenderOutput, View,
             };
             use ::xframe_reactive::Scope;
 
@@ -36,12 +36,19 @@ macro_rules! define_element {
                 const TYPE: NodeType = $ty;
             }
 
+            #[allow(dead_code)]
             impl<N: GenericNode> $name<N> {
-                #[allow(dead_code)]
-                $vis fn new(cx: Scope) -> Self {
+                fn new(cx: Scope) -> Self {
                     $name {
                         inner: Element::new(cx, || N::create($ty)),
                     }
+                }
+
+                fn render_with(
+                    self,
+                    f: impl 'static + FnMut(View<N>) -> Option<View<N>>,
+                ) -> RenderOutput<N> {
+                    self.inner.render_with(f)
                 }
             }
         };
@@ -51,11 +58,13 @@ macro_rules! define_element {
 macro_rules! define_placeholder {
     ($vis:vis struct $name:ident($desc:literal)) => {
         define_element!($vis struct $name(
-            if xframe_core::is_debug!() {
-                ::xframe_core::NodeType::Placeholder(std::borrow::Cow::Borrowed($desc))
-            } else {
-                ::xframe_core::NodeType::Placeholder(std::borrow::Cow::Borrowed("PLACEHOLDER"))
-            }
+            ::xframe_core::NodeType::Placeholder(std::borrow::Cow::Borrowed(
+                if ::xframe_core::is_debug!() {
+                    $desc
+                } else {
+                    "PLACEHOLDER"
+                }
+            ))
         ));
     };
 }
