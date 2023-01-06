@@ -7,9 +7,9 @@ use crate::{
 use slotmap::{new_key_type, SecondaryMap, SlotMap};
 use std::cell::{Cell, RefCell};
 
-#[cfg(feature = "ahash")]
-pub(crate) type RandomState = ahash::RandomState;
-#[cfg(not(feature = "ahash"))]
+#[cfg(feature = "fxhash")]
+pub(crate) type RandomState = std::hash::BuildHasherDefault<rustc_hash::FxHasher>;
+#[cfg(not(feature = "fxhash"))]
 pub(crate) type RandomState = std::collections::hash_map::RandomState;
 
 pub(crate) type HashMap<K, V> = std::collections::hash_map::HashMap<K, V, RandomState>;

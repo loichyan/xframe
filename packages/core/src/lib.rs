@@ -33,3 +33,7 @@ pub mod prelude {
 }
 
 type CowStr = std::borrow::Cow<'static, str>;
+
+pub type RandomState = std::hash::BuildHasherDefault<rustc_hash::FxHasher>;
+pub type HashMap<K, V> = std::collections::HashMap<K, V, RandomState>;
+pub type HashSet<T> = std::collections::HashSet<T, RandomState>;

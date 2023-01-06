@@ -5,15 +5,15 @@ license = "MIT OR Apache-2.0"
 edition = "2021"
 
 [features]
-default = []
-ahash = ["dep:ahash"]
+default = ["fxhash"]
+fxhash = ["dep:rustc-hash"]
 
 [dependencies]
 indexmap = "1.9"
 slotmap = "1.0"
 
-[dependencies.ahash]
-version = "0.8"
+[dependencies.rustc-hash]
+version = "1.1"
 optional = true
 
 [dependencies.smallvec]

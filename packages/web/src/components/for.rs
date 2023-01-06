@@ -1,6 +1,6 @@
-use std::{collections::HashMap, hash::Hash, rc::Rc};
+use std::{hash::Hash, rc::Rc};
 use xframe_core::{
-    is_debug, view::ViewParentExt, GenericComponent, GenericNode, IntoReactive, Reactive,
+    is_debug, view::ViewParentExt, GenericComponent, GenericNode, HashMap, IntoReactive, Reactive,
     RenderOutput, View,
 };
 use xframe_reactive::{untrack, Scope, ScopeDisposer};

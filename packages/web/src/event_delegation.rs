@@ -1,9 +1,9 @@
 use crate::{utils::UnwrapThrowValExt, DOCUMENT};
 use js_sys::{Function, Object, Reflect};
-use std::{borrow::Cow, cell::RefCell, collections::HashMap};
+use std::{borrow::Cow, cell::RefCell};
 use wasm_bindgen::{prelude::*, JsCast, JsValue};
 use web_sys::{Event, EventTarget};
-use xframe_core::EventHandler;
+use xframe_core::{EventHandler, HashMap};
 
 #[wasm_bindgen]
 extern "C" {
