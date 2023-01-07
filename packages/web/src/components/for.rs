@@ -213,7 +213,6 @@ where
             let (view, disposer) = fn_view(&b_vals[i]);
             b_views[i] = view;
             b_disposers[i] = Some(disposer);
-            insert_b!(i);
         }};
     }
 
