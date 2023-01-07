@@ -453,6 +453,7 @@ impl ToTokens for QuoteElementType<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self((ty, js_ty)) = self;
         quote!(
+            // TODO: suffix with `Element`
             pub type #ty = #M_WEB_SYS::#js_ty;
         )
         .to_tokens(tokens);
