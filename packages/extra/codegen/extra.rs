@@ -73,6 +73,7 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
         }
         for attr in element.attributes.iter() {
             if let JsType::Literals(lits) = &attr.original.js_type {
+                // TODO: dedup attribute types
                 if attr_types.contains_key(&attr.ty) {
                     continue;
                 }

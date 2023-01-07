@@ -5,11 +5,11 @@ pub mod prelude {
 
 pub mod elements {
     #[doc(inline)]
-    #[cfg(feature = "extra-elements")]
-    pub use xframe_extra::{element_types::*, elements::*};
+    pub use xframe_web::{element_types::*, elements::*};
 
     #[doc(inline)]
-    pub use xframe_web::{element_types::*, elements::*};
+    #[cfg(feature = "extra-elements")]
+    pub use xframe_extra::{element_types::*, elements::*};
 
     #[cfg(feature = "extra-attributes")]
     #[doc(inline)]
@@ -22,10 +22,7 @@ pub mod elements {
 
 #[doc(inline)]
 pub use {
-    xframe_core::{component, prelude::*},
-    xframe_macros::view,
-    xframe_reactive::*,
-    xframe_web::prelude::*,
+    xframe_core::prelude::*, xframe_macros::view, xframe_reactive::*, xframe_web::prelude::*,
 };
 
 #[doc(hidden)]
