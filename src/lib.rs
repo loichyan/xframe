@@ -7,12 +7,10 @@ pub mod elements {
     #[doc(inline)]
     #[cfg(feature = "extra-elements")]
     pub use xframe_extra::{element_types::*, elements::*};
+
     #[doc(inline)]
     pub use xframe_web::{element_types::*, elements::*};
-}
 
-// TODO: merge into `elements`
-pub mod attr {
     #[cfg(feature = "extra-attributes")]
     #[doc(inline)]
     pub use xframe_extra::attr_types::*;
