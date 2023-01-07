@@ -66,7 +66,7 @@ where
                     current_disposers.truncate(new_len);
                     new_view = View::fragment_shared(current_fragment.clone());
                 } else if new_len > current_len {
-                    let next_sibling = current_view.next_sibling();
+                    let next_sibling = current_view.next_sibling().map(View::node);
                     let mut new_fragment = current_fragment.to_vec();
                     for val in new_vals[current_len..].iter() {
                         // Append new views.

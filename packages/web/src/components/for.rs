@@ -1,4 +1,5 @@
 use std::{hash::Hash, rc::Rc};
+use tracing::debug;
 use xframe_core::{
     is_debug, view::ViewParentExt, GenericComponent, GenericNode, HashMap, IntoReactive, Reactive,
     RenderOutput, View,
@@ -70,11 +71,10 @@ where
                     if current_fragment.is_empty() {
                         new_fragment = Vec::with_capacity(new_vals.len());
                         new_disposers = Vec::with_capacity(new_vals.len());
-                        let position = placeholder.first();
                         // Append new views.
                         for val in new_vals.iter() {
                             let (view, disposer) = cx.create_child(|cx| fn_view(cx, val));
-                            parent.insert_before(&view, Some(&position));
+                            parent.insert_before(&view, Some(placeholder));
                             new_fragment.push(view);
                             new_disposers.push(Some(disposer));
                         }
@@ -139,14 +139,16 @@ where
     }
 }
 
-// Modified from: https://github.com/sycamore-rs/sycamore/
+// Modified from: https://github.com/localvoid/ivi/blob/a769a11/packages/ivi/src/vdom/reconciler.ts#L823
 #[allow(clippy::too_many_arguments)]
 fn reconcile<N, K, V>(
     parent: Option<&N>,
-    current_vals: &[V],
-    current_fragment: &Rc<[View<N>]>,
-    current_disposers: &mut [Option<ScopeDisposer>],
-    new_vals: &[V],
+    // Old values.
+    a_vals: &[V],
+    a_views: &[View<N>],
+    a_disposers: &mut [Option<ScopeDisposer>],
+    // New values.
+    b_vals: &[V],
     fn_key: impl Fn(&V) -> K,
     fn_view: impl Fn(&V) -> (View<N>, ScopeDisposer),
     dummy_view: View<N>,
@@ -155,170 +157,252 @@ where
     N: GenericNode,
     K: Eq + Hash,
 {
-    let a_len = current_vals.len();
-    let b_len = new_vals.len();
-    let after_last = current_fragment.last().unwrap().next_sibling();
-
-    let mut new_fragment = Vec::new();
-    new_fragment.resize_with(new_vals.len(), || dummy_view.clone());
-    let mut new_disposers = Vec::new();
-    new_disposers.resize_with(new_vals.len(), || None::<ScopeDisposer>);
-
-    let mut a_start = 0;
-    let mut b_start = 0;
-    let mut a_end = a_len;
-    let mut b_end = b_len;
-    let mut a_map = None::<HashMap<K, usize>>;
-    let mut b_map = None::<HashMap<K, usize>>;
-
-    macro_rules! init_a_map {
-        () => {
-            a_map.get_or_insert_with(|| {
-                current_vals[a_start..a_end]
-                    .iter()
-                    .enumerate()
-                    .map(|(i, v)| (fn_key(v), a_start + i))
-                    .collect()
-            })
-        };
+    if is_debug!() {
+        assert_eq!(a_vals.len(), a_views.len());
+        assert_eq!(a_vals.len(), a_disposers.len());
     }
 
-    macro_rules! init_b_map {
-        () => {
-            b_map.get_or_insert_with(|| {
-                new_vals[b_start..b_end]
-                    .iter()
-                    .enumerate()
-                    .map(|(i, v)| (fn_key(v), b_start + i))
-                    .collect()
-            })
-        };
+    let mut a_end = a_vals.len();
+    let mut b_end = b_vals.len();
+    let mut start = 0;
+    let after_last = a_views.last().unwrap().next_sibling().map(View::node);
+
+    let mut b_views = Vec::new();
+    b_views.resize_with(b_vals.len(), || dummy_view.clone());
+    let mut b_disposers = Vec::new();
+    b_disposers.resize_with(b_vals.len(), || None::<ScopeDisposer>);
+
+    macro_rules! take_a {
+        ($ia:expr, $ib:expr) => {{
+            let (ia, ib) = ($ia, $ib);
+            b_views[ib] = a_views[ia].clone();
+            ::std::mem::swap(&mut a_disposers[ia], &mut b_disposers[ib]);
+        }};
     }
 
-    macro_rules! take_or_new_views {
-        ($pos:expr, $start:expr, $end:expr) => {
-            let a_map = &*init_a_map!();
-            for (i, val) in new_vals[$start..$end].iter().enumerate() {
-                // Ignore moved views.
-                if let Some((view, disposer)) = a_map
-                    .get(&fn_key(val))
-                    .map(|&i| {
-                        current_disposers[i]
-                            .take()
-                            .map(|t| (current_fragment[i].clone(), t))
-                    })
-                    .unwrap_or_else(|| Some(fn_view(val)))
-                {
-                    parent.insert_before(&view, $pos);
-                    new_fragment[b_start + i] = view;
-                    new_disposers[b_start + i] = Some(disposer);
-                }
-            }
-        };
+    macro_rules! remove_a {
+        ($i:expr) => {{
+            let i = $i;
+            parent.remove_child(&a_views[i]);
+            drop(a_disposers[i].take());
+        }};
     }
 
-    macro_rules! take_view {
-        ($ia:expr, $ib:expr) => {
-            new_fragment[$ib] = current_fragment[$ia].clone();
-            new_disposers[$ib] = current_disposers[$ia].take();
-        };
+    macro_rules! get_next_b {
+        ($i:expr) => {{
+            let i = $i;
+            b_views.get(i + 1).or_else(|| after_last.as_ref())
+        }};
     }
 
-    while a_start < a_end || b_start < b_end {
-        if a_start == a_end {
-            // Append new views.
-            let position = if b_end < b_len {
-                // a: 0 4
-                // b: 0 1 2 3 4
-                //      ^^^^^
-                Some(current_fragment[a_end].first())
-            } else {
-                // All nodes in `a` should be removed, so we need to save the
-                // next sibling before the loop.
-                // a: 1 2 3 4
-                // b: 5 6 7 8
-                //    ^^^^^^^
-                after_last
-            };
-            take_or_new_views!(position.as_ref(), b_start, b_end);
-            b_start = b_end;
-            break;
-        } else if b_start == b_end {
-            // Remove extra views.
-            for (view, val) in current_fragment[a_start..a_end]
-                .iter()
-                .zip(current_vals[a_start..a_end].iter())
-            {
-                if b_map.as_ref().map(|m| m.contains_key(&fn_key(val))) != Some(true) {
-                    parent.remove_child(view);
-                }
-            }
-            a_start = a_end;
+    macro_rules! insert_b {
+        ($i:expr) => {{
+            let i = $i;
+            insert_b!(i, get_next_b!(i))
+        }};
+        ($i:expr, $next:expr) => {{
+            let i = $i;
+            let next = $next;
+            parent.insert_before(&b_views[i], next);
+        }};
+    }
+
+    macro_rules! new_b {
+        ($i:expr) => {{
+            let i = $i;
+            let (view, disposer) = fn_view(&b_vals[i]);
+            b_views[i] = view;
+            b_disposers[i] = Some(disposer);
+            insert_b!(i);
+        }};
+    }
+
+    // Skip common prefix.
+    for (a, b) in a_vals[start..].iter().zip(b_vals[start..].iter()) {
+        if fn_key(a) == fn_key(b) {
+            take_a!(start, start);
+            start += 1;
+        } else {
             break;
         }
+    }
 
-        let a_start_k = fn_key(&current_vals[a_start]);
-        let a_end_k = fn_key(&current_vals[a_end - 1]);
-        let b_start_k = fn_key(&new_vals[b_start]);
-        let b_end_k = fn_key(&new_vals[b_end - 1]);
-        let a_start_v = &current_fragment[a_start];
-        let a_end_v = &current_fragment[a_end - 1];
-
-        if a_start_k == b_start_k {
-            // Skip common preifx.
-            take_view!(a_start, b_start);
-            a_start += 1;
-            b_start += 1;
-        } else if a_end_k == b_end_k {
-            // Skip common suffix.
+    // Skip common suffix.
+    for (a, b) in a_vals[start..]
+        .iter()
+        .rev()
+        .zip(b_vals[start..].iter().rev())
+    {
+        if fn_key(a) == fn_key(b) {
             a_end -= 1;
             b_end -= 1;
-            take_view!(a_end, b_end);
-        } else if a_start_k == b_end_k && a_end_k == b_start_k {
-            // Swap backwards.
-            let start_next = a_start_v.next_sibling();
-            let end_next = a_end_v.next_sibling();
-            parent.insert_before(a_start_v, end_next.as_ref());
-            parent.insert_before(a_end_v, start_next.as_ref());
-            a_end -= 1;
-            b_end -= 1;
-            take_view!(a_start, b_end);
-            take_view!(a_end, b_start);
-            a_start += 1;
-            b_start += 1;
+            take_a!(a_end, b_end);
         } else {
-            let b_map = &*init_b_map!();
-            if let Some(&index) = b_map.get(&a_start_k) {
-                if index > b_start && index < b_end {
-                    // Insert new views.
-                    // a: 4
-                    // b: 1 2 3 4
-                    //    ^^^^^
-                    let position = a_start_v.first();
-                    take_or_new_views!(Some(&position), b_start, index);
-                    b_start = index;
-                } else {
-                    // Ignore inserted views.
-                    // a: 7 5
-                    //      ^
-                    // b: 5 6 7
-                    a_start += 1;
+            break;
+        }
+    }
+
+    if start == a_end {
+        // Insert new views.
+        let next = get_next_b!(b_end - 1).cloned();
+        for i in start..b_end {
+            new_b!(i);
+            insert_b!(i, next.as_ref());
+        }
+    } else if start == b_end {
+        // Remove rest views.
+        for i in start..a_end {
+            remove_a!(i);
+        }
+    } else {
+        let len = b_end - start;
+        let mut sources = vec![Source::New; len];
+        let key_index = b_vals[start..b_end]
+            .iter()
+            .enumerate()
+            .map(|(i, b)| (fn_key(b), start + i))
+            .collect::<HashMap<_, _>>();
+
+        let mut should_move = false;
+        let mut pos = 0;
+        for (i, a) in a_vals[start..a_end].iter().enumerate() {
+            let i = start + i;
+            if let Some(&j) = key_index.get(&fn_key(a)) {
+                if !should_move {
+                    if pos < j {
+                        pos = j;
+                    } else {
+                        should_move = true;
+                    }
                 }
+                sources[j - start] = Source::Move(i);
+                take_a!(i, j);
             } else {
-                // Remove deleted views.
-                parent.remove_child(a_start_v);
-                a_start += 1;
+                remove_a!(i);
+            }
+        }
+
+        if should_move {
+            mark_lis(&mut sources);
+        }
+        debug!("sources({start}, {b_end}): {sources:?}");
+        for (i, &s) in sources.iter().enumerate().rev() {
+            let i = start + i;
+            match s {
+                Source::New => {
+                    new_b!(i);
+                    insert_b!(i);
+                }
+                Source::Move(_) if should_move => insert_b!(i),
+                _ => {}
             }
         }
     }
 
     if is_debug!() {
-        for view in new_fragment.iter() {
+        for view in b_views.iter() {
             assert!(!dummy_view.ref_eq(view));
         }
-        assert_eq!(new_fragment.len(), new_disposers.len());
-        assert_eq!(a_start, a_end);
-        assert_eq!(b_start, b_end);
+        for disposer in a_disposers.iter() {
+            assert!(disposer.is_none());
+        }
     }
-    (new_fragment, new_disposers)
+    (b_views, b_disposers)
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum Source {
+    Lis,
+    New,
+    Move(usize),
+}
+
+// Modified from: https://github.com/localvoid/ivi/blob/a769a11/packages/ivi/src/vdom/reconciler.ts#L960
+fn mark_lis(sources: &mut [Source]) {
+    let mut predecessors = vec![0; sources.len()];
+    let mut starts = vec![0; sources.len()];
+
+    let first = sources
+        .iter()
+        .position(|s| matches!(s, Source::Move(..)))
+        .unwrap_or(0);
+    starts[0] = first;
+
+    let mut l = 0;
+    for (i, &k) in sources[first..].iter().enumerate() {
+        if k == Source::New {
+            continue;
+        }
+        let i = first + i;
+        let j = starts[l];
+        if sources[j] < k {
+            predecessors[i] = j;
+            l += 1;
+            starts[l] = i;
+        } else {
+            let mut lo = 0;
+            let mut hi = l;
+
+            while lo < hi {
+                let mid = (lo >> 1) + (hi >> 1) + (lo & hi & 1);
+                if sources[starts[mid]] < k {
+                    lo = mid + 1;
+                } else {
+                    hi = mid;
+                }
+            }
+
+            if k < sources[starts[lo]] {
+                if lo > 0 {
+                    predecessors[i] = starts[lo - 1];
+                }
+                starts[lo] = i;
+            }
+        }
+    }
+
+    let mut i = starts[l];
+    for _ in 0..=l {
+        sources[i] = Source::Lis;
+        i = predecessors[i];
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lis() {
+        use Source::*;
+
+        let mut sources = vec![
+            New,
+            Move(2),
+            Move(8),
+            New,
+            Move(9),
+            Move(5),
+            Move(6),
+            New,
+            Move(7),
+            Move(1),
+            New,
+        ];
+        mark_lis(&mut sources);
+        let expected = vec![
+            New,
+            Lis,
+            Move(8),
+            New,
+            Move(9),
+            Lis,
+            Lis,
+            New,
+            Lis,
+            Move(1),
+            New,
+        ];
+        assert_eq!(sources, expected);
+    }
 }
