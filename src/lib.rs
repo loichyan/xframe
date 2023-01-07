@@ -41,10 +41,12 @@ pub mod __private;
 #[macro_export]
 macro_rules! id {
     () => {{
+        $crate::id!(concat!(module_path!(), ":", line!(), ":", column!()))
+    }};
+    ($data:expr) => {{
         fn __id() -> $crate::TemplateId {
             thread_local! {
-                static __ID: $crate::TemplateId =
-                    $crate::TemplateId::generate(concat!(module_path!(), ":", line!(), ":", column!()));
+                static __ID: $crate::TemplateId = $crate::TemplateId::generate($data);
             }
             __ID.with(Clone::clone)
         }
