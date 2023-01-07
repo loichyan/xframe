@@ -1,7 +1,7 @@
 use heck::{ToKebabCase, ToPascalCase, ToSnakeCase};
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, ToTokens};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use syn::{Ident, LitStr};
 use web_types::JsType;
 
@@ -39,9 +39,9 @@ new_type_quote! {
     T_INTO_REACTIVE(#M_CORE::IntoReactive);
     T_INTO_EVENT_HANDLER(#M_CORE::IntoEventHandler);
 
-    BASE_ELEMENT(#M_INPUT::BaseElement);
     COW_STR(::std::borrow::Cow::<'static, str>);
     ELEMENT(#M_CORE::component::Element);
+    ELEMENT_BASE(#M_INPUT::ElementBase);
     NODE_TYPE(#M_CORE::NodeType);
     OUTPUT(#M_CORE::RenderOutput);
     REACTIVE(#M_CORE::Reactive);
@@ -63,7 +63,7 @@ impl<T: AsRef<str>> StrExt for T {}
 
 pub fn expand(input: &[web_types::Element]) -> TokenStream {
     let mut elements = Vec::default();
-    let mut attr_types = BTreeMap::default();
+    let mut attr_types = BTreeMap::<Ident, AttrLitType>::default();
     let mut event_types = BTreeMap::default();
     let mut element_types = BTreeMap::default();
     for element in input {
@@ -73,17 +73,19 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
         }
         for attr in element.attributes.iter() {
             if let JsType::Literals(lits) = &attr.original.js_type {
-                // TODO: dedup attribute types
-                if attr_types.contains_key(&attr.ty) {
-                    continue;
+                let variants = &mut attr_types.entry(attr.ty.clone()).or_default().variants;
+                for &lit in lits.values.iter() {
+                    if lit.is_empty() {
+                        continue;
+                    }
+                    let name = lit.to_pascal_case().to_ident();
+                    if !variants.contains(&name) {
+                        variants.insert(Variant {
+                            name,
+                            literal: lit.to_lit_str(),
+                        });
+                    }
                 }
-                let variants = lits
-                    .values
-                    .iter()
-                    .copied()
-                    .flat_map(Variant::from_web)
-                    .collect();
-                attr_types.insert(attr.ty.clone(), AttrLitType { variants });
             }
         }
         for event in element.events.iter() {
@@ -101,7 +103,7 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
         }
         elements.push(element);
     }
-    let attr_types = attr_types.iter().map(QuoteAttrType);
+    let attr_types = attr_types.iter().map(QuoteAttrLitType);
     let event_types = event_types.iter().map(|(k, v)| QuoteEventType((k, v)));
     let element_definitions = elements.iter().map(Element::quote);
     let element_types = element_types.iter().map(QuoteElementType);
@@ -114,9 +116,7 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
             pub mod element_types { #(#element_types)* }
             #[cfg(feature = "attributes")]
             pub mod attr_types {
-                pub(super) type JsBoolean = #M_INPUT::JsBoolean;
-                pub(super) type JsNumber = #M_INPUT::JsNumber;
-                pub(super) type JsString = #M_INPUT::JsString;
+                pub(super) use #M_INPUT::attr_types::*;
                 #(#attr_types)*
             }
             #[cfg(feature = "events")]
@@ -179,10 +179,7 @@ impl<'a> Element<'a> {
             ty: format_ident!("{}Element", name.to_pascal_case()),
             js_ty,
             fn_: fn_.to_ident(),
-            attributes: attributes
-                .iter()
-                .map(|attr| Property::from_web(input, attr))
-                .collect(),
+            attributes: attributes.iter().map(Property::from_web).collect(),
             events: events.iter().map(Event::from_web).collect(),
         }
     }
@@ -201,12 +198,12 @@ impl<'a> Element<'a> {
         quote!(
             #[allow(non_camel_case_types)]
             pub struct #fn_<N> {
-                inner: #BASE_ELEMENT<N>
+                inner: #ELEMENT_BASE<N>
             }
 
             pub fn #fn_<N: #T_GENERIC_NODE>(cx: #SCOPE) -> #fn_<N> {
                 #fn_ {
-                    inner: #BASE_ELEMENT::new::<#fn_<N>>(cx),
+                    inner: #ELEMENT_BASE::new::<#fn_<N>>(cx),
                 }
             }
 
@@ -261,7 +258,7 @@ struct Property<'a> {
 }
 
 impl<'a> Property<'a> {
-    fn from_web(ele: &web_types::Element, input: &'a web_types::Property<'a>) -> Self {
+    fn from_web(input: &'a web_types::Property<'a>) -> Self {
         let web_types::Property {
             name,
             js_type,
@@ -269,12 +266,12 @@ impl<'a> Property<'a> {
         } = input;
         let ty = match js_type {
             JsType::Type(ty) => match *ty {
-                "string" => "JsString".to_ident(),
-                "number" => "JsNumber".to_ident(),
-                "boolean" => "JsBoolean".to_ident(),
+                "string" => "StringValue".to_ident(),
+                "number" => "NumberValue".to_ident(),
+                "boolean" => "BooleanValue".to_ident(),
                 _ => panic!("unknown js type '{ty}'"),
             },
-            JsType::Literals(_) => format!("{}-{}", ele.name, name).to_pascal_case().to_ident(),
+            JsType::Literals(_) => format_ident!("{}Value", name.to_pascal_case()),
         };
         let mut fn_ = name.to_snake_case();
         if matches!(*name, "as" | "in" | "async" | "loop" | "type") {
@@ -350,8 +347,9 @@ impl<'a> Event<'a> {
     }
 }
 
+#[derive(Default)]
 struct AttrLitType {
-    variants: Vec<Variant>,
+    variants: BTreeSet<Variant>,
 }
 
 struct Variant {
@@ -359,15 +357,29 @@ struct Variant {
     literal: LitStr,
 }
 
-impl Variant {
-    fn from_web(lit: &str) -> Option<Self> {
-        if lit.is_empty() {
-            return None;
-        }
-        Some(Self {
-            name: lit.to_pascal_case().to_ident(),
-            literal: lit.to_lit_str(),
-        })
+impl std::borrow::Borrow<Ident> for Variant {
+    fn borrow(&self) -> &Ident {
+        &self.name
+    }
+}
+
+impl PartialEq for Variant {
+    fn eq(&self, other: &Self) -> bool {
+        self.name.eq(&other.name)
+    }
+}
+
+impl Eq for Variant {}
+
+impl PartialOrd for Variant {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.name.partial_cmp(&other.name)
+    }
+}
+
+impl Ord for Variant {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.name.cmp(&other.name)
     }
 }
 
@@ -397,9 +409,9 @@ impl ToTokens for QuoteEventType<'_> {
     }
 }
 
-struct QuoteAttrType<'a>((&'a Ident, &'a AttrLitType));
+struct QuoteAttrLitType<'a>((&'a Ident, &'a AttrLitType));
 
-impl ToTokens for QuoteAttrType<'_> {
+impl ToTokens for QuoteAttrLitType<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self((name, ty)) = self;
         let variants = ty.variants.iter().map(|v| {
@@ -429,18 +441,6 @@ impl ToTokens for QuoteAttrType<'_> {
             impl From<#name> for #STRING_LIKE {
                 fn from(t: #name) -> Self {
                     #STRING_LIKE::Literal(t.into())
-                }
-            }
-
-            impl From<#name> for #REACTIVE<#name> {
-                fn from(t: #name) -> Self {
-                    #REACTIVE::Variable(t)
-                }
-            }
-
-            impl From<#name> for #REACTIVE<#STRING_LIKE> {
-                fn from(t: #name) -> Self {
-                    #REACTIVE::Variable(t.into())
                 }
             }
         )

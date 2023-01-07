@@ -8,18 +8,20 @@ use xframe_core::{
 use xframe_reactive::Scope;
 use xframe_web::{GenericElement, WebNode};
 
-pub(crate) type JsBoolean = bool;
-pub(crate) type JsNumber = f64;
-pub(crate) type JsString = StringLike;
+pub mod attr_types {
+    pub type BooleanValue = bool;
+    pub type NumberValue = f64;
+    pub type StringValue = xframe_core::StringLike;
+}
 
 type CowStr = std::borrow::Cow<'static, str>;
 
-pub(crate) struct BaseElement<N> {
+pub struct ElementBase<N> {
     inner: Element<N>,
 }
 
 #[allow(dead_code)]
-impl<N: GenericNode> BaseElement<N> {
+impl<N: GenericNode> ElementBase<N> {
     pub fn new<E: GenericElement<N>>(cx: Scope) -> Self {
         Self {
             inner: Element::new(cx, || N::create(E::TYPE)),
