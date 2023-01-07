@@ -14,10 +14,7 @@ pub mod elements {
     #[cfg(feature = "extra-attributes")]
     #[doc(inline)]
     pub use xframe_extra::attr_types::*;
-}
 
-// TODO: merge into `elements`
-pub mod event {
     #[cfg(feature = "extra-events")]
     #[doc(inline)]
     pub use xframe_extra::event_types::*;

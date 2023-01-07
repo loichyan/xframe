@@ -1,7 +1,7 @@
 use wasm_bindgen::{JsCast, UnwrapThrowExt};
 use xframe::{
-    elements as el, event as ev, prelude::*, view, DomNode, GenericComponent, If, List, Scope,
-    ScopeExt, Signal, WebNode,
+    elements as xf, prelude::*, view, DomNode, GenericComponent, If, List, Scope, ScopeExt, Signal,
+    WebNode,
 };
 
 #[derive(Clone)]
@@ -49,19 +49,22 @@ fn make_todo<N: WebNode>(
         if let Some(input) = edit_input.get_as::<DomNode>() {
             input
                 .into_js()
-                .unchecked_into::<el::Input>()
+                .unchecked_into::<xf::InputElement>()
                 .focus()
                 .unwrap_throw();
         }
     };
-    let save_editing = move |ev: ev::Blur| {
+    let save_editing = move |ev: xf::BlurEvent| {
         if editing.get() {
-            let input = ev.current_target().unwrap().unchecked_into::<el::Input>();
+            let input = ev
+                .current_target()
+                .unwrap()
+                .unchecked_into::<xf::InputElement>();
             content.set(input.value().trim().to_owned());
             editing.set(false);
         }
     };
-    let done_editing = move |ev: ev::Keydown| {
+    let done_editing = move |ev: xf::KeydownEvent| {
         if ev.key() == "Enter" {
             save_editing(ev.unchecked_into());
         }
@@ -106,9 +109,12 @@ fn main() {
         let todos = cx.create_signal(vec![]);
         let show_mode = cx.create_signal(ShowMode::All);
 
-        let add_todo = move |ev: ev::Keydown| {
+        let add_todo = move |ev: xf::KeydownEvent| {
             if ev.key() == "Enter" {
-                let input = ev.current_target().unwrap().unchecked_into::<el::Input>();
+                let input = ev
+                    .current_target()
+                    .unwrap()
+                    .unchecked_into::<xf::InputElement>();
                 let todo = Todo {
                     content: cx.create_signal(input.value().trim().to_owned()),
                     editing: cx.create_signal(false),

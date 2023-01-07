@@ -175,7 +175,7 @@ impl<'a> Element<'a> {
         }
         Self {
             key: name.to_kebab_case().to_lit_str(),
-            ty: name.to_pascal_case().to_ident(),
+            ty: format_ident!("{}Element", name.to_pascal_case()),
             js_ty,
             fn_: fn_.to_ident(),
             attributes: attributes
@@ -329,7 +329,7 @@ impl<'a> Event<'a> {
         Self {
             original: input,
             key: name.to_kebab_case().to_lit_str(),
-            ty: name.to_pascal_case().to_ident(),
+            ty: format_ident!("{}Event", name.to_pascal_case()),
             js_ty,
             fn_: format_ident!("on_{}", name.to_ident()),
         }
@@ -451,11 +451,7 @@ struct QuoteElementType<'a>((&'a Ident, &'a Ident));
 
 impl ToTokens for QuoteElementType<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let Self((ty, js_ty)) = self;
-        quote!(
-            // TODO: suffix with `Element`
-            pub type #ty = #M_WEB_SYS::#js_ty;
-        )
-        .to_tokens(tokens);
+        let Self((name, js_ty)) = self;
+        quote!(pub type #name = #M_WEB_SYS::#js_ty;).to_tokens(tokens);
     }
 }
