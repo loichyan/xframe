@@ -62,6 +62,13 @@ impl<N: GenericNode> BaseElement<N> {
         self.inner.set_property(name.into(), val);
     }
 
+    pub fn set_attribute_literal<T>(&self, name: &'static str, val: impl IntoReactive<T>)
+    where
+        T: 'static + Into<StringLike>,
+    {
+        self.set_attribute(Cow::Borrowed(name), val.into_reactive().cast());
+    }
+
     pub fn set_attribute(&self, name: impl Into<CowStr>, val: impl IntoReactive<StringLike>) {
         let val = val.into_reactive();
         self.inner.set_attribute(name.into(), val);

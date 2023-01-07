@@ -9,6 +9,7 @@
   },
   "devDependencies": {
     "@types/node": "^18.11.12",
+    "solid-js": "^1.6.8",
     "ts-node": "^10.9.1",
     "ttypescript": "^1.5.15",
     "typescript": "^4.9.4"

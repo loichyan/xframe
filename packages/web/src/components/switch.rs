@@ -17,6 +17,7 @@ pub fn Switch<N: GenericNode>(cx: Scope) -> Switch<N> {
     }
 }
 
+// TODO: conficts with svg switch element
 pub struct Switch<N> {
     cx: Scope,
     children: SmallVec<[Branch<N>; 2]>,

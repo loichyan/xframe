@@ -47,7 +47,7 @@ class PropertyCollector {
   collect(property: ts.Symbol): ts.PropertyAssignment {
     const type = this.checker.getTypeOfSymbolAtLocation(property, this.node);
     return factory.createPropertyAssignment(
-      property.name,
+      litStr(property.name),
       createObjectLiteral({
         className: this.collectClassName(
           this.getPropertyType(type, "className")
@@ -67,7 +67,11 @@ class PropertyCollector {
 
   private collectEvents(type: ts.Type): ts.ObjectLiteralExpression {
     const checker = this.checker;
-    const k = type.getCallSignatures()[0].typeParameters![0].symbol
+    const sig = type.getCallSignatures();
+    if (sig.length === 0) {
+      return factory.createObjectLiteralExpression([]);
+    }
+    const k = sig[0].typeParameters![0].symbol
       .declarations![0] as ts.TypeParameterDeclaration;
     const eventMap = checker.getTypeFromTypeNode(
       (k.constraint! as ts.TypeOperatorNode).type
@@ -77,16 +81,13 @@ class PropertyCollector {
       const type = checker
         .getTypeOfSymbolAtLocation(sym, this.node)
         .symbol.getName();
-      return factory.createPropertyAssignment(
-        name,
-        factory.createStringLiteral(type)
-      );
+      return factory.createPropertyAssignment(litStr(name), litStr(type));
     });
     return factory.createObjectLiteralExpression(events, true);
   }
 
   private collectClassName(type: ts.Type): ts.StringLiteral {
-    return factory.createStringLiteral(type.symbol.name);
+    return litStr(type.symbol.name);
   }
 
   private collectProperties(type: ts.Type): ts.ObjectLiteralExpression {
@@ -110,39 +111,54 @@ class PropertyCollector {
     const type = this.checker
       .getTypeOfSymbolAtLocation(property, this.node)
       .getNonNullableType();
-    if (type.flags & ts.TypeFlags.Boolean) {
-      value = factory.createStringLiteral("boolean");
-    } else if (type.flags & ts.TypeFlags.Number) {
-      value = factory.createStringLiteral("number");
-    } else if (type.flags & ts.TypeFlags.String) {
-      value = factory.createStringLiteral("string");
+    const jsType = this.jsType(type);
+    if (jsType !== undefined) {
+      value = jsType;
     } else if (type.isUnion()) {
-      const lit = this.collectLiteralProperty(type);
-      if (lit === undefined) {
+      const litType = this.collectLiteralProperty(type);
+      if (litType === undefined) {
         return;
       }
-      value = lit;
+      value = litType;
     } else {
       return;
     }
-    return factory.createPropertyAssignment(property.name, value);
+    return factory.createPropertyAssignment(litStr(property.name), value);
   }
 
   private collectLiteralProperty(
     type: ts.UnionType
-  ): ts.ArrayLiteralExpression | undefined {
+  ): ts.ArrayLiteralExpression | ts.StringLiteral | undefined {
     const literals = [];
-    for (const lit of type.types) {
-      if (lit.isStringLiteral()) {
-        literals.push(lit.value);
+    for (const ty of type.types) {
+      if (ty.isStringLiteral()) {
+        literals.push(ty.value);
       }
     }
     if (literals.length === 0) {
+      for (const ty of type.types) {
+        const jsType = this.jsType(ty);
+        if (jsType !== undefined) {
+          return jsType;
+        }
+      }
+      return undefined;
+    }
+    return factory.createArrayLiteralExpression(literals.map(litStr));
+  }
+
+  private jsType(ty: ts.Type): ts.StringLiteral | undefined {
+    let s: string;
+    if (ty.flags & ts.TypeFlags.Boolean) {
+      s = "boolean";
+    } else if (ty.flags & ts.TypeFlags.Number) {
+      s = "number";
+    } else if (ty.flags & ts.TypeFlags.String) {
+      s = "string";
+    } else {
       return;
     }
-    return factory.createArrayLiteralExpression(
-      literals.map((lit) => factory.createStringLiteral(lit))
-    );
+    return litStr(s);
   }
 }
 
@@ -151,8 +167,12 @@ function createObjectLiteral(obj: {
 }): ts.ObjectLiteralExpression {
   return factory.createObjectLiteralExpression(
     Object.entries(obj).map(([key, val]) =>
-      factory.createPropertyAssignment(key, val)
+      factory.createPropertyAssignment(litStr(key), val)
     ),
     true
   );
+}
+
+function litStr(s: string): ts.StringLiteral {
+  return factory.createStringLiteral(s);
 }

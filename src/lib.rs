@@ -11,6 +11,7 @@ pub mod elements {
     pub use xframe_web::{element_types::*, elements::*};
 }
 
+// TODO: merge into `elements`
 pub mod attr {
     #[cfg(feature = "extra-attributes")]
     #[doc(inline)]
@@ -36,8 +37,6 @@ pub use {
 pub mod __private;
 
 /// Generate a unique [`TemplateId`] with the module path and line/column info.
-///
-/// [`TemplateId`]: template::TemplateId
 #[macro_export]
 macro_rules! id {
     () => {{

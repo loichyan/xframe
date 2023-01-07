@@ -1,6 +1,6 @@
 use crate::{
     lexer::{Lexer, Token},
-    Attribute, Element, Event, JsType, Literals,
+    Element, Event, JsType, Literals, Property,
 };
 use std::collections::BTreeMap;
 
@@ -10,7 +10,7 @@ type Elements<'a> = Vec<Element<'a>>;
 
 #[derive(Default)]
 struct Content<'a> {
-    attributes: Vec<Attribute<'a>>,
+    attributes: Vec<Property<'a>>,
     events: Vec<Event<'a>>,
 }
 
@@ -136,12 +136,24 @@ impl<'a> ParseContent<'a, '_> {
                     let js_class = self.lexer.expect_ident()?;
                     self.content.events.push(Event { name, js_class })
                 }
+                Token::Char(b'*') => {
+                    let name = self.lexer.expect_ident()?;
+                    let js_type = self.parse_js_type()?;
+                    self.content.attributes.push(Property {
+                        name,
+                        js_type,
+                        attribute: true,
+                    })
+                }
                 // An attribute.
                 Token::Ident => {
                     let name = self.lexer.buf();
-                    self.lexer.expect_char(b':')?;
                     let js_type = self.parse_js_type()?;
-                    self.content.attributes.push(Attribute { name, js_type });
+                    self.content.attributes.push(Property {
+                        name,
+                        js_type,
+                        attribute: false,
+                    });
                 }
                 _ => return Err("unknown token".to_owned()),
             }
@@ -151,7 +163,7 @@ impl<'a> ParseContent<'a, '_> {
     }
 
     fn parse_js_type(&mut self) -> Result<JsType<'a>> {
-        let name = self.lexer.expect_ident()?;
+        self.lexer.expect_char(b':')?;
         Ok(if let Some(Token::Char(b'(')) = self.lexer.peek() {
             self.lexer.next();
             let mut values = Vec::new();
@@ -162,9 +174,9 @@ impl<'a> ParseContent<'a, '_> {
                     _ => return Err("unknown token".to_owned()),
                 }
             }
-            JsType::Literals(Literals { name, values })
+            JsType::Literals(Literals { values })
         } else {
-            JsType::Type(name)
+            JsType::Type(self.lexer.expect_ident()?)
         })
     }
 }

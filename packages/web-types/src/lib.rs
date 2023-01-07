@@ -8,14 +8,15 @@ pub static PRESET: &str = include_str!("preset.txt");
 pub struct Element<'a> {
     pub name: &'a str,
     pub js_class: &'a str,
-    pub attributes: Vec<Attribute<'a>>,
+    pub attributes: Vec<Property<'a>>,
     pub events: Vec<Event<'a>>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct Attribute<'a> {
+pub struct Property<'a> {
     pub name: &'a str,
     pub js_type: JsType<'a>,
+    pub attribute: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -26,7 +27,6 @@ pub enum JsType<'a> {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Literals<'a> {
-    pub name: &'a str,
     pub values: Vec<&'a str>,
 }
 

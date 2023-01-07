@@ -129,7 +129,7 @@ struct Element<'a> {
     ty: Ident,
     js_ty: Ident,
     fn_: Ident,
-    attributes: Vec<Attribute<'a>>,
+    attributes: Vec<Property<'a>>,
     events: Vec<Event<'a>>,
 }
 
@@ -141,26 +141,46 @@ impl<'a> Element<'a> {
             events,
             attributes,
         } = input;
-        let js_ty = match *js_class {
-            "HTMLBRElement" => "HtmlBrElement".to_ident(),
-            "HTMLHRElement" => "HtmlHrElement".to_ident(),
-            "HTMLLIElement" => "HtmlLiElement".to_ident(),
-            _ => format!("Html{}", &js_class[4..]).to_ident(),
+        let js_ty = if let Some(js_class) = js_class.strip_suffix("Element") {
+            if let Some(js_class) = js_class.strip_prefix("HTML") {
+                let js_class = match js_class {
+                    "BR" => "Br",
+                    "HR" => "Hr",
+                    "LI" => "Li",
+                    _ => js_class,
+                };
+                format_ident!("Html{js_class}Element")
+            } else if let Some(js_class) = js_class.strip_prefix("SVG") {
+                if let Some(js_class) = js_class.strip_prefix("FE") {
+                    format_ident!("Svgfe{js_class}Element")
+                } else {
+                    let js_class = match js_class {
+                        "G" => "g",
+                        "SVG" => "svg",
+                        "MPath" => "mPath",
+                        "TSpan" => "tSpan",
+                        _ => js_class,
+                    };
+                    format_ident!("Svg{js_class}Element")
+                }
+            } else {
+                panic!("unknown js class: {js_class}");
+            }
+        } else {
+            panic!("unknown js class: {js_class}");
         };
+        let mut fn_ = name.to_snake_case();
+        if matches!(&*fn_, "use") {
+            fn_.push('_');
+        }
         Self {
             key: name.to_kebab_case().to_lit_str(),
             ty: name.to_pascal_case().to_ident(),
             js_ty,
-            fn_: name.to_ident(),
+            fn_: fn_.to_ident(),
             attributes: attributes
                 .iter()
-                .filter_map(|attr| {
-                    if attr.name == "class" {
-                        None
-                    } else {
-                        Some(Attribute::from_web(attr))
-                    }
-                })
+                .map(|attr| Property::from_web(input, attr))
                 .collect(),
             events: events.iter().map(Event::from_web).collect(),
         }
@@ -175,7 +195,7 @@ impl<'a> Element<'a> {
             key,
             ..
         } = self;
-        let attr_fns = attributes.iter().map(Attribute::quote_fn);
+        let attr_fns = attributes.iter().map(Property::quote_fn);
         let event_fns = events.iter().map(Event::quote_fn);
         quote!(
             #[allow(non_camel_case_types)]
@@ -231,16 +251,21 @@ impl<'a> Element<'a> {
     }
 }
 
-struct Attribute<'a> {
-    original: &'a web_types::Attribute<'a>,
+struct Property<'a> {
+    original: &'a web_types::Property<'a>,
     key: LitStr,
     ty: Ident,
     fn_: Ident,
+    attribute: bool,
 }
 
-impl<'a> Attribute<'a> {
-    fn from_web(input: &'a web_types::Attribute<'a>) -> Self {
-        let web_types::Attribute { name, js_type } = input;
+impl<'a> Property<'a> {
+    fn from_web(ele: &web_types::Element, input: &'a web_types::Property<'a>) -> Self {
+        let web_types::Property {
+            name,
+            js_type,
+            attribute,
+        } = input;
         let ty = match js_type {
             JsType::Type(ty) => match *ty {
                 "string" => "JsString".to_ident(),
@@ -248,10 +273,10 @@ impl<'a> Attribute<'a> {
                 "boolean" => "JsBoolean".to_ident(),
                 _ => panic!("unknown js type '{ty}'"),
             },
-            JsType::Literals(lits) => lits.name.to_ident(),
+            JsType::Literals(_) => format!("{}-{}", ele.name, name).to_pascal_case().to_ident(),
         };
         let mut fn_ = name.to_snake_case();
-        if matches!(*name, "type" | "loop" | "async" | "as") {
+        if matches!(*name, "as" | "in" | "async" | "loop" | "type") {
             fn_.push('_');
         }
         Self {
@@ -259,14 +284,26 @@ impl<'a> Attribute<'a> {
             key: name.to_lit_str(),
             ty,
             fn_: fn_.to_ident(),
+            attribute: *attribute,
         }
     }
 
     fn quote_fn(&self) -> TokenStream {
-        let Self { key, ty, fn_, .. } = self;
+        let Self {
+            key,
+            ty,
+            fn_,
+            attribute,
+            ..
+        } = self;
+        let f = if *attribute {
+            quote!(set_attribute_literal)
+        } else {
+            quote!(set_property_literal)
+        };
         quote!(
             pub fn #fn_<T: #T_INTO_REACTIVE<#M_ATTR_TYPES::#ty>>(self, val: T) -> Self {
-                self.inner.set_property_literal(#key, val);
+                self.inner.#f(#key, val);
                 self
             }
         )
