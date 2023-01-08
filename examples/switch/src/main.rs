@@ -1,4 +1,4 @@
-use xframe::{id, prelude::*, view, Else, If, Switch, TemplateId};
+use xframe::{elements as xf, id, prelude::*, view, Else, If, Switch, TemplateId};
 
 fn main() {
     console_error_panic_hook::set_once();
@@ -23,7 +23,7 @@ fn main() {
         view! { cx,
             div {
                 button {
-                    .type_("button".s())
+                    .type_(xf::ButtonTypeValue::Button.s())
                     .on_click(increment)
                     "Click me: " (counter) " times!"
                 }

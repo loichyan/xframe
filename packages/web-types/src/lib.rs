@@ -9,7 +9,7 @@ pub struct Element<'a> {
     pub tag: &'a str,
     pub namespace: Option<&'a str>,
     pub js_class: &'a str,
-    pub attributes: Vec<Property<'a>>,
+    pub properties: Vec<Property<'a>>,
     pub events: Vec<Event<'a>>,
 }
 

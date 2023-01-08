@@ -1,5 +1,8 @@
 use std::marker::PhantomData;
-use xframe::{prelude::*, view, GenericComponent, IntoReactiveValue, RenderOutput, Scope, WebNode};
+use xframe::{
+    elements as xf, prelude::*, view, GenericComponent, IntoReactiveValue, RenderOutput, Scope,
+    WebNode,
+};
 
 struct Counter<N> {
     cx: Scope,
@@ -16,7 +19,7 @@ impl<N: WebNode> GenericComponent<N> for Counter<N> {
         view! { cx,
             div {
                 button {
-                    .type_("button".s())
+                    .type_(xf::ButtonTypeValue::Button.s())
                     .on_click(increment)
                     "Click me: " (counter) " times!"
                 }

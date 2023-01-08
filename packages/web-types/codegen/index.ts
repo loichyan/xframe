@@ -16,31 +16,35 @@ declare function __collectProperties<T extends Record<string, Input>>(): Record<
   Output
 >;
 
-type DummyClass = Node;
-
 const {
   events: { events: EVENTS },
   aria: { props: ARIA_PROPS },
   html: { props: HTML_PROPS },
-  svg: { props: SVG_PROPS },
+  solidHtml,
+  svg,
 } = __collectProperties<{
   events: {
-    className: DummyClass;
+    className: undefined;
     props: {};
     events: HTMLElement["addEventListener"];
   };
   aria: {
-    className: DummyClass;
+    className: undefined;
     props: ARIAMixin;
     events: undefined;
   };
   html: {
-    className: DummyClass;
+    className: undefined;
     props: Omit<HTMLElement, keyof Node | keyof ARIAMixin>;
     events: undefined;
   };
+  solidHtml: {
+    className: undefined;
+    props: JSX.HTMLAttributes<HTMLElement>;
+    events: undefined;
+  };
   svg: {
-    className: DummyClass;
+    className: undefined;
     props: Omit<JSX.CoreSVGAttributes<SVGAElement>, keyof JSX.AriaAttributes>;
     events: undefined;
   };
@@ -49,9 +53,16 @@ const {
 const HTML_ELEMENT_MAP = __collectProperties<{
   [K in keyof HTMLElementTagNameMap]: {
     className: HTMLElementTagNameMap[K];
-    // TODO: extends types in `solid-js`
     props: Omit<HTMLElementTagNameMap[K], keyof HTMLElement>;
     events: HTMLElementTagNameMap[K]["addEventListener"];
+  };
+}>();
+
+const SOLID_HTML_ELEMENT_MAP = __collectProperties<{
+  [K in keyof JSX.HTMLElementTags]: {
+    className: undefined;
+    props: Omit<JSX.HTMLElementTags[K], keyof JSX.HTMLAttributes<HTMLElement>>;
+    events: undefined;
   };
 }>();
 
@@ -69,12 +80,43 @@ const SVG_ELEMENT_MAP = __collectProperties<{
 const EXCLUDE_EVENTS: Record<string, any> = {};
 
 const EXCLUDE_PROPS: Record<string, any> = {
-  $ServerOnly: true,
-  children: true,
   innerHTML: true,
   innerText: true,
+  outerHTML: true,
+  outerText: true,
+  children: true,
   textContent: true,
 };
+
+const SOLID_EXCLUDE_PROPS: Record<string, any> = {
+  $ServerOnly: true,
+};
+
+function solidProps(props: Properties): Properties {
+  props = recordExlucde(props, SOLID_EXCLUDE_PROPS);
+  const result: Properties = {};
+  for (const k in props) {
+    // names in different cases, e.g. 'tabindex' and 'tabIndex'
+    // 'tabIndex' will be ignore
+    const lower = k.toLowerCase();
+    if (k !== lower && lower in props) {
+      continue;
+    }
+    result[k] = props[k];
+  }
+  return result;
+}
+
+const SOLID_HTML_PROPS = solidProps(solidHtml.props);
+const SVG_PROPS = solidProps(svg.props);
+
+SOLID_HTML_ELEMENT_MAP.ol.props.type = "string";
+for (const val of Object.values(SOLID_HTML_ELEMENT_MAP)) {
+  val.props = solidProps(val.props);
+  if ("formenctype" in val.props) {
+    val.props["formenctype"] = "string";
+  }
+}
 
 class PresetCollector {
   private result = "";
@@ -87,7 +129,7 @@ class PresetCollector {
     this.finishInsert();
 
     this.startInsertPredefiend("ARIA");
-    this.insertProps(ARIA_PROPS);
+    this.insertProps(this.overrideWithSolid(ARIA_PROPS, SOLID_HTML_PROPS));
     this.finishInsert();
 
     this.startInsertPredefiend("HTML");
@@ -106,7 +148,14 @@ class PresetCollector {
       this.startInsertElement(tag, { className });
       this.insertExtends("HTML");
       this.insertEvents(events, EVENTS);
-      this.insertProps(props);
+      this.insertProps(
+        tag in SOLID_HTML_ELEMENT_MAP
+          ? this.overrideWithSolid(
+              props,
+              SOLID_HTML_ELEMENT_MAP[tag as keyof JSX.HTMLElementTags].props
+            )
+          : props
+      );
       this.finishInsert();
     }
 
@@ -150,6 +199,23 @@ class PresetCollector {
     }
   }
 
+  private overrideWithSolid(html: Properties, solid: Properties): Properties {
+    const result: Properties = {};
+    const override: Properties = {};
+    for (const k in solid) {
+      override[k.replaceAll("-", "").toLowerCase()] = solid[k];
+    }
+    for (const k in html) {
+      const solidType = override[k.toLowerCase()];
+      if (solidType !== undefined) {
+        result[k] = solidType;
+      } else {
+        result[k] = html[k];
+      }
+    }
+    return result;
+  }
+
   private insertProps(
     props: Properties,
     attribute = false,
@@ -158,12 +224,6 @@ class PresetCollector {
     const sorted = Object.entries(recordExlucde(props, exclude)).sort();
     for (const [key, val] of sorted) {
       if (key.startsWith("webkit")) {
-        continue;
-      }
-      // names in different cases, e.g. 'tabindex' and 'tabIndex'
-      // 'tabIndex' will be ignore
-      const lower = key.toLowerCase();
-      if (key !== lower && lower in props) {
         continue;
       }
       let name = key;
@@ -182,11 +242,10 @@ class PresetCollector {
   }
 
   private literalProp(literals: string[]): string {
-    literals = literals.sort();
-    if (arrayEqual(literals, ["false", "true"])) {
-      return "boolean";
-    }
-    const values = literals.map((v) => `"${v}"`).join(" ");
+    const values = literals
+      .sort()
+      .map((v) => `"${v}"`)
+      .join(" ");
     return `(${values})`;
   }
 
@@ -229,21 +288,6 @@ function recordExlucde<T>(
     }
   }
   return result;
-}
-
-function arrayEqual<T>(a: T[], b: T[]): boolean {
-  if (a === b) {
-    return true;
-  } else if (a.length !== b.length) {
-    return false;
-  } else {
-    for (let i = 0; i < a.length; i++) {
-      if (a[i] !== b[i]) {
-        return false;
-      }
-    }
-    return true;
-  }
 }
 
 const path = process.argv[2];

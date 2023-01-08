@@ -1,4 +1,4 @@
-use xframe::{prelude::*, view, If, IntoReactiveValue, Switch};
+use xframe::{elements as xf, prelude::*, view, If, IntoReactiveValue, Switch};
 
 fn main() {
     console_error_panic_hook::set_once();
@@ -10,7 +10,7 @@ fn main() {
         view! { cx,
             div {
                 button {
-                    .type_("button".s())
+                    .type_(xf::ButtonTypeValue::Button.s())
                     .on_click(increment)
                     "Click me!"
                 }

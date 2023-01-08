@@ -71,9 +71,9 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
         if !element_types.contains_key(&element.ty) {
             element_types.insert(element.ty.clone(), element.js_ty.clone());
         }
-        for attr in element.attributes.iter() {
-            if let JsType::Literals(lits) = &attr.original.js_type {
-                let variants = &mut attr_types.entry(attr.ty.clone()).or_default().variants;
+        for prop in element.properties.iter() {
+            if let JsType::Literals(lits) = &prop.original.js_type {
+                let variants = &mut attr_types.entry(prop.ty.clone()).or_default().variants;
                 for &lit in lits.values.iter() {
                     if lit.is_empty() {
                         continue;
@@ -131,7 +131,7 @@ struct Element<'a> {
     ty: Ident,
     js_ty: Ident,
     fn_: Ident,
-    attributes: Vec<Property<'a>>,
+    properties: Vec<Property<'a>>,
     events: Vec<Event<'a>>,
 }
 
@@ -142,7 +142,7 @@ impl<'a> Element<'a> {
             namespace,
             js_class,
             events,
-            attributes,
+            properties,
         } = input;
         let js_ty = if let Some(js_class) = js_class.strip_suffix("Element") {
             if let Some(js_class) = js_class.strip_prefix("HTML") {
@@ -182,7 +182,10 @@ impl<'a> Element<'a> {
             ty: format_ident!("{}Element", tag.to_pascal_case()),
             js_ty,
             fn_: fn_.to_ident(),
-            attributes: attributes.iter().flat_map(Property::from_web).collect(),
+            properties: properties
+                .iter()
+                .flat_map(|t| Property::from_web(input, t))
+                .collect(),
             events: events.iter().map(Event::from_web).collect(),
         }
     }
@@ -191,13 +194,13 @@ impl<'a> Element<'a> {
         let Self {
             ty,
             fn_,
-            attributes,
+            properties,
             events,
             tag,
             ns,
             ..
         } = self;
-        let attr_fns = attributes.iter().map(Property::quote_fn);
+        let attr_fns = properties.iter().map(Property::quote_fn);
         let event_fns = events.iter().map(Event::quote_fn);
         let node_type = if let Some(ns) = ns {
             quote!(#NODE_TYPE::TagNs {
@@ -270,7 +273,10 @@ struct Property<'a> {
 }
 
 impl<'a> Property<'a> {
-    fn from_web(input: &'a web_types::Property<'a>) -> Option<Self> {
+    fn from_web(
+        element: &web_types::Element<'a>,
+        input: &'a web_types::Property<'a>,
+    ) -> Option<Self> {
         if matches!(input.name, "class") {
             return None;
         }
@@ -286,7 +292,13 @@ impl<'a> Property<'a> {
                 "boolean" => "BooleanValue".to_ident(),
                 _ => panic!("unknown js type '{ty}'"),
             },
-            JsType::Literals(_) => format_ident!("{}Value", name.to_pascal_case()),
+            JsType::Literals(_) => {
+                let name = match *name {
+                    "type" => format!("{}Type", element.tag.to_pascal_case()),
+                    _ => name.to_pascal_case(),
+                };
+                format_ident!("{name}Value",)
+            }
         };
         let mut fn_ = name.to_snake_case();
         if matches!(*name, "as" | "in" | "async" | "loop" | "type") {

@@ -87,7 +87,7 @@ class PropertyCollector {
   }
 
   private collectClassName(type: ts.Type): ts.StringLiteral {
-    return litStr(type.symbol.name);
+    return litStr(type.symbol?.name || "undefined");
   }
 
   private collectProperties(type: ts.Type): ts.ObjectLiteralExpression {
@@ -107,20 +107,20 @@ class PropertyCollector {
       return;
     }
 
-    let value: ts.Expression;
     const type = this.checker
       .getTypeOfSymbolAtLocation(property, this.node)
       .getNonNullableType();
-    const jsType = this.jsType(type);
-    if (jsType !== undefined) {
-      value = jsType;
+    let value: ts.Expression | undefined;
+    if (type.flags & ts.TypeFlags.Boolean) {
+      value = litStr("boolean");
+    } else if (type.flags & ts.TypeFlags.Number) {
+      value = litStr("number");
+    } else if (type.flags & ts.TypeFlags.String) {
+      value = litStr("string");
     } else if (type.isUnion()) {
-      const litType = this.collectLiteralProperty(type);
-      if (litType === undefined) {
-        return;
-      }
-      value = litType;
-    } else {
+      value = this.collectLiteralProperty(type);
+    }
+    if (value === undefined) {
       return;
     }
     return factory.createPropertyAssignment(litStr(property.name), value);
@@ -128,37 +128,49 @@ class PropertyCollector {
 
   private collectLiteralProperty(
     type: ts.UnionType
-  ): ts.ArrayLiteralExpression | ts.StringLiteral | undefined {
-    const literals = [];
+  ): ts.Expression | undefined {
+    const literals = new Set<string>();
     for (const ty of type.types) {
       if (ty.isStringLiteral()) {
-        literals.push(ty.value);
+        literals.add(ty.value);
+      } else if (ty.flags & ts.TypeFlags.BooleanLiteral) {
+        literals.add((ty as any).intrinsicName);
       }
     }
-    if (literals.length === 0) {
+    if (literals.size === 0) {
+      let jsType = "string";
       for (const ty of type.types) {
-        const jsType = this.jsType(ty);
-        if (jsType !== undefined) {
-          return jsType;
+        if (ty.flags & ts.TypeFlags.Number) {
+          jsType = "number";
+        } else if (ty.flags & ts.TypeFlags.Boolean) {
+          jsType = "boolean";
+        } else if (!(ty.flags & ts.TypeFlags.String)) {
+          return;
         }
       }
-      return undefined;
+      return litStr(jsType);
     }
-    return factory.createArrayLiteralExpression(literals.map(litStr));
+    literals.delete("");
+    const values = Array.from(literals.values()).sort();
+    if (arrayEqual(values, ["false", "true"])) {
+      return litStr("boolean");
+    }
+    return factory.createArrayLiteralExpression(values.map(litStr));
   }
+}
 
-  private jsType(ty: ts.Type): ts.StringLiteral | undefined {
-    let s: string;
-    if (ty.flags & ts.TypeFlags.Boolean) {
-      s = "boolean";
-    } else if (ty.flags & ts.TypeFlags.Number) {
-      s = "number";
-    } else if (ty.flags & ts.TypeFlags.String) {
-      s = "string";
-    } else {
-      return;
+function arrayEqual<T>(a: T[], b: T[]): boolean {
+  if (a === b) {
+    return true;
+  } else if (a.length !== b.length) {
+    return false;
+  } else {
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) {
+        return false;
+      }
     }
-    return litStr(s);
+    return true;
   }
 }
 

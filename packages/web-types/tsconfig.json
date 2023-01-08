@@ -4,6 +4,7 @@
     "skipLibCheck": true,
     "moduleResolution": "node",
     "lib": ["DOM", "ESNext"],
+    "target": "ESNext",
     "outDir": "dist",
     "plugins": [{ "transform": "./codegen/transformer.ts" }]
   },

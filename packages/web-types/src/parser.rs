@@ -72,7 +72,7 @@ impl<'a> Parser<'a> {
             js_class: args
                 .class
                 .ok_or_else(|| "miss class in arguments".to_owned())?,
-            attributes: content.attributes,
+            properties: content.attributes,
             events: content.events,
         });
         Ok(())
