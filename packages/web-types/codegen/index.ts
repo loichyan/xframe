@@ -3,19 +3,18 @@ import { JSX } from "solid-js";
 
 type PropertyType = "string" | "number" | "boolean" | string[];
 
-type Properties = { [k: string]: PropertyType };
+type Properties = Record<string, PropertyType>;
 
-type Events = { [k: string]: string };
+type Events = Record<string, string>;
 
-declare function __collectProperties<
-  T extends { [k: string]: { className: any; props: any; events: any } }
->(): {
-  [K in keyof T]: {
-    className: string;
-    props: Properties;
-    events: Events;
-  };
-};
+type Input = { className: any; props: any; events: any };
+
+type Output = { className: string; props: Properties; events: Events };
+
+declare function __collectProperties<T extends Record<string, Input>>(): Record<
+  keyof T,
+  Output
+>;
 
 type DummyClass = Node;
 
@@ -67,7 +66,9 @@ const SVG_ELEMENT_MAP = __collectProperties<{
   };
 }>();
 
-const EXCLUDE_PROPS: { [k: string]: true | undefined } = {
+const EXCLUDE_EVENTS: Record<string, any> = {};
+
+const EXCLUDE_PROPS: Record<string, any> = {
   $ServerOnly: true,
   children: true,
   innerHTML: true,
@@ -81,43 +82,42 @@ class PresetCollector {
   collect(): string {
     this.start();
 
-    this.startInsert("+EVENT");
+    this.startInsertPredefiend("EVENT");
     this.insertEvents(EVENTS);
     this.finishInsert();
 
-    this.startInsert("+ARIA");
+    this.startInsertPredefiend("ARIA");
     this.insertProps(ARIA_PROPS);
     this.finishInsert();
 
-    this.startInsert("+HTML");
-    this.insertRaw("+EVENT");
-    this.insertRaw("+ARIA");
+    this.startInsertPredefiend("HTML");
+    this.insertExtends("EVENT", "ARIA");
     this.insertProps(HTML_PROPS);
     this.finishInsert();
 
-    this.startInsert("+SVG");
-    this.insertRaw("+EVENT");
-    this.insertRaw("+ARIA");
+    this.startInsertPredefiend("SVG");
+    this.insertExtends("EVENT", "ARIA");
     this.insertProps(SVG_PROPS, true);
     this.finishInsert();
 
-    // Collect properties of each Element.
     for (const [tag, { className, props, events }] of Object.entries(
       HTML_ELEMENT_MAP
     )) {
-      this.startInsert(`${tag} => ${className}`);
-      this.insertRaw(`+HTML`);
+      this.startInsertElement(tag, { className });
+      this.insertExtends("HTML");
       this.insertEvents(events, EVENTS);
       this.insertProps(props);
       this.finishInsert();
     }
 
-    // Collect properties of each Element.
     for (const [tag, { className, props, events }] of Object.entries(
       SVG_ELEMENT_MAP
     )) {
-      this.startInsert(`${tag} => ${className}`);
-      this.insertRaw(`+SVG`);
+      this.startInsertElement(tag, {
+        className,
+        namespace: "http://www.w3.org/2000/svg",
+      });
+      this.insertExtends("SVG");
       this.insertEvents(events, EVENTS);
       this.insertProps(props, true);
       this.finishInsert();
@@ -134,10 +134,14 @@ class PresetCollector {
     return this.result;
   }
 
-  private insertEvents(events: Events, exclude: Events = {}) {
-    const sorted = Object.entries(events)
-      .filter(([key]) => exclude[key] === undefined)
-      .sort();
+  private insertExtends(...names: string[]) {
+    for (const name of names) {
+      this.insertRaw(`+${name}`);
+    }
+  }
+
+  private insertEvents(events: Events, exclude = EXCLUDE_EVENTS) {
+    const sorted = Object.entries(recordExlucde(events, exclude)).sort();
     for (const [key, val] of sorted) {
       if (key.startsWith("webkit")) {
         continue;
@@ -146,12 +150,18 @@ class PresetCollector {
     }
   }
 
-  private insertProps(props: Properties, attribute: boolean = false) {
-    const sorted = Object.entries(props).sort();
+  private insertProps(
+    props: Properties,
+    attribute = false,
+    exclude = EXCLUDE_PROPS
+  ) {
+    const sorted = Object.entries(recordExlucde(props, exclude)).sort();
     for (const [key, val] of sorted) {
-      if (key.startsWith("webkit") || key in EXCLUDE_PROPS) {
+      if (key.startsWith("webkit")) {
         continue;
       }
+      // names in different cases, e.g. 'tabindex' and 'tabIndex'
+      // 'tabIndex' will be ignore
       const lower = key.toLowerCase();
       if (key !== lower && lower in props) {
         continue;
@@ -180,6 +190,21 @@ class PresetCollector {
     return `(${values})`;
   }
 
+  private startInsertPredefiend(name: string) {
+    this.startInsert(`+${name}`);
+  }
+
+  private startInsertElement(
+    tag: string,
+    { className, namespace }: { className: string; namespace?: string }
+  ) {
+    const argStrs = [`class=${className}`];
+    if (namespace !== undefined) {
+      argStrs.push(`ns="${namespace}"`);
+    }
+    this.startInsert(`${tag}(${argStrs.join(" ")})`);
+  }
+
   private startInsert(head: string) {
     this.result += `${head} {`;
   }
@@ -191,6 +216,19 @@ class PresetCollector {
   private finishInsert() {
     this.result += `\n}\n`;
   }
+}
+
+function recordExlucde<T>(
+  a: Record<string, T>,
+  exlucde: Record<string, any>
+): Record<string, T> {
+  const result: Record<string, T> = {};
+  for (const k in a) {
+    if (!(k in exlucde)) {
+      result[k] = a[k];
+    }
+  }
+  return result;
 }
 
 function arrayEqual<T>(a: T[], b: T[]): boolean {

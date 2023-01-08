@@ -70,6 +70,10 @@ impl GenericNode for DomNode {
     fn create(ty: NodeType) -> Self {
         let node: web_sys::Node = DOCUMENT.with(|doc| match ty {
             NodeType::Tag(tag) => doc.create_element(tag.intern()).unwrap_throw_val().into(),
+            NodeType::TagNs { tag, ns } => doc
+                .create_element_ns(Some(ns.intern()), tag.intern())
+                .unwrap_throw_val()
+                .into(),
             NodeType::Text(data) => doc.create_text_node(data.intern()).into(),
             NodeType::Placeholder(desc) => doc.create_comment(desc.intern()).into(),
             NodeType::Template(data) => {

@@ -8,6 +8,12 @@ type Result<T> = std::result::Result<T, String>;
 type Predefined<'a> = BTreeMap<&'a str, Content<'a>>;
 type Elements<'a> = Vec<Element<'a>>;
 
+macro_rules! unknown_token {
+    () => {{
+        Err("unknown token".to_owned())?
+    }};
+}
+
 #[derive(Default)]
 struct Content<'a> {
     attributes: Vec<Property<'a>>,
@@ -42,15 +48,9 @@ impl<'a> Parser<'a> {
         while let Some(token) = self.lexer.next() {
             match token {
                 // A predefined preset.
-                Token::Char(b'+') => {
-                    self.parse_predefined()?;
-                }
-                Token::Ident => {
-                    let name = self.lexer.buf();
-                    let preset = self.parse_preset(name)?;
-                    self.elements.push(preset);
-                }
-                _ => todo!(),
+                Token::Char(b'+') => self.parse_predefined()?,
+                Token::Ident => self.parse_element(self.lexer.buf())?,
+                _ => unknown_token!(),
             }
         }
         Ok(())
@@ -63,17 +63,43 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn parse_preset(&mut self, name: &'a str) -> Result<Element<'a>> {
-        self.lexer.expect_char(b'=')?;
-        self.lexer.expect_char(b'>')?;
-        let js_class = self.lexer.expect_ident()?;
+    fn parse_element(&mut self, tag: &'a str) -> Result<()> {
+        let args = self.parse_args()?;
         let content = self.parse_content()?;
-        Ok(Element {
-            name,
-            js_class,
+        self.elements.push(Element {
+            tag,
+            namespace: args.ns,
+            js_class: args
+                .class
+                .ok_or_else(|| "miss class in arguments".to_owned())?,
             attributes: content.attributes,
             events: content.events,
-        })
+        });
+        Ok(())
+    }
+
+    fn parse_args(&mut self) -> Result<ElementArgs<'a>> {
+        self.lexer.expect_char(b'(')?;
+        let mut args = ElementArgs::default();
+        while let Some(token) = self.lexer.next() {
+            match token {
+                // A predefined preset.
+                Token::Char(b')') => {
+                    break;
+                }
+                Token::Ident => {
+                    let key = self.lexer.buf();
+                    self.lexer.expect_char(b'=')?;
+                    match key {
+                        "class" => args.class = Some(self.lexer.expect_ident()?),
+                        "ns" => args.ns = Some(self.lexer.expect_str()?),
+                        _ => return Err(format!("unknown argument '{key}'")),
+                    }
+                }
+                _ => todo!(),
+            }
+        }
+        Ok(args)
     }
 
     fn parse_content(&mut self) -> Result<Content<'a>> {
@@ -96,12 +122,26 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn expect_str(&mut self) -> Result<&'a str> {
+        if let Some(Token::String) = self.next() {
+            Ok(self.buf())
+        } else {
+            Err("expect a string".to_owned())
+        }
+    }
+
     fn expect_char(&mut self, ch: u8) -> Result<u8> {
         match self.next() {
             Some(Token::Char(got)) if got == ch => Ok(got),
             _ => Err(format!("expect '{}'", ch as char)),
         }
     }
+}
+
+#[derive(Default)]
+struct ElementArgs<'a> {
+    class: Option<&'a str>,
+    ns: Option<&'a str>,
 }
 
 struct ParseContent<'a, 'b> {
@@ -155,7 +195,7 @@ impl<'a> ParseContent<'a, '_> {
                         attribute: false,
                     });
                 }
-                _ => return Err("unknown token".to_owned()),
+                _ => unknown_token!(),
             }
             self.lexer.expect_char(b',')?;
         }
@@ -171,7 +211,7 @@ impl<'a> ParseContent<'a, '_> {
                 match token {
                     Token::Char(b')') => break,
                     Token::String => values.push(self.lexer.buf()),
-                    _ => return Err("unknown token".to_owned()),
+                    _ => unknown_token!(),
                 }
             }
             JsType::Literals(Literals { values })

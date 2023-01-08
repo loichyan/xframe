@@ -174,7 +174,7 @@
     *lang: string,
     *tabindex: string,
 }
-a => HTMLAnchorElement {
+a(class=HTMLAnchorElement) {
     +HTML,
     charset: string,
     coords: string,
@@ -200,13 +200,13 @@ a => HTMLAnchorElement {
     type: string,
     username: string,
 }
-abbr => HTMLElement {
+abbr(class=HTMLElement) {
     +HTML,
 }
-address => HTMLElement {
+address(class=HTMLElement) {
     +HTML,
 }
-area => HTMLAreaElement {
+area(class=HTMLAreaElement) {
     +HTML,
     alt: string,
     coords: string,
@@ -228,13 +228,13 @@ area => HTMLAreaElement {
     target: string,
     username: string,
 }
-article => HTMLElement {
+article(class=HTMLElement) {
     +HTML,
 }
-aside => HTMLElement {
+aside(class=HTMLElement) {
     +HTML,
 }
-audio => HTMLAudioElement {
+audio(class=HTMLAudioElement) {
     +HTML,
     @encrypted: MediaEncryptedEvent,
     @waitingforkey: Event,
@@ -253,25 +253,25 @@ audio => HTMLAudioElement {
     src: string,
     volume: number,
 }
-b => HTMLElement {
+b(class=HTMLElement) {
     +HTML,
 }
-base => HTMLBaseElement {
+base(class=HTMLBaseElement) {
     +HTML,
     href: string,
     target: string,
 }
-bdi => HTMLElement {
+bdi(class=HTMLElement) {
     +HTML,
 }
-bdo => HTMLElement {
+bdo(class=HTMLElement) {
     +HTML,
 }
-blockquote => HTMLQuoteElement {
+blockquote(class=HTMLQuoteElement) {
     +HTML,
     cite: string,
 }
-body => HTMLBodyElement {
+body(class=HTMLBodyElement) {
     +HTML,
     @afterprint: Event,
     @beforeprint: Event,
@@ -298,11 +298,11 @@ body => HTMLBodyElement {
     text: string,
     vLink: string,
 }
-br => HTMLBRElement {
+br(class=HTMLBRElement) {
     +HTML,
     clear: string,
 }
-button => HTMLButtonElement {
+button(class=HTMLButtonElement) {
     +HTML,
     disabled: boolean,
     formAction: string,
@@ -314,31 +314,22 @@ button => HTMLButtonElement {
     type: string,
     value: string,
 }
-canvas => HTMLCanvasElement {
+canvas(class=HTMLCanvasElement) {
     +HTML,
     height: number,
     width: number,
 }
-caption => HTMLTableCaptionElement {
+caption(class=HTMLTableCaptionElement) {
     +HTML,
     align: string,
 }
-cite => HTMLElement {
+cite(class=HTMLElement) {
     +HTML,
 }
-code => HTMLElement {
+code(class=HTMLElement) {
     +HTML,
 }
-col => HTMLTableColElement {
-    +HTML,
-    align: string,
-    ch: string,
-    chOff: string,
-    span: number,
-    vAlign: string,
-    width: string,
-}
-colgroup => HTMLTableColElement {
+col(class=HTMLTableColElement) {
     +HTML,
     align: string,
     ch: string,
@@ -347,48 +338,57 @@ colgroup => HTMLTableColElement {
     vAlign: string,
     width: string,
 }
-data => HTMLDataElement {
+colgroup(class=HTMLTableColElement) {
+    +HTML,
+    align: string,
+    ch: string,
+    chOff: string,
+    span: number,
+    vAlign: string,
+    width: string,
+}
+data(class=HTMLDataElement) {
     +HTML,
     value: string,
 }
-datalist => HTMLDataListElement {
+datalist(class=HTMLDataListElement) {
     +HTML,
 }
-dd => HTMLElement {
+dd(class=HTMLElement) {
     +HTML,
 }
-del => HTMLModElement {
+del(class=HTMLModElement) {
     +HTML,
     cite: string,
     dateTime: string,
 }
-details => HTMLDetailsElement {
+details(class=HTMLDetailsElement) {
     +HTML,
     open: boolean,
 }
-dfn => HTMLElement {
+dfn(class=HTMLElement) {
     +HTML,
 }
-dialog => HTMLDialogElement {
+dialog(class=HTMLDialogElement) {
     +HTML,
     open: boolean,
     returnValue: string,
 }
-div => HTMLDivElement {
+div(class=HTMLDivElement) {
     +HTML,
     align: string,
 }
-dl => HTMLDListElement {
+dl(class=HTMLDListElement) {
     +HTML,
     compact: boolean,
 }
-dt => HTMLElement {
+dt(class=HTMLElement) {
     +HTML,
 }
-em => HTMLElement {
+em(class=HTMLElement) {
     +HTML,
 }
-embed => HTMLEmbedElement {
+embed(class=HTMLEmbedElement) {
     +HTML,
     align: string,
     height: string,
@@ -397,57 +397,57 @@ embed => HTMLEmbedElement {
     type: string,
     width: string,
 }
-fieldset => HTMLFieldSetElement {
+fieldset(class=HTMLFieldSetElement) {
     +HTML,
     disabled: boolean,
     name: string,
 }
-figcaption => HTMLElement {
+figcaption(class=HTMLElement) {
     +HTML,
 }
-figure => HTMLElement {
+figure(class=HTMLElement) {
     +HTML,
 }
-footer => HTMLElement {
+footer(class=HTMLElement) {
     +HTML,
 }
-form => HTMLFormElement {
+form(class=HTMLFormElement) {
     +HTML,
 }
-h1 => HTMLHeadingElement {
-    +HTML,
-    align: string,
-}
-h2 => HTMLHeadingElement {
+h1(class=HTMLHeadingElement) {
     +HTML,
     align: string,
 }
-h3 => HTMLHeadingElement {
+h2(class=HTMLHeadingElement) {
     +HTML,
     align: string,
 }
-h4 => HTMLHeadingElement {
+h3(class=HTMLHeadingElement) {
     +HTML,
     align: string,
 }
-h5 => HTMLHeadingElement {
+h4(class=HTMLHeadingElement) {
     +HTML,
     align: string,
 }
-h6 => HTMLHeadingElement {
+h5(class=HTMLHeadingElement) {
     +HTML,
     align: string,
 }
-head => HTMLHeadElement {
+h6(class=HTMLHeadingElement) {
+    +HTML,
+    align: string,
+}
+head(class=HTMLHeadElement) {
     +HTML,
 }
-header => HTMLElement {
+header(class=HTMLElement) {
     +HTML,
 }
-hgroup => HTMLElement {
+hgroup(class=HTMLElement) {
     +HTML,
 }
-hr => HTMLHRElement {
+hr(class=HTMLHRElement) {
     +HTML,
     align: string,
     color: string,
@@ -455,14 +455,14 @@ hr => HTMLHRElement {
     size: string,
     width: string,
 }
-html => HTMLHtmlElement {
+html(class=HTMLHtmlElement) {
     +HTML,
     version: string,
 }
-i => HTMLElement {
+i(class=HTMLElement) {
     +HTML,
 }
-iframe => HTMLIFrameElement {
+iframe(class=HTMLIFrameElement) {
     +HTML,
     align: string,
     allow: string,
@@ -479,7 +479,7 @@ iframe => HTMLIFrameElement {
     srcdoc: string,
     width: string,
 }
-img => HTMLImageElement {
+img(class=HTMLImageElement) {
     +HTML,
     align: string,
     alt: string,
@@ -501,7 +501,7 @@ img => HTMLImageElement {
     vspace: number,
     width: number,
 }
-input => HTMLInputElement {
+input(class=HTMLInputElement) {
     +HTML,
     accept: string,
     align: string,
@@ -542,28 +542,28 @@ input => HTMLInputElement {
     valueAsNumber: number,
     width: number,
 }
-ins => HTMLModElement {
+ins(class=HTMLModElement) {
     +HTML,
     cite: string,
     dateTime: string,
 }
-kbd => HTMLElement {
+kbd(class=HTMLElement) {
     +HTML,
 }
-label => HTMLLabelElement {
+label(class=HTMLLabelElement) {
     +HTML,
     htmlFor: string,
 }
-legend => HTMLLegendElement {
+legend(class=HTMLLegendElement) {
     +HTML,
     align: string,
 }
-li => HTMLLIElement {
+li(class=HTMLLIElement) {
     +HTML,
     type: string,
     value: number,
 }
-link => HTMLLinkElement {
+link(class=HTMLLinkElement) {
     +HTML,
     as: string,
     charset: string,
@@ -581,21 +581,21 @@ link => HTMLLinkElement {
     target: string,
     type: string,
 }
-main => HTMLElement {
+main(class=HTMLElement) {
     +HTML,
 }
-map => HTMLMapElement {
+map(class=HTMLMapElement) {
     +HTML,
     name: string,
 }
-mark => HTMLElement {
+mark(class=HTMLElement) {
     +HTML,
 }
-menu => HTMLMenuElement {
+menu(class=HTMLMenuElement) {
     +HTML,
     compact: boolean,
 }
-meta => HTMLMetaElement {
+meta(class=HTMLMetaElement) {
     +HTML,
     content: string,
     httpEquiv: string,
@@ -603,7 +603,7 @@ meta => HTMLMetaElement {
     name: string,
     scheme: string,
 }
-meter => HTMLMeterElement {
+meter(class=HTMLMeterElement) {
     +HTML,
     high: number,
     low: number,
@@ -612,13 +612,13 @@ meter => HTMLMeterElement {
     optimum: number,
     value: number,
 }
-nav => HTMLElement {
+nav(class=HTMLElement) {
     +HTML,
 }
-noscript => HTMLElement {
+noscript(class=HTMLElement) {
     +HTML,
 }
-object => HTMLObjectElement {
+object(class=HTMLObjectElement) {
     +HTML,
     align: string,
     archive: string,
@@ -637,19 +637,19 @@ object => HTMLObjectElement {
     vspace: number,
     width: string,
 }
-ol => HTMLOListElement {
+ol(class=HTMLOListElement) {
     +HTML,
     compact: boolean,
     reversed: boolean,
     start: number,
     type: string,
 }
-optgroup => HTMLOptGroupElement {
+optgroup(class=HTMLOptGroupElement) {
     +HTML,
     disabled: boolean,
     label: string,
 }
-option => HTMLOptionElement {
+option(class=HTMLOptionElement) {
     +HTML,
     defaultSelected: boolean,
     disabled: boolean,
@@ -658,48 +658,48 @@ option => HTMLOptionElement {
     text: string,
     value: string,
 }
-output => HTMLOutputElement {
+output(class=HTMLOutputElement) {
     +HTML,
     defaultValue: string,
     name: string,
     value: string,
 }
-p => HTMLParagraphElement {
+p(class=HTMLParagraphElement) {
     +HTML,
     align: string,
 }
-picture => HTMLPictureElement {
+picture(class=HTMLPictureElement) {
     +HTML,
 }
-pre => HTMLPreElement {
+pre(class=HTMLPreElement) {
     +HTML,
     width: number,
 }
-progress => HTMLProgressElement {
+progress(class=HTMLProgressElement) {
     +HTML,
     max: number,
     value: number,
 }
-q => HTMLQuoteElement {
+q(class=HTMLQuoteElement) {
     +HTML,
     cite: string,
 }
-rp => HTMLElement {
+rp(class=HTMLElement) {
     +HTML,
 }
-rt => HTMLElement {
+rt(class=HTMLElement) {
     +HTML,
 }
-ruby => HTMLElement {
+ruby(class=HTMLElement) {
     +HTML,
 }
-s => HTMLElement {
+s(class=HTMLElement) {
     +HTML,
 }
-samp => HTMLElement {
+samp(class=HTMLElement) {
     +HTML,
 }
-script => HTMLScriptElement {
+script(class=HTMLScriptElement) {
     +HTML,
     async: boolean,
     charset: string,
@@ -714,10 +714,10 @@ script => HTMLScriptElement {
     text: string,
     type: string,
 }
-section => HTMLElement {
+section(class=HTMLElement) {
     +HTML,
 }
-select => HTMLSelectElement {
+select(class=HTMLSelectElement) {
     +HTML,
     autocomplete: string,
     disabled: boolean,
@@ -729,14 +729,14 @@ select => HTMLSelectElement {
     size: number,
     value: string,
 }
-slot => HTMLSlotElement {
+slot(class=HTMLSlotElement) {
     +HTML,
     name: string,
 }
-small => HTMLElement {
+small(class=HTMLElement) {
     +HTML,
 }
-source => HTMLSourceElement {
+source(class=HTMLSourceElement) {
     +HTML,
     height: number,
     media: string,
@@ -746,28 +746,28 @@ source => HTMLSourceElement {
     type: string,
     width: number,
 }
-span => HTMLSpanElement {
+span(class=HTMLSpanElement) {
     +HTML,
 }
-strong => HTMLElement {
+strong(class=HTMLElement) {
     +HTML,
 }
-style => HTMLStyleElement {
+style(class=HTMLStyleElement) {
     +HTML,
     disabled: boolean,
     media: string,
     type: string,
 }
-sub => HTMLElement {
+sub(class=HTMLElement) {
     +HTML,
 }
-summary => HTMLElement {
+summary(class=HTMLElement) {
     +HTML,
 }
-sup => HTMLElement {
+sup(class=HTMLElement) {
     +HTML,
 }
-table => HTMLTableElement {
+table(class=HTMLTableElement) {
     +HTML,
     align: string,
     bgColor: string,
@@ -779,14 +779,14 @@ table => HTMLTableElement {
     summary: string,
     width: string,
 }
-tbody => HTMLTableSectionElement {
+tbody(class=HTMLTableSectionElement) {
     +HTML,
     align: string,
     ch: string,
     chOff: string,
     vAlign: string,
 }
-td => HTMLTableCellElement {
+td(class=HTMLTableCellElement) {
     +HTML,
     abbr: string,
     align: string,
@@ -803,10 +803,10 @@ td => HTMLTableCellElement {
     vAlign: string,
     width: string,
 }
-template => HTMLTemplateElement {
+template(class=HTMLTemplateElement) {
     +HTML,
 }
-textarea => HTMLTextAreaElement {
+textarea(class=HTMLTextAreaElement) {
     +HTML,
     autocomplete: string,
     cols: number,
@@ -826,14 +826,14 @@ textarea => HTMLTextAreaElement {
     value: string,
     wrap: string,
 }
-tfoot => HTMLTableSectionElement {
+tfoot(class=HTMLTableSectionElement) {
     +HTML,
     align: string,
     ch: string,
     chOff: string,
     vAlign: string,
 }
-th => HTMLTableCellElement {
+th(class=HTMLTableCellElement) {
     +HTML,
     abbr: string,
     align: string,
@@ -850,22 +850,22 @@ th => HTMLTableCellElement {
     vAlign: string,
     width: string,
 }
-thead => HTMLTableSectionElement {
+thead(class=HTMLTableSectionElement) {
     +HTML,
     align: string,
     ch: string,
     chOff: string,
     vAlign: string,
 }
-time => HTMLTimeElement {
+time(class=HTMLTimeElement) {
     +HTML,
     dateTime: string,
 }
-title => HTMLTitleElement {
+title(class=HTMLTitleElement) {
     +HTML,
     text: string,
 }
-tr => HTMLTableRowElement {
+tr(class=HTMLTableRowElement) {
     +HTML,
     align: string,
     bgColor: string,
@@ -873,7 +873,7 @@ tr => HTMLTableRowElement {
     chOff: string,
     vAlign: string,
 }
-track => HTMLTrackElement {
+track(class=HTMLTrackElement) {
     +HTML,
     default: boolean,
     kind: string,
@@ -881,18 +881,18 @@ track => HTMLTrackElement {
     src: string,
     srclang: string,
 }
-u => HTMLElement {
+u(class=HTMLElement) {
     +HTML,
 }
-ul => HTMLUListElement {
+ul(class=HTMLUListElement) {
     +HTML,
     compact: boolean,
     type: string,
 }
-var => HTMLElement {
+var(class=HTMLElement) {
     +HTML,
 }
-video => HTMLVideoElement {
+video(class=HTMLVideoElement) {
     +HTML,
     @encrypted: MediaEncryptedEvent,
     @enterpictureinpicture: Event,
@@ -918,10 +918,10 @@ video => HTMLVideoElement {
     volume: number,
     width: number,
 }
-wbr => HTMLElement {
+wbr(class=HTMLElement) {
     +HTML,
 }
-animate => SVGAnimateElement {
+animate(class=SVGAnimateElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *accumulate: ("none" "sum"),
     *additive: ("replace" "sum"),
@@ -950,7 +950,7 @@ animate => SVGAnimateElement {
     *to: string,
     *values: string,
 }
-animateMotion => SVGAnimateMotionElement {
+animateMotion(class=SVGAnimateMotionElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *accumulate: ("none" "sum"),
     *additive: ("replace" "sum"),
@@ -979,7 +979,7 @@ animateMotion => SVGAnimateMotionElement {
     *to: string,
     *values: string,
 }
-animateTransform => SVGAnimateTransformElement {
+animateTransform(class=SVGAnimateTransformElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *accumulate: ("none" "sum"),
     *additive: ("replace" "sum"),
@@ -1007,7 +1007,7 @@ animateTransform => SVGAnimateTransformElement {
     *type: ("rotate" "scale" "skewX" "skewY" "translate"),
     *values: string,
 }
-circle => SVGCircleElement {
+circle(class=SVGCircleElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip-rule: ("evenodd" "inherit" "nonzero"),
@@ -1042,7 +1042,7 @@ circle => SVGCircleElement {
     *transform: string,
     *visibility: ("collapse" "hidden" "inherit" "visible"),
 }
-clipPath => SVGClipPathElement {
+clipPath(class=SVGClipPathElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip-path: string,
@@ -1054,7 +1054,7 @@ clipPath => SVGClipPathElement {
     *systemLanguage: string,
     *transform: string,
 }
-defs => SVGDefsElement {
+defs(class=SVGDefsElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip-path: string,
@@ -1085,12 +1085,12 @@ defs => SVGDefsElement {
     *systemLanguage: string,
     *transform: string,
 }
-desc => SVGDescElement {
+desc(class=SVGDescElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *style: string,
 }
-ellipse => SVGEllipseElement {
+ellipse(class=SVGEllipseElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip-rule: ("evenodd" "inherit" "nonzero"),
@@ -1127,7 +1127,7 @@ ellipse => SVGEllipseElement {
     *transform: string,
     *visibility: ("collapse" "hidden" "inherit" "visible"),
 }
-feBlend => SVGFEBlendElement {
+feBlend(class=SVGFEBlendElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *color-interpolation-filters: ("auto" "inherit" "linearRGB" "sRGB"),
@@ -1141,7 +1141,7 @@ feBlend => SVGFEBlendElement {
     *x: string,
     *y: string,
 }
-feColorMatrix => SVGFEColorMatrixElement {
+feColorMatrix(class=SVGFEColorMatrixElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *color-interpolation-filters: ("auto" "inherit" "linearRGB" "sRGB"),
@@ -1155,7 +1155,7 @@ feColorMatrix => SVGFEColorMatrixElement {
     *x: string,
     *y: string,
 }
-feComponentTransfer => SVGFEComponentTransferElement {
+feComponentTransfer(class=SVGFEComponentTransferElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *color-interpolation-filters: ("auto" "inherit" "linearRGB" "sRGB"),
@@ -1167,7 +1167,7 @@ feComponentTransfer => SVGFEComponentTransferElement {
     *x: string,
     *y: string,
 }
-feComposite => SVGFECompositeElement {
+feComposite(class=SVGFECompositeElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *color-interpolation-filters: ("auto" "inherit" "linearRGB" "sRGB"),
@@ -1185,7 +1185,7 @@ feComposite => SVGFECompositeElement {
     *x: string,
     *y: string,
 }
-feConvolveMatrix => SVGFEConvolveMatrixElement {
+feConvolveMatrix(class=SVGFEConvolveMatrixElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *bias: string,
     *class: string,
@@ -1206,7 +1206,7 @@ feConvolveMatrix => SVGFEConvolveMatrixElement {
     *x: string,
     *y: string,
 }
-feDiffuseLighting => SVGFEDiffuseLightingElement {
+feDiffuseLighting(class=SVGFEDiffuseLightingElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *color: string,
@@ -1223,7 +1223,7 @@ feDiffuseLighting => SVGFEDiffuseLightingElement {
     *x: string,
     *y: string,
 }
-feDisplacementMap => SVGFEDisplacementMapElement {
+feDisplacementMap(class=SVGFEDisplacementMapElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *color-interpolation-filters: ("auto" "inherit" "linearRGB" "sRGB"),
@@ -1239,12 +1239,12 @@ feDisplacementMap => SVGFEDisplacementMapElement {
     *y: string,
     *yChannelSelector: ("A" "B" "G" "R"),
 }
-feDistantLight => SVGFEDistantLightElement {
+feDistantLight(class=SVGFEDistantLightElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *azimuth: string,
     *elevation: string,
 }
-feDropShadow => SVGFEDropShadowElement {
+feDropShadow(class=SVGFEDropShadowElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *autofocus: boolean,
     *nodeValue: string,
@@ -1254,7 +1254,7 @@ feDropShadow => SVGFEDropShadowElement {
     *scrollTop: number,
     *slot: string,
 }
-feFlood => SVGFEFloodElement {
+feFlood(class=SVGFEFloodElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *color: string,
@@ -1268,7 +1268,7 @@ feFlood => SVGFEFloodElement {
     *x: string,
     *y: string,
 }
-feFuncA => SVGFEFuncAElement {
+feFuncA(class=SVGFEFuncAElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *amplitude: string,
     *exponent: string,
@@ -1278,7 +1278,7 @@ feFuncA => SVGFEFuncAElement {
     *tableValues: string,
     *type: ("discrete" "gamma" "identity" "linear" "table"),
 }
-feFuncB => SVGFEFuncBElement {
+feFuncB(class=SVGFEFuncBElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *amplitude: string,
     *exponent: string,
@@ -1288,7 +1288,7 @@ feFuncB => SVGFEFuncBElement {
     *tableValues: string,
     *type: ("discrete" "gamma" "identity" "linear" "table"),
 }
-feFuncG => SVGFEFuncGElement {
+feFuncG(class=SVGFEFuncGElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *amplitude: string,
     *exponent: string,
@@ -1298,7 +1298,7 @@ feFuncG => SVGFEFuncGElement {
     *tableValues: string,
     *type: ("discrete" "gamma" "identity" "linear" "table"),
 }
-feFuncR => SVGFEFuncRElement {
+feFuncR(class=SVGFEFuncRElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *amplitude: string,
     *exponent: string,
@@ -1308,7 +1308,7 @@ feFuncR => SVGFEFuncRElement {
     *tableValues: string,
     *type: ("discrete" "gamma" "identity" "linear" "table"),
 }
-feGaussianBlur => SVGFEGaussianBlurElement {
+feGaussianBlur(class=SVGFEGaussianBlurElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *color-interpolation-filters: ("auto" "inherit" "linearRGB" "sRGB"),
@@ -1321,7 +1321,7 @@ feGaussianBlur => SVGFEGaussianBlurElement {
     *x: string,
     *y: string,
 }
-feImage => SVGFEImageElement {
+feImage(class=SVGFEImageElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *color-interpolation-filters: ("auto" "inherit" "linearRGB" "sRGB"),
@@ -1335,7 +1335,7 @@ feImage => SVGFEImageElement {
     *x: string,
     *y: string,
 }
-feMerge => SVGFEMergeElement {
+feMerge(class=SVGFEMergeElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *color-interpolation-filters: ("auto" "inherit" "linearRGB" "sRGB"),
@@ -1346,11 +1346,11 @@ feMerge => SVGFEMergeElement {
     *x: string,
     *y: string,
 }
-feMergeNode => SVGFEMergeNodeElement {
+feMergeNode(class=SVGFEMergeNodeElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *in: string,
 }
-feMorphology => SVGFEMorphologyElement {
+feMorphology(class=SVGFEMorphologyElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *color-interpolation-filters: ("auto" "inherit" "linearRGB" "sRGB"),
@@ -1364,7 +1364,7 @@ feMorphology => SVGFEMorphologyElement {
     *x: string,
     *y: string,
 }
-feOffset => SVGFEOffsetElement {
+feOffset(class=SVGFEOffsetElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *color-interpolation-filters: ("auto" "inherit" "linearRGB" "sRGB"),
@@ -1378,13 +1378,13 @@ feOffset => SVGFEOffsetElement {
     *x: string,
     *y: string,
 }
-fePointLight => SVGFEPointLightElement {
+fePointLight(class=SVGFEPointLightElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *x: string,
     *y: string,
     *z: string,
 }
-feSpecularLighting => SVGFESpecularLightingElement {
+feSpecularLighting(class=SVGFESpecularLightingElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *color: string,
@@ -1402,7 +1402,7 @@ feSpecularLighting => SVGFESpecularLightingElement {
     *x: string,
     *y: string,
 }
-feSpotLight => SVGFESpotLightElement {
+feSpotLight(class=SVGFESpotLightElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *limitingConeAngle: string,
     *pointsAtX: string,
@@ -1413,7 +1413,7 @@ feSpotLight => SVGFESpotLightElement {
     *y: string,
     *z: string,
 }
-feTile => SVGFETileElement {
+feTile(class=SVGFETileElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *color-interpolation-filters: ("auto" "inherit" "linearRGB" "sRGB"),
@@ -1425,7 +1425,7 @@ feTile => SVGFETileElement {
     *x: string,
     *y: string,
 }
-feTurbulence => SVGFETurbulenceElement {
+feTurbulence(class=SVGFETurbulenceElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *baseFrequency: string,
     *class: string,
@@ -1441,7 +1441,7 @@ feTurbulence => SVGFETurbulenceElement {
     *x: string,
     *y: string,
 }
-filter => SVGFilterElement {
+filter(class=SVGFilterElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *externalResourcesRequired: boolean,
@@ -1454,7 +1454,7 @@ filter => SVGFilterElement {
     *x: string,
     *y: string,
 }
-foreignObject => SVGForeignObjectElement {
+foreignObject(class=SVGForeignObjectElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip: string,
@@ -1473,7 +1473,7 @@ foreignObject => SVGForeignObjectElement {
     *x: string,
     *y: string,
 }
-g => SVGGElement {
+g(class=SVGGElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip-path: string,
@@ -1506,7 +1506,7 @@ g => SVGGElement {
     *transform: string,
     *visibility: ("collapse" "hidden" "inherit" "visible"),
 }
-image => SVGImageElement {
+image(class=SVGImageElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip: string,
@@ -1536,7 +1536,7 @@ image => SVGImageElement {
     *x: string,
     *y: string,
 }
-line => SVGLineElement {
+line(class=SVGLineElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip-rule: ("evenodd" "inherit" "nonzero"),
@@ -1576,7 +1576,7 @@ line => SVGLineElement {
     *y1: string,
     *y2: string,
 }
-linearGradient => SVGLinearGradientElement {
+linearGradient(class=SVGLinearGradientElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *externalResourcesRequired: boolean,
@@ -1589,7 +1589,7 @@ linearGradient => SVGLinearGradientElement {
     *y1: string,
     *y2: string,
 }
-marker => SVGMarkerElement {
+marker(class=SVGMarkerElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip: string,
@@ -1626,7 +1626,7 @@ marker => SVGMarkerElement {
     *style: string,
     *viewBox: string,
 }
-mask => SVGMaskElement {
+mask(class=SVGMaskElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip-path: string,
@@ -1660,10 +1660,10 @@ mask => SVGMaskElement {
     *x: string,
     *y: string,
 }
-metadata => SVGMetadataElement {
+metadata(class=SVGMetadataElement ns="http://www.w3.org/2000/svg") {
     +SVG,
 }
-mpath => SVGMPathElement {
+mpath(class=SVGMPathElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *autofocus: boolean,
     *nodeValue: string,
@@ -1673,7 +1673,7 @@ mpath => SVGMPathElement {
     *scrollTop: number,
     *slot: string,
 }
-path => SVGPathElement {
+path(class=SVGPathElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip-rule: ("evenodd" "inherit" "nonzero"),
@@ -1711,7 +1711,7 @@ path => SVGPathElement {
     *transform: string,
     *visibility: ("collapse" "hidden" "inherit" "visible"),
 }
-pattern => SVGPatternElement {
+pattern(class=SVGPatternElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip: string,
@@ -1752,7 +1752,7 @@ pattern => SVGPatternElement {
     *x: string,
     *y: string,
 }
-polygon => SVGPolygonElement {
+polygon(class=SVGPolygonElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip-rule: ("evenodd" "inherit" "nonzero"),
@@ -1789,7 +1789,7 @@ polygon => SVGPolygonElement {
     *transform: string,
     *visibility: ("collapse" "hidden" "inherit" "visible"),
 }
-polyline => SVGPolylineElement {
+polyline(class=SVGPolylineElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip-rule: ("evenodd" "inherit" "nonzero"),
@@ -1826,7 +1826,7 @@ polyline => SVGPolylineElement {
     *transform: string,
     *visibility: ("collapse" "hidden" "inherit" "visible"),
 }
-radialGradient => SVGRadialGradientElement {
+radialGradient(class=SVGRadialGradientElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *cx: string,
@@ -1840,7 +1840,7 @@ radialGradient => SVGRadialGradientElement {
     *spreadMethod: ("pad" "reflect" "repeat"),
     *style: string,
 }
-rect => SVGRectElement {
+rect(class=SVGRectElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip-rule: ("evenodd" "inherit" "nonzero"),
@@ -1879,7 +1879,7 @@ rect => SVGRectElement {
     *x: string,
     *y: string,
 }
-set => SVGSetElement {
+set(class=SVGSetElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *autofocus: boolean,
     *nodeValue: string,
@@ -1889,7 +1889,7 @@ set => SVGSetElement {
     *scrollTop: number,
     *slot: string,
 }
-stop => SVGStopElement {
+stop(class=SVGStopElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *color: string,
@@ -1898,7 +1898,7 @@ stop => SVGStopElement {
     *stop-opacity: string,
     *style: string,
 }
-svg => SVGSVGElement {
+svg(class=SVGSVGElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     @afterprint: Event,
     @beforeprint: Event,
@@ -1996,7 +1996,7 @@ svg => SVGSVGElement {
     *y: string,
     *zoomAndPan: ("disable" "magnify"),
 }
-switch => SVGSwitchElement {
+switch(class=SVGSwitchElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip-path: string,
@@ -2029,7 +2029,7 @@ switch => SVGSwitchElement {
     *transform: string,
     *visibility: ("collapse" "hidden" "inherit" "visible"),
 }
-symbol => SVGSymbolElement {
+symbol(class=SVGSymbolElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip: string,
@@ -2060,7 +2060,7 @@ symbol => SVGSymbolElement {
     *style: string,
     *viewBox: string,
 }
-text => SVGTextElement {
+text(class=SVGTextElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip-rule: ("evenodd" "inherit" "nonzero"),
@@ -2118,7 +2118,7 @@ text => SVGTextElement {
     *x: string,
     *y: string,
 }
-textPath => SVGTextPathElement {
+textPath(class=SVGTextPathElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *alignment-baseline: ("after-edge" "alphabetic" "auto" "baseline" "before-edge" "central" "hanging" "ideographic" "inherit" "mathematical" "middle" "text-after-edge" "text-before-edge"),
     *baseline-shift: string,
@@ -2164,7 +2164,7 @@ textPath => SVGTextPathElement {
     *visibility: ("collapse" "hidden" "inherit" "visible"),
     *word-spacing: string,
 }
-tspan => SVGTSpanElement {
+tspan(class=SVGTSpanElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *alignment-baseline: ("after-edge" "alphabetic" "auto" "baseline" "before-edge" "central" "hanging" "ideographic" "inherit" "mathematical" "middle" "text-after-edge" "text-before-edge"),
     *baseline-shift: string,
@@ -2213,7 +2213,7 @@ tspan => SVGTSpanElement {
     *x: string,
     *y: string,
 }
-use => SVGUseElement {
+use(class=SVGUseElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *class: string,
     *clip-rule: ("evenodd" "inherit" "nonzero"),
@@ -2238,7 +2238,7 @@ use => SVGUseElement {
     *x: string,
     *y: string,
 }
-view => SVGViewElement {
+view(class=SVGViewElement ns="http://www.w3.org/2000/svg") {
     +SVG,
     *externalResourcesRequired: boolean,
     *preserveAspectRatio: ("none" "xMaxYMax" "xMaxYMax meet" "xMaxYMax slice" "xMaxYMid" "xMaxYMid meet" "xMaxYMid slice" "xMaxYMin" "xMaxYMin meet" "xMaxYMin slice" "xMidYMax" "xMidYMax meet" "xMidYMax slice" "xMidYMid" "xMidYMid meet" "xMidYMid slice" "xMidYMin" "xMidYMin meet" "xMidYMin slice" "xMinYMax" "xMinYMax meet" "xMinYMax slice" "xMinYMid" "xMinYMid meet" "xMinYMid slice" "xMinYMin" "xMinYMin meet" "xMinYMin slice"),

@@ -126,7 +126,8 @@ pub fn expand(input: &[web_types::Element]) -> TokenStream {
 }
 
 struct Element<'a> {
-    key: LitStr,
+    tag: LitStr,
+    ns: Option<LitStr>,
     ty: Ident,
     js_ty: Ident,
     fn_: Ident,
@@ -137,7 +138,8 @@ struct Element<'a> {
 impl<'a> Element<'a> {
     fn from_web(input: &'a web_types::Element<'a>) -> Self {
         let web_types::Element {
-            name,
+            tag,
+            namespace,
             js_class,
             events,
             attributes,
@@ -170,16 +172,17 @@ impl<'a> Element<'a> {
         } else {
             panic!("unknown js class: {js_class}");
         };
-        let mut fn_ = name.to_snake_case();
+        let mut fn_ = tag.to_snake_case();
         if matches!(&*fn_, "use") {
             fn_.push('_');
         }
         Self {
-            key: name.to_kebab_case().to_lit_str(),
-            ty: format_ident!("{}Element", name.to_pascal_case()),
+            tag: tag.to_kebab_case().to_lit_str(),
+            ns: namespace.map(|ns| ns.to_lit_str()),
+            ty: format_ident!("{}Element", tag.to_pascal_case()),
             js_ty,
             fn_: fn_.to_ident(),
-            attributes: attributes.iter().map(Property::from_web).collect(),
+            attributes: attributes.iter().flat_map(Property::from_web).collect(),
             events: events.iter().map(Event::from_web).collect(),
         }
     }
@@ -190,11 +193,20 @@ impl<'a> Element<'a> {
             fn_,
             attributes,
             events,
-            key,
+            tag,
+            ns,
             ..
         } = self;
         let attr_fns = attributes.iter().map(Property::quote_fn);
         let event_fns = events.iter().map(Event::quote_fn);
+        let node_type = if let Some(ns) = ns {
+            quote!(#NODE_TYPE::TagNs {
+                ns: #COW_STR::Borrowed(#ns),
+                tag: #COW_STR::Borrowed(#tag),
+            })
+        } else {
+            quote!(#NODE_TYPE::Tag(#COW_STR::Borrowed(#tag)))
+        };
         quote!(
             #[allow(non_camel_case_types)]
             pub struct #fn_<N> {
@@ -228,7 +240,7 @@ impl<'a> Element<'a> {
             }
 
             impl<N: #T_GENERIC_NODE> #T_GENERIC_ELEMENT<N> for #fn_<N> {
-                const TYPE: #NODE_TYPE = #NODE_TYPE::Tag(#COW_STR::Borrowed(#key));
+                const TYPE: #NODE_TYPE = #node_type;
             }
 
             impl<N> AsRef<#M_ELEMENT_TYPES::#ty> for #fn_<N>
@@ -258,7 +270,10 @@ struct Property<'a> {
 }
 
 impl<'a> Property<'a> {
-    fn from_web(input: &'a web_types::Property<'a>) -> Self {
+    fn from_web(input: &'a web_types::Property<'a>) -> Option<Self> {
+        if matches!(input.name, "class") {
+            return None;
+        }
         let web_types::Property {
             name,
             js_type,
@@ -277,13 +292,13 @@ impl<'a> Property<'a> {
         if matches!(*name, "as" | "in" | "async" | "loop" | "type") {
             fn_.push('_');
         }
-        Self {
+        Some(Self {
             original: input,
             key: name.to_lit_str(),
             ty,
             fn_: fn_.to_ident(),
             attribute: *attribute,
-        }
+        })
     }
 
     fn quote_fn(&self) -> TokenStream {

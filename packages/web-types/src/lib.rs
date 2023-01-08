@@ -6,7 +6,8 @@ pub static PRESET: &str = include_str!("preset.txt");
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Element<'a> {
-    pub name: &'a str,
+    pub tag: &'a str,
+    pub namespace: Option<&'a str>,
     pub js_class: &'a str,
     pub attributes: Vec<Property<'a>>,
     pub events: Vec<Event<'a>>,

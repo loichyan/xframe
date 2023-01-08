@@ -4,6 +4,7 @@ use std::fmt::Debug;
 #[derive(Clone)]
 pub enum NodeType {
     Tag(CowStr),
+    TagNs { tag: CowStr, ns: CowStr },
     Text(CowStr),
     Placeholder(CowStr),
     Template(CowStr),
