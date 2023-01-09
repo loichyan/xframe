@@ -8,20 +8,21 @@ macro_rules! define_element {
 
         const _: () = {
             use crate::element::GenericElement;
+            use ::std::borrow::{Borrow, BorrowMut};
             use ::xframe_core::{
                 component::Element, GenericComponent, GenericNode, NodeType,
                 RenderOutput, View,
             };
             use ::xframe_reactive::Scope;
 
-            impl<N: GenericNode> AsRef<Element<N>> for $name<N> {
-                fn as_ref(&self) -> &Element<N> {
+            impl<N: GenericNode> Borrow<Element<N>> for $name<N> {
+                fn borrow(&self) -> &Element<N> {
                     &self.inner
                 }
             }
 
-            impl<N: GenericNode> AsMut<Element<N>> for $name<N> {
-                fn as_mut(&mut self) -> &mut Element<N> {
+            impl<N: GenericNode> BorrowMut<Element<N>> for $name<N> {
+                fn borrow_mut(&mut self) -> &mut Element<N> {
                     &mut self.inner
                 }
             }

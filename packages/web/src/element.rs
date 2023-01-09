@@ -1,5 +1,5 @@
 use crate::GenericChild;
-use std::any::Any;
+use std::{any::Any, borrow::BorrowMut};
 use xframe_core::{
     component::Element, GenericComponent, GenericNode, IntoEventHandler, IntoReactive, NodeType,
     RcStr, Reactive, StringLike,
@@ -7,18 +7,18 @@ use xframe_core::{
 use xframe_reactive::{Scope, Signal};
 
 pub trait GenericElement<N: GenericNode>:
-    'static + AsRef<Element<N>> + AsMut<Element<N>> + GenericComponent<N>
+    'static + BorrowMut<Element<N>> + GenericComponent<N>
 {
     const TYPE: NodeType;
 
     fn child(mut self, child: impl GenericChild<N>) -> Self {
-        let cx = self.as_ref().cx;
-        self.as_mut().add_child(move || child.render(cx));
+        let cx = self.borrow().cx;
+        self.borrow_mut().add_child(move || child.render(cx));
         self
     }
 
     fn ref_(self, ref_: NodeRef<N>) -> Self {
-        ref_.inner.set(Some(self.as_ref().root().clone()));
+        ref_.inner.set(Some(self.borrow().root().clone()));
         self
     }
 
@@ -27,7 +27,7 @@ pub trait GenericElement<N: GenericNode>:
         K: Into<RcStr>,
         V: IntoReactive<StringLike>,
     {
-        self.as_ref()
+        self.borrow()
             .set_attribute(name.into(), val.into_reactive());
         self
     }
@@ -37,7 +37,7 @@ pub trait GenericElement<N: GenericNode>:
         K: Into<RcStr>,
         V: IntoReactive<StringLike>,
     {
-        self.as_ref().set_property(name.into(), val.into_reactive());
+        self.borrow().set_property(name.into(), val.into_reactive());
         self
     }
 
@@ -46,7 +46,7 @@ pub trait GenericElement<N: GenericNode>:
         K: Into<RcStr>,
         V: IntoReactive<bool>,
     {
-        self.as_ref()
+        self.borrow()
             .set_class(class.into(), toggle.into_reactive());
         self
     }
@@ -56,7 +56,7 @@ pub trait GenericElement<N: GenericNode>:
         I: IntoIterator<Item = &'static str>,
     {
         for cls in classes {
-            self.as_ref().set_class(cls.into(), Reactive::Static(true));
+            self.borrow().set_class(cls.into(), Reactive::Static(true));
         }
         self
     }
@@ -66,7 +66,7 @@ pub trait GenericElement<N: GenericNode>:
         K: Into<RcStr>,
         E: IntoEventHandler<N::Event>,
     {
-        self.as_ref()
+        self.borrow()
             .listen_event(event.into(), handler.into_event_handler());
         self
     }

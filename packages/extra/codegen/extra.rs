@@ -1,7 +1,10 @@
 use heck::{ToKebabCase, ToPascalCase, ToSnakeCase};
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, ToTokens};
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    borrow::Borrow,
+    collections::{BTreeMap, BTreeSet},
+};
 use syn::{Ident, LitStr};
 use web_types::JsType;
 
@@ -32,12 +35,14 @@ new_type_quote! {
     M_ELEMENT_TYPES(super::element_types);
     M_EVENT_TYPES(super::event_types);
 
-    T_WEB_NODE(#M_WEB::WebNode);
+    T_BORROW(::std::borrow::Borrow);
+    T_BORROW_MUT(::std::borrow::BorrowMut);
     T_GENERIC_COMPONENT(#M_CORE::GenericComponent);
     T_GENERIC_ELEMENT(#M_WEB::GenericElement);
     T_GENERIC_NODE(#M_CORE::GenericNode);
-    T_INTO_REACTIVE(#M_CORE::IntoReactive);
     T_INTO_EVENT_HANDLER(#M_CORE::IntoEventHandler);
+    T_INTO_REACTIVE(#M_CORE::IntoReactive);
+    T_WEB_NODE(#M_WEB::WebNode);
 
     ELEMENT(#M_CORE::component::Element);
     ELEMENT_BASE(#M_INPUT::ElementBase);
@@ -49,17 +54,17 @@ new_type_quote! {
     STRING_LIKE(#M_CORE::StringLike);
 }
 
-trait StrExt: AsRef<str> {
+trait StrExt: Borrow<str> {
     fn to_lit_str(&self) -> LitStr {
-        LitStr::new(self.as_ref(), Span::call_site())
+        LitStr::new(self.borrow(), Span::call_site())
     }
 
     fn to_ident(&self) -> Ident {
-        Ident::new(self.as_ref(), Span::call_site())
+        Ident::new(self.borrow(), Span::call_site())
     }
 }
 
-impl<T: AsRef<str>> StrExt for T {}
+impl<T: Borrow<str>> StrExt for T {}
 
 pub fn expand(input: &[web_types::Element]) -> TokenStream {
     let mut elements = Vec::default();
@@ -222,14 +227,14 @@ impl<'a> Element<'a> {
                 }
             }
 
-            impl<N: #T_GENERIC_NODE> AsRef<#ELEMENT<N>> for #fn_<N> {
-                fn as_ref(&self) -> &#ELEMENT<N> {
+            impl<N: #T_GENERIC_NODE> #T_BORROW<#ELEMENT<N>> for #fn_<N> {
+                fn borrow(&self) -> &#ELEMENT<N> {
                     self.inner.as_element()
                 }
             }
 
-            impl<N: #T_GENERIC_NODE> AsMut<#ELEMENT<N>> for #fn_<N> {
-                fn as_mut(&mut self) -> &mut #ELEMENT<N> {
+            impl<N: #T_GENERIC_NODE> #T_BORROW_MUT<#ELEMENT<N>> for #fn_<N> {
+                fn borrow_mut(&mut self) -> &mut #ELEMENT<N> {
                     self.inner.as_element_mut()
                 }
             }
