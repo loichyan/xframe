@@ -1,8 +1,8 @@
-use crate::{CowStr, GenericChild};
+use crate::GenericChild;
 use std::any::Any;
 use xframe_core::{
     component::Element, GenericComponent, GenericNode, IntoEventHandler, IntoReactive, NodeType,
-    Reactive, StringLike,
+    RcStr, Reactive, StringLike,
 };
 use xframe_reactive::{Scope, Signal};
 
@@ -24,7 +24,7 @@ pub trait GenericElement<N: GenericNode>:
 
     fn attr<K, V>(self, name: K, val: V) -> Self
     where
-        K: Into<CowStr>,
+        K: Into<RcStr>,
         V: IntoReactive<StringLike>,
     {
         self.as_ref()
@@ -34,7 +34,7 @@ pub trait GenericElement<N: GenericNode>:
 
     fn prop<K, V>(self, name: K, val: V) -> Self
     where
-        K: Into<CowStr>,
+        K: Into<RcStr>,
         V: IntoReactive<StringLike>,
     {
         self.as_ref().set_property(name.into(), val.into_reactive());
@@ -43,7 +43,7 @@ pub trait GenericElement<N: GenericNode>:
 
     fn class<K, V>(self, class: K, toggle: V) -> Self
     where
-        K: Into<CowStr>,
+        K: Into<RcStr>,
         V: IntoReactive<bool>,
     {
         self.as_ref()
@@ -63,7 +63,7 @@ pub trait GenericElement<N: GenericNode>:
 
     fn on<K, E>(self, event: K, handler: E) -> Self
     where
-        K: Into<CowStr>,
+        K: Into<RcStr>,
         E: IntoEventHandler<N::Event>,
     {
         self.as_ref()

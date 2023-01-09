@@ -1,24 +1,24 @@
-use crate::{utils::UnwrapThrowValExt, CowStr, DOCUMENT};
+use crate::{utils::UnwrapThrowValExt, DOCUMENT};
 use js_sys::Reflect;
-use std::borrow::{Borrow, Cow};
+use std::borrow::Borrow;
 use wasm_bindgen::{intern, prelude::*, JsCast};
 use web_sys::HtmlTemplateElement;
 use xframe_core::{
     is_debug,
     template::{GlobalState, ThreadLocalState},
-    EventHandler, GenericNode, NodeType, StringLike,
+    EventHandler, GenericNode, NodeType, RcStr, StringLike,
 };
 
-trait CowStrExt: Borrow<CowStr> {
+trait RcStrExt: Borrow<RcStr> {
     fn intern(&self) -> &str {
         match self.borrow() {
-            Cow::Borrowed(s) => intern(s),
-            Cow::Owned(s) => s,
+            RcStr::Literal(s) => intern(s),
+            RcStr::Rc(s) => s,
         }
     }
 }
 
-impl<T: Borrow<CowStr>> CowStrExt for T {}
+impl<T: Borrow<RcStr>> RcStrExt for T {}
 
 trait AttrExt: Into<StringLike> {
     fn into_js_value(self) -> JsValue {
@@ -103,11 +103,11 @@ impl GenericNode for DomNode {
         }
     }
 
-    fn set_inner_text(&self, data: CowStr) {
+    fn set_inner_text(&self, data: RcStr) {
         self.node.set_text_content(Some(&data));
     }
 
-    fn set_property(&self, name: CowStr, attr: StringLike) {
+    fn set_property(&self, name: RcStr, attr: StringLike) {
         Reflect::set(
             &self.node,
             &JsValue::from_str(name.intern()),
@@ -116,14 +116,14 @@ impl GenericNode for DomNode {
         .unwrap_throw_val();
     }
 
-    fn set_attribute(&self, name: CowStr, val: StringLike) {
+    fn set_attribute(&self, name: RcStr, val: StringLike) {
         self.node
             .unchecked_ref::<web_sys::Element>()
             .set_attribute(name.intern(), val.into_string().intern())
             .unwrap_throw_val();
     }
 
-    fn add_class(&self, name: CowStr) {
+    fn add_class(&self, name: RcStr) {
         self.node
             .unchecked_ref::<web_sys::Element>()
             .class_list()
@@ -131,7 +131,7 @@ impl GenericNode for DomNode {
             .unwrap_throw_val();
     }
 
-    fn remove_class(&self, name: CowStr) {
+    fn remove_class(&self, name: RcStr) {
         self.node
             .unchecked_ref::<web_sys::Element>()
             .class_list()
@@ -139,7 +139,7 @@ impl GenericNode for DomNode {
             .unwrap_throw_val();
     }
 
-    fn listen_event(&self, event: CowStr, handler: EventHandler<Self::Event>) {
+    fn listen_event(&self, event: RcStr, handler: EventHandler<Self::Event>) {
         crate::event_delegation::add_event_listener(&self.node, event, handler);
     }
 

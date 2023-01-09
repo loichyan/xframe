@@ -39,11 +39,11 @@ new_type_quote! {
     T_INTO_REACTIVE(#M_CORE::IntoReactive);
     T_INTO_EVENT_HANDLER(#M_CORE::IntoEventHandler);
 
-    COW_STR(::std::borrow::Cow::<'static, str>);
     ELEMENT(#M_CORE::component::Element);
     ELEMENT_BASE(#M_INPUT::ElementBase);
     NODE_TYPE(#M_CORE::NodeType);
     OUTPUT(#M_CORE::RenderOutput);
+    RC_STR(#M_CORE::RcStr);
     REACTIVE(#M_CORE::Reactive);
     SCOPE(#M_REACTIVE::Scope);
     STRING_LIKE(#M_CORE::StringLike);
@@ -204,11 +204,11 @@ impl<'a> Element<'a> {
         let event_fns = events.iter().map(Event::quote_fn);
         let node_type = if let Some(ns) = ns {
             quote!(#NODE_TYPE::TagNs {
-                ns: #COW_STR::Borrowed(#ns),
-                tag: #COW_STR::Borrowed(#tag),
+                ns: #RC_STR::Literal(#ns),
+                tag: #RC_STR::Literal(#tag),
             })
         } else {
-            quote!(#NODE_TYPE::Tag(#COW_STR::Borrowed(#tag)))
+            quote!(#NODE_TYPE::Tag(#RC_STR::Literal(#tag)))
         };
         quote!(
             #[allow(non_camel_case_types)]
@@ -465,9 +465,15 @@ impl ToTokens for QuoteAttrLitType<'_> {
                 }
             }
 
+            impl From<#name> for #RC_STR {
+                fn from(t: #name) -> Self {
+                    <&'static str>::from(t).into()
+                }
+            }
+
             impl From<#name> for #STRING_LIKE {
                 fn from(t: #name) -> Self {
-                    #STRING_LIKE::Literal(t.into())
+                    <&'static str>::from(t).into()
                 }
             }
         )

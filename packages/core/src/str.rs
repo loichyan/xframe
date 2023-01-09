@@ -1,5 +1,54 @@
-use crate::CowStr;
-use std::borrow::Cow;
+use std::{borrow::Cow, ops::Deref, rc::Rc};
+
+#[derive(Debug, Clone)]
+pub enum RcStr {
+    Literal(&'static str),
+    Rc(Rc<str>),
+}
+
+impl From<&'static str> for RcStr {
+    fn from(t: &'static str) -> Self {
+        RcStr::Literal(t)
+    }
+}
+
+impl From<Rc<str>> for RcStr {
+    fn from(t: Rc<str>) -> Self {
+        RcStr::Rc(t)
+    }
+}
+
+impl From<Box<str>> for RcStr {
+    fn from(t: Box<str>) -> Self {
+        RcStr::Rc(t.into())
+    }
+}
+
+impl From<String> for RcStr {
+    fn from(t: String) -> Self {
+        t.into_boxed_str().into()
+    }
+}
+
+impl From<Cow<'static, str>> for RcStr {
+    fn from(t: Cow<'static, str>) -> Self {
+        match t {
+            Cow::Owned(t) => t.into(),
+            Cow::Borrowed(t) => t.into(),
+        }
+    }
+}
+
+impl Deref for RcStr {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            RcStr::Literal(s) => s,
+            RcStr::Rc(s) => s,
+        }
+    }
+}
 
 #[derive(Clone)]
 pub enum StringLike {
@@ -7,11 +56,11 @@ pub enum StringLike {
     Integer(i64),
     Number(f64),
     Literal(&'static str),
-    String(String),
+    String(Rc<str>),
 }
 
 impl StringLike {
-    pub fn into_string(self) -> CowStr {
+    pub fn into_string(self) -> RcStr {
         match self {
             Self::Boolean(t) => if t { "true" } else { "false" }.into(),
             Self::Integer(t) => match t {
@@ -26,12 +75,18 @@ impl StringLike {
     }
 }
 
+impl From<RcStr> for StringLike {
+    fn from(t: RcStr) -> Self {
+        match t {
+            RcStr::Literal(s) => s.into(),
+            RcStr::Rc(s) => s.into(),
+        }
+    }
+}
+
 impl From<Cow<'static, str>> for StringLike {
     fn from(t: Cow<'static, str>) -> Self {
-        match t {
-            Cow::Owned(t) => t.into(),
-            Cow::Borrowed(t) => t.into(),
-        }
+        RcStr::from(t).into()
     }
 }
 
@@ -39,7 +94,7 @@ macro_rules! impl_from_for_inner_types {
     ($($variant:ident => $ty:ty,)*) => {$(
         impl From<$ty> for StringLike {
             fn from(t: $ty) -> Self {
-                Self::$variant(t)
+                Self::$variant(t.into())
             }
         }
     )*};
@@ -50,6 +105,8 @@ impl_from_for_inner_types! {
     Integer => i64,
     Number  => f64,
     Literal => &'static str,
+    String  => Rc<str>,
+    String  => Box<str>,
     String  => String,
 }
 

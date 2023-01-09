@@ -26,13 +26,11 @@ pub mod prelude {
         event::{EventHandler, EventOptions, IntoEventHandler},
         node::{GenericNode, NodeType},
         reactive::{IntoReactive, IntoReactiveValue, Reactive},
-        str::StringLike,
+        str::{RcStr, StringLike},
         template::TemplateId,
         view::View,
     };
 }
-
-type CowStr = std::borrow::Cow<'static, str>;
 
 pub type RandomState = std::hash::BuildHasherDefault<rustc_hash::FxHasher>;
 pub type HashMap<K, V> = std::collections::HashMap<K, V, RandomState>;

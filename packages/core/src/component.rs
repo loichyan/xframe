@@ -2,10 +2,9 @@ use crate::{
     event::EventHandler,
     node::{GenericNode, NodeType},
     reactive::Reactive,
-    str::StringLike,
+    str::{RcStr, StringLike},
     template::{GlobalState, Template, TemplateId},
     view::View,
-    CowStr,
 };
 use xframe_reactive::Scope;
 
@@ -251,13 +250,13 @@ impl<N: GenericNode> Element<N> {
         &self.root
     }
 
-    pub fn set_property(&self, name: CowStr, val: Reactive<StringLike>) {
+    pub fn set_property(&self, name: RcStr, val: Reactive<StringLike>) {
         match val {
             Reactive::Static(lit) => {
                 self.with_root_static(|root| root.set_property(name.clone(), lit.clone()));
             }
             Reactive::Variable(val) => {
-                self.root.set_property(name.clone(), val);
+                self.root.set_property(name, val);
             }
             Reactive::Fn(f) => {
                 let node = self.root.clone();
@@ -267,7 +266,7 @@ impl<N: GenericNode> Element<N> {
         }
     }
 
-    pub fn set_attribute(&self, name: CowStr, val: Reactive<StringLike>) {
+    pub fn set_attribute(&self, name: RcStr, val: Reactive<StringLike>) {
         match val {
             Reactive::Static(val) => {
                 self.with_root_static(|root| root.set_attribute(name.clone(), val.clone()));
@@ -283,7 +282,7 @@ impl<N: GenericNode> Element<N> {
         }
     }
 
-    pub fn set_class(&self, name: CowStr, toggle: Reactive<bool>) {
+    pub fn set_class(&self, name: RcStr, toggle: Reactive<bool>) {
         match toggle {
             Reactive::Static(toggle) => {
                 if toggle {
@@ -324,7 +323,7 @@ impl<N: GenericNode> Element<N> {
         }
     }
 
-    pub fn listen_event(&self, event: CowStr, handler: EventHandler<N::Event>) {
+    pub fn listen_event(&self, event: RcStr, handler: EventHandler<N::Event>) {
         self.root.listen_event(event, handler);
     }
 }

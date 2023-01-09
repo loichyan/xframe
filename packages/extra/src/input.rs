@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
-use std::borrow::Cow;
 use wasm_bindgen::JsCast;
 use xframe_core::{
-    component::Element, GenericNode, IntoEventHandler, IntoReactive, RenderOutput, StringLike,
+    component::Element, GenericNode, IntoEventHandler, IntoReactive, RcStr, RenderOutput,
+    StringLike,
 };
 use xframe_reactive::Scope;
 use xframe_web::{GenericElement, WebNode};
@@ -13,8 +13,6 @@ pub mod attr_types {
     pub type NumberValue = f64;
     pub type StringValue = xframe_core::StringLike;
 }
-
-type CowStr = std::borrow::Cow<'static, str>;
 
 pub struct ElementBase<N> {
     inner: Element<N>,
@@ -56,10 +54,10 @@ impl<N: GenericNode> ElementBase<N> {
     where
         T: 'static + Into<StringLike>,
     {
-        self.set_property(Cow::Borrowed(name), val.into_reactive().cast());
+        self.set_property(name, val.into_reactive().cast());
     }
 
-    pub fn set_property(&self, name: impl Into<CowStr>, val: impl IntoReactive<StringLike>) {
+    pub fn set_property(&self, name: impl Into<RcStr>, val: impl IntoReactive<StringLike>) {
         let val = val.into_reactive();
         self.inner.set_property(name.into(), val);
     }
@@ -68,15 +66,15 @@ impl<N: GenericNode> ElementBase<N> {
     where
         T: 'static + Into<StringLike>,
     {
-        self.set_attribute(Cow::Borrowed(name), val.into_reactive().cast());
+        self.set_attribute(name, val.into_reactive().cast());
     }
 
-    pub fn set_attribute(&self, name: impl Into<CowStr>, val: impl IntoReactive<StringLike>) {
+    pub fn set_attribute(&self, name: impl Into<RcStr>, val: impl IntoReactive<StringLike>) {
         let val = val.into_reactive();
         self.inner.set_attribute(name.into(), val);
     }
 
-    pub fn listen_event<Ev>(&self, event: impl Into<CowStr>, handler: impl IntoEventHandler<Ev>)
+    pub fn listen_event<Ev>(&self, event: impl Into<RcStr>, handler: impl IntoEventHandler<Ev>)
     where
         Ev: 'static + JsCast,
         N: WebNode,

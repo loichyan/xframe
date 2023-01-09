@@ -1,13 +1,17 @@
-use crate::{event::EventHandler, str::StringLike, template::ThreadLocalState, CowStr};
+use crate::{
+    event::EventHandler,
+    str::{RcStr, StringLike},
+    template::ThreadLocalState,
+};
 use std::fmt::Debug;
 
 #[derive(Clone)]
 pub enum NodeType {
-    Tag(CowStr),
-    TagNs { tag: CowStr, ns: CowStr },
-    Text(CowStr),
-    Placeholder(CowStr),
-    Template(CowStr),
+    Tag(RcStr),
+    TagNs { tag: RcStr, ns: RcStr },
+    Text(RcStr),
+    Placeholder(RcStr),
+    Template(RcStr),
 }
 
 pub trait GenericNode: 'static + Clone + Debug + Eq {
@@ -18,14 +22,14 @@ pub trait GenericNode: 'static + Clone + Debug + Eq {
     fn create(ty: NodeType) -> Self;
     fn deep_clone(&self) -> Self;
 
-    fn set_inner_text(&self, data: CowStr);
-    fn set_property(&self, name: CowStr, attr: StringLike);
-    fn set_attribute(&self, name: CowStr, attr: StringLike);
+    fn set_inner_text(&self, data: RcStr);
+    fn set_property(&self, name: RcStr, attr: StringLike);
+    fn set_attribute(&self, name: RcStr, attr: StringLike);
 
-    fn add_class(&self, name: CowStr);
-    fn remove_class(&self, name: CowStr);
+    fn add_class(&self, name: RcStr);
+    fn remove_class(&self, name: RcStr);
 
-    fn listen_event(&self, event: CowStr, handler: EventHandler<Self::Event>);
+    fn listen_event(&self, event: RcStr, handler: EventHandler<Self::Event>);
 
     fn parent(&self) -> Option<Self>;
     fn first_child(&self) -> Option<Self>;

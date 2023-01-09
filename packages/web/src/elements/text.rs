@@ -1,8 +1,8 @@
-use xframe_core::{GenericNode, IntoReactive, StringLike};
+use xframe_core::{GenericNode, IntoReactive, RcStr, StringLike};
 use xframe_reactive::Scope;
 
 define_element!(
-    pub struct text(NodeType::Text(std::borrow::Cow::Borrowed("")))
+    pub struct text(NodeType::Text(RcStr::Literal("")))
 );
 
 impl<N: GenericNode> text<N> {

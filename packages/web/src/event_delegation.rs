@@ -1,9 +1,9 @@
 use crate::{utils::UnwrapThrowValExt, DOCUMENT};
 use js_sys::{Function, Object, Reflect};
-use std::{borrow::Cow, cell::RefCell};
+use std::cell::RefCell;
 use wasm_bindgen::{prelude::*, JsCast, JsValue};
 use web_sys::{Event, EventTarget};
-use xframe_core::{EventHandler, HashMap};
+use xframe_core::{EventHandler, HashMap, RcStr};
 
 #[wasm_bindgen]
 extern "C" {
@@ -195,11 +195,7 @@ fn event_handler(name: JsValue) -> Function {
         .unchecked_into()
 }
 
-pub fn add_event_listener(
-    node: &web_sys::Node,
-    event: Cow<'static, str>,
-    handler: EventHandler<Event>,
-) {
+pub fn add_event_listener(node: &web_sys::Node, event: RcStr, handler: EventHandler<Event>) {
     let EventHandler { handler, options } = handler;
     let handler = Closure::wrap(handler)
         .into_js_value()
