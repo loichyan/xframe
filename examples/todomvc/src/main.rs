@@ -48,7 +48,7 @@ fn make_todo<N: WebNode>(
         editing.set(true);
         if let Some(input) = edit_input.get_as::<DomNode>() {
             input
-                .into_js()
+                .into_web_sys()
                 .unchecked_into::<xf::InputElement>()
                 .focus()
                 .unwrap_throw();

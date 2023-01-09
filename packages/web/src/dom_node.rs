@@ -41,19 +41,13 @@ pub struct DomNode {
 
 impl From<web_sys::Node> for DomNode {
     fn from(node: web_sys::Node) -> Self {
-        Self::from_js(node)
+        Self::from_web_sys(node)
     }
 }
 
 impl From<DomNode> for web_sys::Node {
     fn from(t: DomNode) -> Self {
-        t.into_js()
-    }
-}
-
-impl AsRef<web_sys::Node> for DomNode {
-    fn as_ref(&self) -> &web_sys::Node {
-        self.as_js()
+        t.into_web_sys()
     }
 }
 
@@ -177,15 +171,15 @@ impl GenericNode for DomNode {
 }
 
 impl DomNode {
-    pub fn from_js(node: web_sys::Node) -> Self {
+    pub fn from_web_sys(node: web_sys::Node) -> Self {
         Self { node }
     }
 
-    pub fn into_js(self) -> web_sys::Node {
+    pub fn into_web_sys(self) -> web_sys::Node {
         self.node
     }
 
-    pub fn as_js(&self) -> &web_sys::Node {
+    pub fn as_web_sys(&self) -> &web_sys::Node {
         &self.node
     }
 }

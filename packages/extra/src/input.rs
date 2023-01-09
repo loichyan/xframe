@@ -42,14 +42,6 @@ impl<N: GenericNode> ElementBase<N> {
         &mut self.inner
     }
 
-    pub fn as_web_sys_element<T>(&self) -> &T
-    where
-        N: AsRef<web_sys::Node>,
-        T: JsCast,
-    {
-        self.node().as_ref().unchecked_ref()
-    }
-
     pub fn set_property_literal<T>(&self, name: &'static str, val: impl IntoReactive<T>)
     where
         T: 'static + Into<StringLike>,

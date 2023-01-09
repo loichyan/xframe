@@ -197,7 +197,6 @@ impl<'a> Element<'a> {
 
     fn quote(&self) -> TokenStream {
         let Self {
-            ty,
             fn_,
             properties,
             events,
@@ -249,15 +248,6 @@ impl<'a> Element<'a> {
 
             impl<N: #T_GENERIC_NODE> #T_GENERIC_ELEMENT<N> for #fn_<N> {
                 const TYPE: #NODE_TYPE = #node_type;
-            }
-
-            impl<N> AsRef<#M_ELEMENT_TYPES::#ty> for #fn_<N>
-            where
-                N: #T_GENERIC_NODE + AsRef<#M_WEB_SYS::Node>,
-            {
-                fn as_ref(&self) -> &#M_ELEMENT_TYPES::#ty {
-                    self.inner.as_web_sys_element()
-                }
             }
 
             #[cfg(feature = "attributes")]
