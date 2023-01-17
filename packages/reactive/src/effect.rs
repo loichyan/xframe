@@ -24,7 +24,7 @@ impl fmt::Debug for Effect {
 impl Effect {
     pub fn run(&self) {
         self.id
-            .run()
+            .try_run()
             .unwrap_or_else(|| panic!("tried to access a disposed effect"));
     }
 }
@@ -57,6 +57,12 @@ where
 
 impl EffectId {
     #[must_use]
+    fn try_with<T>(&self, f: impl FnOnce(&mut dyn AnyEffect) -> T) -> Option<T> {
+        let raw = RT.with(|rt| rt.effects.borrow_mut().get(*self).cloned());
+        raw.map(|t| f(&mut *t.borrow_mut()))
+    }
+
+    #[must_use]
     pub fn try_with_context<T>(&self, f: impl FnOnce(&mut EffectContext) -> T) -> Option<T> {
         RT.with(|rt| rt.effect_contexts.borrow_mut().get_mut(*self).map(f))
     }
@@ -67,10 +73,9 @@ impl EffectId {
     }
 
     #[must_use]
-    pub fn run(&self) -> Option<()> {
+    pub fn try_run(&self) -> Option<()> {
         RT.with(|rt| {
-            let effect = rt.effects.borrow().get(*self).cloned();
-            effect.map(|effect| {
+            self.try_with(|effect| {
                 // 1) Clear dependencies.
                 // After each execution a signal may not be tracked by this effect anymore,
                 // so we need to clear dependencies both links and backlinks at first.
@@ -89,8 +94,7 @@ impl EffectId {
                 rt.observer.set(Some(*self));
 
                 // 3) Call the effect.
-                effect.borrow_mut().run_untracked();
-                drop(effect);
+                effect.run_untracked();
 
                 // 4) Subscribe dependencies.
                 // An effect is appended to the subscriber list of the signals since we
@@ -116,7 +120,7 @@ impl Scope {
                 .borrow_mut()
                 .insert(id, Default::default());
             self.id.on_cleanup(Cleanup::Effect(id));
-            id.run().unwrap();
+            id.try_run().unwrap();
             Effect {
                 id,
                 marker: PhantomData,

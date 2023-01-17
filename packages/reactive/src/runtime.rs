@@ -31,7 +31,6 @@ new_key_type! {
 pub(crate) struct Runtime {
     pub observer: Cell<Option<EffectId>>,
     pub scopes: RefCell<SlotMap<ScopeId, RawScope>>,
-    pub scope_parents: RefCell<SecondaryMap<ScopeId, ScopeId>>,
     pub scope_contexts: RefCell<SparseSecondaryMap<ScopeId, ScopeContexts>>,
     pub signals: RefCell<SlotMap<SignalId, RawSignal>>,
     pub signal_contexts: RefCell<SecondaryMap<SignalId, SignalContext>>,

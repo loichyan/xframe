@@ -23,6 +23,7 @@ impl fmt::Debug for Scope {
 
 #[derive(Default)]
 pub(crate) struct RawScope {
+    parent: Option<ScopeId>,
     cleanups: SmallVec<[Cleanup; 4]>,
 }
 
@@ -51,10 +52,13 @@ pub struct ScopeDisposer(Scope);
 impl ScopeDisposer {
     fn new(parent: Option<ScopeId>) -> Self {
         RT.with(|rt| {
-            let id = rt.scopes.borrow_mut().insert(Default::default());
-            if let Some(parent) = parent {
-                rt.scope_parents.borrow_mut().insert(id, parent);
-            }
+            let id = rt.scopes.borrow_mut().insert(RawScope {
+                parent,
+                ..Default::default()
+            });
+            rt.scope_contexts
+                .borrow_mut()
+                .insert(id, Default::default());
             let scope = Scope {
                 id,
                 marker: PhantomData,
@@ -98,9 +102,11 @@ impl ScopeId {
     #[must_use]
     fn try_drop(&self) -> Option<()> {
         RT.with(|rt| {
-            if let Some(cleanups) = self.try_with(|cx| std::mem::take(&mut cx.cleanups)) {
+            let id = *self;
+            let raw = rt.scopes.borrow_mut().remove(id);
+            if let Some(raw) = raw {
                 // 1) Cleanup resources created inside this `Scope`.
-                for cl in cleanups.into_iter().rev() {
+                for cl in raw.cleanups.into_iter().rev() {
                     match cl {
                         Cleanup::Scope(id) => {
                             // May be manually disposed.
@@ -124,15 +130,16 @@ impl ScopeId {
                     }
                 }
                 // 2) Cleanup resources onwed by this `Scope`.
-                let id = *self;
-                rt.scopes.borrow_mut().remove(id).unwrap();
                 rt.scope_contexts.borrow_mut().remove(id);
-                rt.scope_parents.borrow_mut().remove(id);
                 Some(())
             } else {
                 None
             }
         })
+    }
+
+    pub fn parent(&self) -> Option<ScopeId> {
+        self.with(|raw| raw.parent)
     }
 
     pub fn on_cleanup(&self, cl: Cleanup) {

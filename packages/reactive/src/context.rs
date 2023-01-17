@@ -19,24 +19,25 @@ fn context_id<T: 'static>() -> TypeId {
 impl ScopeId {
     fn find_context<T: 'static>(&self) -> Option<Signal<T>> {
         RT.with(|rt| {
-            rt.scope_contexts.borrow().get(*self).and_then(|contexts| {
-                contexts
-                    .content
-                    .get(&context_id::<T>())
-                    .map(|id| id.make_signal())
-            })
+            rt.scope_contexts
+                .borrow()
+                .get(*self)
+                .and_then(|ctx| ctx.content.get(&context_id::<T>()))
+                .map(SignalId::make_signal)
         })
     }
 
     fn find_context_recursive<T: 'static>(&self) -> Option<Signal<T>> {
-        RT.with(|rt| {
-            self.find_context::<T>().or_else(|| {
-                rt.scope_parents
-                    .borrow()
-                    .get(*self)
-                    .and_then(|parent| parent.find_context_recursive::<T>())
-            })
-        })
+        let mut id = *self;
+        loop {
+            match id.find_context() {
+                Some(sig) => return Some(sig),
+                None => match id.parent() {
+                    Some(parent) => id = parent,
+                    None => return None,
+                },
+            }
+        }
     }
 }
 

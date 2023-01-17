@@ -87,17 +87,7 @@ impl<T: 'static> ReadSignal<T> {
     }
 
     pub fn read_untracked<U>(&self, f: impl FnOnce(&T) -> U) -> U {
-        RT.with(|rt| {
-            let t = rt
-                .signals
-                .borrow()
-                .get(self.id)
-                .unwrap_or_else(|| panic!("tried to access a disposed signal"))
-                .clone();
-            let t = &*t.borrow();
-            f(t.downcast_ref::<T>()
-                .unwrap_or_else(|| panic!("tried to use a signal in mismatched types")))
-        })
+        self.id.with(|t| f(t))
     }
 
     pub fn get(&self) -> T
@@ -127,17 +117,7 @@ impl<T: 'static> Signal<T> {
     }
 
     pub fn write_slient(&self, f: impl FnOnce(&mut T)) {
-        RT.with(|rt| {
-            let t = rt
-                .signals
-                .borrow_mut()
-                .get_mut(self.id)
-                .unwrap_or_else(|| panic!("tried to access a disposed signal"))
-                .clone();
-            let t = &mut *t.borrow_mut();
-            f(t.downcast_mut()
-                .unwrap_or_else(|| panic!("tried to use a signal in mismatched types")));
-        });
+        self.id.with(f)
     }
 
     pub fn set(&self, val: T) {
@@ -176,12 +156,27 @@ impl SignalContext {
 
 impl SignalId {
     #[must_use]
+    fn try_with<T: 'static, U>(&self, f: impl FnOnce(&mut T) -> U) -> Option<U> {
+        let raw = RT.with(|rt| rt.signals.borrow_mut().get(*self).cloned());
+        raw.map(|t| {
+            f(t.borrow_mut()
+                .downcast_mut()
+                .unwrap_or_else(|| panic!("tried to use a signal in mismatched types")))
+        })
+    }
+
+    fn with<T: 'static, U>(&self, f: impl FnOnce(&mut T) -> U) -> U {
+        self.try_with(f)
+            .unwrap_or_else(|| panic!("tried to access a disposed signal"))
+    }
+
+    #[must_use]
     pub fn try_with_context<T>(&self, f: impl FnOnce(&mut SignalContext) -> T) -> Option<T> {
         RT.with(|rt| rt.signal_contexts.borrow_mut().get_mut(*self).map(f))
     }
 
     pub fn with_context<T>(&self, f: impl FnOnce(&mut SignalContext) -> T) -> T {
-        RT.with(|rt| rt.signal_contexts.borrow_mut().get_mut(*self).map(f))
+        self.try_with_context(f)
             .unwrap_or_else(|| panic!("tried to access a disposed signal"))
     }
 
@@ -193,7 +188,7 @@ impl SignalId {
         // avoid potential double executions.
         for id in subscribers {
             // Effect in child scopes may be disposed.
-            let _ = id.run();
+            let _ = id.try_run();
         }
     }
 
