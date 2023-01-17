@@ -56,9 +56,6 @@ impl ScopeDisposer {
                 parent,
                 ..Default::default()
             });
-            rt.scope_contexts
-                .borrow_mut()
-                .insert(id, Default::default());
             let scope = Scope {
                 id,
                 marker: PhantomData,

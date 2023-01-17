@@ -40,7 +40,7 @@ impl EffectContext {
     }
 }
 
-pub(crate) trait AnyEffect {
+pub(crate) trait AnyEffect: 'static {
     fn run_untracked(&mut self);
 }
 
@@ -48,7 +48,7 @@ struct AnyEffectImpl<F>(F);
 
 impl<F> AnyEffect for AnyEffectImpl<F>
 where
-    F: FnMut(),
+    F: 'static + FnMut(),
 {
     fn run_untracked(&mut self) {
         (self.0)();
