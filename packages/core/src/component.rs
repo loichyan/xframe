@@ -3,7 +3,7 @@ use crate::{
     node::{GenericNode, NodeType},
     reactive::Reactive,
     str::{RcStr, StringLike},
-    template::{GlobalState, Template, TemplateId},
+    template::{GlobalStateInner, Template, TemplateId},
     view::View,
 };
 use xframe_reactive::Scope;
@@ -23,15 +23,15 @@ impl<N: GenericNode> GenericComponent<N> for RenderOutput<N> {
 }
 
 fn take_mode<N: GenericNode>() -> Mode<N> {
-    GlobalState::mode(|global| std::mem::replace(&mut global.mode, Mode::None))
+    GlobalStateInner::mode(|global| std::mem::replace(&mut global.mode, Mode::None))
 }
 
 fn set_mode<N: GenericNode>(mode: Mode<N>) {
-    GlobalState::mode(|global| global.mode = mode);
+    GlobalStateInner::mode(|global| global.mode = mode);
 }
 
 fn check_mode<N: GenericNode>(f: impl FnOnce(&Mode<N>)) {
-    GlobalState::mode(|global| f(&global.mode));
+    GlobalStateInner::mode(|global| f(&global.mode));
 }
 
 pub(crate) struct GlobalMode<N> {
@@ -477,7 +477,7 @@ impl<N: GenericNode> Root<N> {
         let mode = take_mode::<N>();
         let id = id();
         let prev_mode = mode;
-        match GlobalState::<N>::get_template(id) {
+        match GlobalStateInner::<N>::get_template(id) {
             Some(Template { container, .. }) => {
                 let container = container.deep_clone();
                 set_mode(Mode::hydrate(
@@ -521,7 +521,7 @@ impl<N: GenericNode> Root<N> {
                 };
                 let container = N::create(NodeType::Template(id.data().into()));
                 dehydrated.append_to(&container);
-                GlobalState::set_template(id, Template { container });
+                GlobalStateInner::set_template(id, Template { container });
                 output
             }
         }

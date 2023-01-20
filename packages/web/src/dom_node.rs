@@ -3,11 +3,7 @@ use js_sys::Reflect;
 use std::borrow::Borrow;
 use wasm_bindgen::{intern, prelude::*, JsCast};
 use web_sys::HtmlTemplateElement;
-use xframe_core::{
-    is_debug,
-    template::{GlobalState, ThreadLocalState},
-    EventHandler, GenericNode, NodeType, RcStr, StringLike,
-};
+use xframe_core::{is_debug, EventHandler, GenericNode, NodeType, RcStr, StringLike};
 
 trait RcStrExt: Borrow<RcStr> {
     fn intern(&self) -> &str {
@@ -54,12 +50,7 @@ impl From<DomNode> for web_sys::Node {
 impl GenericNode for DomNode {
     type Event = web_sys::Event;
 
-    fn global_state() -> ThreadLocalState<Self> {
-        thread_local! {
-            static STATE: GlobalState<DomNode> = GlobalState::default();
-        }
-        &STATE
-    }
+    xframe_core::global_template!(DomNode);
 
     fn create(ty: NodeType) -> Self {
         let node: web_sys::Node = DOCUMENT.with(|doc| match ty {

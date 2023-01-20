@@ -5,14 +5,21 @@ thread_local! {
     static GLOBAL_ID: Cell<usize> = Cell::new(0);
 }
 
-pub type ThreadLocalState<N> = &'static std::thread::LocalKey<GlobalState<N>>;
+pub struct GlobalState<N: 'static>(&'static std::thread::LocalKey<GlobalStateInner<N>>);
 
-pub struct GlobalState<N> {
+impl<N> GlobalState<N> {
+    #[doc(hidden)]
+    pub fn __new(val: &'static std::thread::LocalKey<GlobalStateInner<N>>) -> Self {
+        Self(val)
+    }
+}
+
+pub struct GlobalStateInner<N> {
     templates: RefCell<Vec<Option<Template<N>>>>,
     mode: RefCell<GlobalMode<N>>,
 }
 
-impl<N: GenericNode> Default for GlobalState<N> {
+impl<N: GenericNode> Default for GlobalStateInner<N> {
     fn default() -> Self {
         Self {
             templates: Default::default(),
@@ -21,10 +28,10 @@ impl<N: GenericNode> Default for GlobalState<N> {
     }
 }
 
-impl<N: GenericNode> GlobalState<N> {
+impl<N: GenericNode> GlobalStateInner<N> {
     fn entry<U>(id: TemplateId, f: impl FnOnce(&mut Option<Template<N>>) -> U) -> U {
         let TemplateId { id, .. } = id;
-        N::global_state().with(|global| {
+        N::global_state().0.with(|global| {
             let templates = &mut global.templates.borrow_mut();
             if id >= templates.len() {
                 templates.resize(id + 1, None);
@@ -42,7 +49,9 @@ impl<N: GenericNode> GlobalState<N> {
     }
 
     pub(crate) fn mode<U>(f: impl FnOnce(&mut GlobalMode<N>) -> U) -> U {
-        N::global_state().with(|global| f(&mut *global.mode.borrow_mut()))
+        N::global_state()
+            .0
+            .with(|global| f(&mut *global.mode.borrow_mut()))
     }
 }
 

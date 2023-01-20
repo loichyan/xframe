@@ -1,7 +1,7 @@
 use crate::{
     event::EventHandler,
     str::{RcStr, StringLike},
-    template::ThreadLocalState,
+    template::GlobalState,
 };
 use std::fmt::Debug;
 
@@ -17,7 +17,7 @@ pub enum NodeType {
 pub trait GenericNode: 'static + Clone + Debug + Eq {
     type Event;
 
-    fn global_state() -> ThreadLocalState<Self>;
+    fn global_state() -> GlobalState<Self>;
 
     fn create(ty: NodeType) -> Self;
     fn deep_clone(&self) -> Self;
