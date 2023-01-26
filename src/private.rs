@@ -57,10 +57,11 @@ pub fn view_component<C: 'static>(
 
 pub fn view_fragment<N>(
     cx: Scope,
+    count: usize,
     children: impl 'static + FnOnce(Fragment<N>) -> Fragment<N>,
 ) -> impl 'static + FnOnce() -> Fragment<N>
 where
     N: GenericNode,
 {
-    move || children(Fragment(cx))
+    move || children(Fragment::with_capacity(cx, count))
 }
