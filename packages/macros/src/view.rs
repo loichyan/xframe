@@ -189,7 +189,6 @@ impl ViewChild {
             Self::Expr { value, .. } => value.to_token_stream(),
             Self::Element(view) => view.quote(),
             Self::Fragment { children, .. } => {
-                // TODO: always use fragment
                 let children = quote_children(children);
                 quote!({ #FN_VIEW_FRAGMENT(
                     #VAR_CX,
