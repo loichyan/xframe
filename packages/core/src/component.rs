@@ -307,6 +307,14 @@ impl<N: GenericNode> Element<N> {
         }
     }
 
+    pub fn set_classes(&self, names: &[&'static str]) {
+        self.with_root_static(|root| {
+            for &name in names {
+                root.add_class(name.into())
+            }
+        });
+    }
+
     pub fn set_inner_text(&self, data: Reactive<StringLike>) {
         match data {
             Reactive::Static(data) => {

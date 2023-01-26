@@ -2,10 +2,11 @@ use crate::GenericChild;
 use std::{any::Any, borrow::BorrowMut};
 use xframe_core::{
     component::Element, GenericComponent, GenericNode, IntoEventHandler, IntoReactive, NodeType,
-    RcStr, Reactive, StringLike,
+    RcStr, StringLike,
 };
 use xframe_reactive::{Scope, Signal};
 
+// TODO: rename to `ElementExt`
 pub trait GenericElement<N: GenericNode>:
     'static + BorrowMut<Element<N>> + GenericComponent<N>
 {
@@ -53,11 +54,9 @@ pub trait GenericElement<N: GenericNode>:
 
     fn classes<I>(self, classes: I) -> Self
     where
-        I: IntoIterator<Item = &'static str>,
+        I: AsRef<[&'static str]>,
     {
-        for cls in classes {
-            self.borrow().set_class(cls.into(), Reactive::Static(true));
-        }
+        self.borrow().set_classes(classes.as_ref());
         self
     }
 

@@ -24,6 +24,7 @@ impl<N: GenericNode> View<N> {
     }
 
     pub fn fragment_shared(views: Rc<[View<N>]>) -> Self {
+        // TODO: debug check
         if views.is_empty() {
             panic!("empty `View` is not allowed")
         }
